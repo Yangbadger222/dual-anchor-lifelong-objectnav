@@ -1,6 +1,7 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
 env/
@@ -11,11 +12,25 @@ env/
 # Runtime / experiment outputs
 runtime-data/
 outputs/
-runs/
+runs/**
+!runs/
+!runs/phase1a/
+!runs/phase1a/latest/
+!runs/phase1a/latest/report.html
+!runs/phase1a/latest/summary.json
+!runs/phase1a/latest/memory_snapshot.json
 logs/
 artifacts/
 *.bag
+*.db
 *.db3
+*.sqlite
+*.sqlite3
+*.jsonl
+.coverage
+coverage/
+.mypy_cache/
+.ruff_cache/
 
 # Large model and dataset files
 models/
@@ -26,4 +41,3 @@ checkpoints/
 *.onnx
 *.engine
 *.safetensors
-

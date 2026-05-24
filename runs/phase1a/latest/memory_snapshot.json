@@ -1,0 +1,51 @@
+{
+  "objects": [
+    {
+      "anchor_id": "indoor_map_corridor_a",
+      "anchor_type": "indoor_map",
+      "class_name": "water_dispenser",
+      "confidence": 1.0,
+      "detector_name": "config_truth",
+      "frame_id": "map",
+      "object_id": "water_dispenser_001",
+      "pose": {
+        "x": 8.0,
+        "y": 0.25,
+        "yaw": 1.5708
+      },
+      "state": "missing",
+      "verification_viewpoint": {
+        "x": 8.0,
+        "y": 1.45,
+        "yaw": -1.5707963267948966
+      }
+    },
+    {
+      "anchor_id": "indoor_map_corridor_a",
+      "anchor_type": "indoor_map",
+      "class_name": "water_dispenser",
+      "confidence": 1.0,
+      "detector_name": "config_truth",
+      "frame_id": "map",
+      "object_id": "water_dispenser_002",
+      "pose": {
+        "x": 10.0,
+        "y": 0.25,
+        "yaw": 1.5708
+      },
+      "state": "reusable",
+      "verification_viewpoint": {
+        "x": 10.0,
+        "y": 1.45,
+        "yaw": -1.5707963267948966
+      }
+    }
+  ],
+  "relations": [
+    {
+      "relation_type": "possible_relocation_of",
+      "source_object_id": "water_dispenser_002",
+      "target_object_id": "water_dispenser_001"
+    }
+  ]
+}

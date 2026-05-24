@@ -368,6 +368,21 @@ ON trial_events(trial_id, timestamp);
 
 Trial logging should record key events and candidate scores at each replan, but not every tick. Required event classes include task/state events, map/frontier events, object observation events, navigation events, verification events, memory mutation events, and relocation test interventions.
 
+The Phase 1A local runner should provide one command that executes the four deterministic trials and writes reproducible artifacts:
+
+```bash
+PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_phase1a --output runs/phase1a/latest
+```
+
+Expected artifact files:
+
+- `memory.sqlite`: SQLite memory and trial-event database
+- `summary.json`: scene id, target class, anchor metadata, run metrics, and artifact manifest
+- `memory_snapshot.json`: human-readable memory export with objects and relations
+- `events.jsonl`: trial events as newline-delimited JSON
+
+When installed in a ROS 2 environment through `ament_python`, the same runner should be exposed as a console script such as `objectnav_phase1a`.
+
 Default Phase 1A metrics:
 
 - `success`

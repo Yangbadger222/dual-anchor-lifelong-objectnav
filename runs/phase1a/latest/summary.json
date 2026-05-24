@@ -1,0 +1,160 @@
+{
+  "anchor": {
+    "anchor_id": "indoor_map_corridor_a",
+    "anchor_type": "indoor_map",
+    "frame_id": "map"
+  },
+  "artifact_files": {
+    "events": "events.jsonl",
+    "memory": "memory.sqlite",
+    "memory_snapshot": "memory_snapshot.json",
+    "summary": "summary.json"
+  },
+  "runs": [
+    {
+      "event_count": 7,
+      "metrics": {
+        "elapsed_time_s": 52.0,
+        "failed_viewpoint_count": 0,
+        "failure_reason": null,
+        "final_candidate_score": null,
+        "final_state": "reusable",
+        "frontier_count_total": 42,
+        "frontier_selected_count": 5,
+        "map_coverage_at_success": 0.0,
+        "memory_hit_count": 0,
+        "memory_query_count": 1,
+        "memory_reused": false,
+        "memory_state_transition_count": 2,
+        "missing_detection_success": false,
+        "num_nav_failures": 0,
+        "num_nav_goals": 6,
+        "num_replans": 0,
+        "observation_count": 2,
+        "path_length_m": 12.60093582811952,
+        "relocation_recorded": false,
+        "repeated_exploration_ratio": 0.0,
+        "selected_candidate_types": [
+          "frontier",
+          "object_verification"
+        ],
+        "stale_recheck_count": 0,
+        "success": true,
+        "time_to_first_observation_s": 52.0,
+        "time_to_verify_s": 52.0,
+        "unknown_area_reduction": 0.0,
+        "verification_attempt_count": 1
+      },
+      "trial_id": "discover_and_verify"
+    },
+    {
+      "event_count": 1,
+      "metrics": {
+        "elapsed_time_s": 28.0,
+        "failed_viewpoint_count": 0,
+        "failure_reason": null,
+        "final_candidate_score": null,
+        "final_state": "reusable",
+        "frontier_count_total": 0,
+        "frontier_selected_count": 0,
+        "map_coverage_at_success": 0.0,
+        "memory_hit_count": 1,
+        "memory_query_count": 1,
+        "memory_reused": true,
+        "memory_state_transition_count": 0,
+        "missing_detection_success": false,
+        "num_nav_failures": 0,
+        "num_nav_goals": 1,
+        "num_replans": 0,
+        "observation_count": 1,
+        "path_length_m": 7.0044628630609544,
+        "relocation_recorded": false,
+        "repeated_exploration_ratio": 0.0,
+        "selected_candidate_types": [
+          "memory"
+        ],
+        "stale_recheck_count": 0,
+        "success": true,
+        "time_to_first_observation_s": null,
+        "time_to_verify_s": null,
+        "unknown_area_reduction": 0.0,
+        "verification_attempt_count": 1
+      },
+      "trial_id": "reuse_same_start"
+    },
+    {
+      "event_count": 1,
+      "metrics": {
+        "elapsed_time_s": 24.0,
+        "failed_viewpoint_count": 0,
+        "failure_reason": null,
+        "final_candidate_score": null,
+        "final_state": "reusable",
+        "frontier_count_total": 0,
+        "frontier_selected_count": 0,
+        "map_coverage_at_success": 0.0,
+        "memory_hit_count": 1,
+        "memory_query_count": 1,
+        "memory_reused": true,
+        "memory_state_transition_count": 0,
+        "missing_detection_success": false,
+        "num_nav_failures": 0,
+        "num_nav_goals": 1,
+        "num_replans": 0,
+        "observation_count": 1,
+        "path_length_m": 5.805385430787521,
+        "relocation_recorded": false,
+        "repeated_exploration_ratio": 0.0,
+        "selected_candidate_types": [
+          "memory"
+        ],
+        "stale_recheck_count": 0,
+        "success": true,
+        "time_to_first_observation_s": null,
+        "time_to_verify_s": null,
+        "unknown_area_reduction": 0.0,
+        "verification_attempt_count": 1
+      },
+      "trial_id": "reuse_different_start"
+    },
+    {
+      "event_count": 3,
+      "metrics": {
+        "elapsed_time_s": 28.0,
+        "failed_viewpoint_count": 1,
+        "failure_reason": null,
+        "final_candidate_score": null,
+        "final_state": "reusable",
+        "frontier_count_total": 0,
+        "frontier_selected_count": 0,
+        "map_coverage_at_success": 0.0,
+        "memory_hit_count": 1,
+        "memory_query_count": 1,
+        "memory_reused": true,
+        "memory_state_transition_count": 3,
+        "missing_detection_success": true,
+        "num_nav_failures": 0,
+        "num_nav_goals": 1,
+        "num_replans": 0,
+        "observation_count": 1,
+        "path_length_m": 7.0044628630609544,
+        "relocation_recorded": true,
+        "repeated_exploration_ratio": 0.0,
+        "selected_candidate_types": [
+          "memory",
+          "yaw_scan",
+          "relocation"
+        ],
+        "stale_recheck_count": 1,
+        "success": true,
+        "time_to_first_observation_s": null,
+        "time_to_verify_s": null,
+        "unknown_area_reduction": 0.0,
+        "verification_attempt_count": 2
+      },
+      "trial_id": "missing_and_relocation"
+    }
+  ],
+  "scene_id": "straight_corridor_one_water_dispenser_unknown",
+  "target_class": "water_dispenser"
+}

@@ -1,0 +1,19 @@
+[project]
+name = "dual-anchor-lifelong-objectnav"
+version = "0.1.0"
+description = "Hardware-independent Dual-Anchor Lifelong Semantic ObjectNav research core"
+requires-python = ">=3.13"
+dependencies = [
+  "numpy",
+  "pydantic>=2",
+  "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["src/objectnav_core/tests"]
+pythonpath = ["src/objectnav_core"]
