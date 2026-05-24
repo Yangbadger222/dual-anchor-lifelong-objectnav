@@ -24,3 +24,5 @@ def test_objectnav_core_is_ament_python_package_without_ros_runtime_imports() ->
     assert "rclpy" not in setup_text
     assert "objectnav_phase1a" in setup_text
     assert "objectnav_core.cli.run_phase1a:main" in setup_text
+    assert "objectnav_phase1a_report" in setup_text
+    assert "objectnav_core.cli.generate_phase1a_report:main" in setup_text

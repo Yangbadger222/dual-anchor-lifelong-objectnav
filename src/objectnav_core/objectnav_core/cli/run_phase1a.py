@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from objectnav_core.evaluation.report import generate_phase1a_report
 from objectnav_core.models import TrialEvent, make_default_corridor_scene
 from objectnav_core.simulation.trials import Phase1ATrialRunner
 
@@ -49,12 +50,14 @@ def run_phase1a(output_dir: str | Path) -> dict[str, Any]:
             "summary": "summary.json",
             "memory_snapshot": "memory_snapshot.json",
             "events": "events.jsonl",
+            "report": "report.html",
         },
     }
 
     _write_json(output_path / "summary.json", summary)
     _write_json(output_path / "memory_snapshot.json", memory_snapshot)
     _write_events(output_path / "events.jsonl", events)
+    generate_phase1a_report(output_path)
     return summary
 
 
@@ -75,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         required=True,
-        help="Directory where memory.sqlite, summary.json, memory_snapshot.json, and events.jsonl will be written.",
+        help="Directory where memory.sqlite, summary.json, memory_snapshot.json, events.jsonl, and report.html will be written.",
     )
     args = parser.parse_args(argv)
     summary = run_phase1a(args.output)

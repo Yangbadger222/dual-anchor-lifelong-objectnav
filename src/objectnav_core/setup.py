@@ -23,6 +23,7 @@ setup(
     entry_points={
         "console_scripts": [
             "objectnav_phase1a = objectnav_core.cli.run_phase1a:main",
+            "objectnav_phase1a_report = objectnav_core.cli.generate_phase1a_report:main",
         ]
     },
 )

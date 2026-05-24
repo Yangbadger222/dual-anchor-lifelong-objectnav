@@ -16,8 +16,12 @@ from objectnav_core.models import (
     TrialResult,
     make_default_corridor_scene,
 )
+from objectnav_core.planning.frontier_policies import (
+    FrontierPolicyCandidate,
+    FrontierPolicyName,
+    select_frontier_candidate,
+)
 from objectnav_core.planning.viewpoints import (
-    plan_frontier_viewpoint,
     plan_verification_viewpoint,
 )
 from objectnav_core.simulation.navigation import DiscreteStepNavigationClient
@@ -29,9 +33,11 @@ class Phase1ATrialRunner:
         self,
         memory_path: str | Path,
         scene: SceneConfig | None = None,
+        frontier_policy: FrontierPolicyName | str = FrontierPolicyName.FIRST_FRONTIER,
     ) -> None:
         self.scene = scene or make_default_corridor_scene()
         self.memory = SQLiteMemoryStore(memory_path)
+        self.frontier_policy = FrontierPolicyName(frontier_policy)
 
     def run(self, trial_name: str) -> TrialResult:
         if trial_name == "discover_and_verify":
@@ -57,6 +63,7 @@ class Phase1ATrialRunner:
         frontier_total = 0
         frontier_selected = 0
         observations: list[ObjectObservation] = []
+        selected_frontier: FrontierPolicyCandidate | None = None
 
         for _ in range(8):
             grid.reveal_forward_sector(pose, self.scene.reveal_model)
@@ -68,13 +75,34 @@ class Phase1ATrialRunner:
             frontier_total += len(clusters)
             if not clusters:
                 break
-            goal = plan_frontier_viewpoint(grid, clusters[0])
+            try:
+                selected_frontier = select_frontier_candidate(
+                    grid=grid,
+                    start_pose=pose,
+                    frontiers=clusters,
+                    policy=self.frontier_policy,
+                )
+            except ValueError:
+                break
+            goal = selected_frontier.viewpoint
             frontier_selected += 1
             nav_goals += 1
             pose, distance, ticks = self._navigate(pose, goal)
             path_length += distance
             elapsed += ticks
-            logger.record("frontier_selected", "selected frontier viewpoint", {"goal": goal.model_dump()})
+            logger.record(
+                "frontier_selected",
+                "selected frontier viewpoint",
+                {
+                    "goal": goal.model_dump(),
+                    "policy": selected_frontier.policy.value,
+                    "candidate_type": selected_frontier.candidate_type,
+                    "information_gain": selected_frontier.information_gain,
+                    "path_cost_m": selected_frontier.path_cost_m,
+                    "revisit_penalty": selected_frontier.revisit_penalty,
+                    "score": selected_frontier.score,
+                },
+            )
 
         if not observations:
             metrics = TrialMetrics(
@@ -86,8 +114,12 @@ class Phase1ATrialRunner:
                 num_nav_goals=nav_goals,
                 frontier_count_total=frontier_total,
                 frontier_selected_count=frontier_selected,
+                selected_candidate_types=(
+                    [selected_frontier.candidate_type] if selected_frontier else []
+                ),
+                final_candidate_score=selected_frontier.score if selected_frontier else None,
             )
-            return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)
+            return self._record_result(trial_id, metrics, logger)
 
         observation = observations[0]
         self.memory.upsert_object_from_observation(observation, MemoryState.OBSERVED)
@@ -129,9 +161,13 @@ class Phase1ATrialRunner:
             memory_query_count=1,
             memory_hit_count=0,
             memory_state_transition_count=2,
-            selected_candidate_types=["frontier", "object_verification"],
+            selected_candidate_types=[
+                selected_frontier.candidate_type if selected_frontier else "frontier",
+                "object_verification",
+            ],
+            final_candidate_score=selected_frontier.score if selected_frontier else None,
         )
-        return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)
+        return self._record_result(trial_id, metrics, logger)
 
     def _run_reuse(self, trial_id: str, start_pose: Pose2D) -> TrialResult:
         logger = TrialLogger(self.memory, trial_id)
@@ -147,7 +183,7 @@ class Phase1ATrialRunner:
                 final_state="failed",
                 memory_query_count=1,
             )
-            return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)
+            return self._record_result(trial_id, metrics, logger)
 
         target = memories[0]
         pose, path_length, ticks = self._navigate(start_pose, target.verification_viewpoint)
@@ -175,7 +211,7 @@ class Phase1ATrialRunner:
             memory_hit_count=1,
             selected_candidate_types=["memory"],
         )
-        return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)
+        return self._record_result(trial_id, metrics, logger)
 
     def _run_missing_and_relocation(self) -> TrialResult:
         trial_id = "missing_and_relocation"
@@ -267,7 +303,7 @@ class Phase1ATrialRunner:
             relocation_recorded=relocation_recorded,
             selected_candidate_types=["memory", "yaw_scan", "relocation"],
         )
-        return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)
+        return self._record_result(trial_id, metrics, logger)
 
     def _navigate(self, start_pose: Pose2D, goal_pose: Pose2D) -> tuple[Pose2D, float, float]:
         navigator = DiscreteStepNavigationClient(start_pose=start_pose)
@@ -277,3 +313,12 @@ class Phase1ATrialRunner:
             navigator.tick(1.0)
             ticks += 1
         return navigator.current_pose, navigator.path_length_m, float(ticks)
+
+    def _record_result(
+        self,
+        trial_id: str,
+        metrics: TrialMetrics,
+        logger: TrialLogger,
+    ) -> TrialResult:
+        self.memory.record_trial_metrics(trial_id, metrics)
+        return TrialResult(trial_id=trial_id, metrics=metrics, events=logger.events)

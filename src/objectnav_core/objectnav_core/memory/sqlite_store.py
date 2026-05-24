@@ -13,6 +13,7 @@ from objectnav_core.models import (
     ObjectObservation,
     ObjectRelation,
     Pose2D,
+    TrialMetrics,
 )
 
 
@@ -242,6 +243,40 @@ class SQLiteMemoryStore:
             (trial_id, time.time(), event_type, message, json.dumps(payload or {}, sort_keys=True)),
         )
         self.connection.commit()
+
+    def record_trial_metrics(self, trial_id: str, metrics: TrialMetrics) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO trial_metrics (trial_id, metrics_json)
+            VALUES (?, ?)
+            ON CONFLICT(trial_id) DO UPDATE SET
+              metrics_json=excluded.metrics_json
+            """,
+            (trial_id, metrics.model_dump_json()),
+        )
+        self.connection.commit()
+
+    def get_trial_metrics(self, trial_id: str) -> TrialMetrics:
+        row = self.connection.execute(
+            "SELECT metrics_json FROM trial_metrics WHERE trial_id = ?",
+            (trial_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(trial_id)
+        return TrialMetrics.model_validate_json(row["metrics_json"])
+
+    def list_trial_metrics(self) -> list[tuple[str, TrialMetrics]]:
+        rows = self.connection.execute(
+            """
+            SELECT trial_id, metrics_json
+            FROM trial_metrics
+            ORDER BY trial_id
+            """
+        ).fetchall()
+        return [
+            (row["trial_id"], TrialMetrics.model_validate_json(row["metrics_json"]))
+            for row in rows
+        ]
 
     def export_json(self) -> str:
         objects = [

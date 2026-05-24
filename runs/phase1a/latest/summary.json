@@ -8,6 +8,7 @@
     "events": "events.jsonl",
     "memory": "memory.sqlite",
     "memory_snapshot": "memory_snapshot.json",
+    "report": "report.html",
     "summary": "summary.json"
   },
   "runs": [
@@ -17,7 +18,7 @@
         "elapsed_time_s": 52.0,
         "failed_viewpoint_count": 0,
         "failure_reason": null,
-        "final_candidate_score": null,
+        "final_candidate_score": 5.2,
         "final_state": "reusable",
         "frontier_count_total": 42,
         "frontier_selected_count": 5,

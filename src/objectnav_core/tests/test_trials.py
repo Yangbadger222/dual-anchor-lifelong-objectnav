@@ -5,6 +5,7 @@ from objectnav_core.models import (
     MemoryState,
     ObjectObservation,
     Pose2D,
+    TrialMetrics,
     make_default_corridor_scene,
 )
 from objectnav_core.simulation.trials import Phase1ATrialRunner
@@ -52,6 +53,22 @@ def test_sqlite_store_queries_reusable_objects_and_records_relocation(tmp_path: 
     assert "water_dispenser_001" in store.export_json()
 
 
+def test_sqlite_store_persists_trial_metrics(tmp_path: Path) -> None:
+    store = SQLiteMemoryStore(tmp_path / "memory.sqlite")
+    metrics = TrialMetrics(
+        success=True,
+        final_state="reusable",
+        path_length_m=7.5,
+        memory_reused=True,
+        selected_candidate_types=["memory"],
+    )
+
+    store.record_trial_metrics("reuse_same_start", metrics)
+
+    saved = store.get_trial_metrics("reuse_same_start")
+    assert saved == metrics
+
+
 def test_phase1a_runs_discovery_reuse_and_relocation(tmp_path: Path) -> None:
     runner = Phase1ATrialRunner(tmp_path / "memory.sqlite")
 
@@ -77,3 +94,25 @@ def test_phase1a_runs_discovery_reuse_and_relocation(tmp_path: Path) -> None:
     assert relocation.metrics.relocation_recorded is True
     assert runner.memory.get_object("water_dispenser_001").state is MemoryState.MISSING
     assert runner.memory.get_object("water_dispenser_002").state is MemoryState.REUSABLE
+
+    saved_metrics = runner.memory.list_trial_metrics()
+    assert {trial_id for trial_id, _ in saved_metrics} == {
+        "discover_and_verify",
+        "reuse_same_start",
+        "reuse_different_start",
+        "missing_and_relocation",
+    }
+    assert dict(saved_metrics)["missing_and_relocation"].relocation_recorded is True
+
+
+def test_phase1a_runner_accepts_information_gain_frontier_policy(tmp_path: Path) -> None:
+    runner = Phase1ATrialRunner(
+        tmp_path / "memory.sqlite",
+        frontier_policy="information_gain",
+    )
+
+    result = runner.run("discover_and_verify")
+
+    assert result.metrics.success
+    assert result.metrics.selected_candidate_types[0] == "information_gain_frontier"
+    assert result.metrics.final_candidate_score is not None

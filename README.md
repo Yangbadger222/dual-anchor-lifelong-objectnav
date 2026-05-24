@@ -37,6 +37,13 @@ This writes:
 - `runs/phase1a/latest/summary.json`
 - `runs/phase1a/latest/memory_snapshot.json`
 - `runs/phase1a/latest/events.jsonl`
+- `runs/phase1a/latest/report.html`
+
+Regenerate only the HTML report from an existing artifact directory:
+
+```bash
+PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.generate_phase1a_report --input runs/phase1a/latest
+```
 
 The core package is under `src/objectnav_core/objectnav_core`. It intentionally does not import ROS 2, Nav2, TF, detector models, RTK, or vehicle-specific launch files.
 

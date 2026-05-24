@@ -1,4 +1,5 @@
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 
 from objectnav_core.cli.run_phase1a import run_phase1a
@@ -16,6 +17,7 @@ def test_phase1a_cli_runner_writes_experiment_artifacts(tmp_path: Path) -> None:
         "summary": "summary.json",
         "memory_snapshot": "memory_snapshot.json",
         "events": "events.jsonl",
+        "report": "report.html",
     }
     assert [run["trial_id"] for run in summary["runs"]] == [
         "discover_and_verify",
@@ -29,11 +31,13 @@ def test_phase1a_cli_runner_writes_experiment_artifacts(tmp_path: Path) -> None:
     summary_path = output_dir / "summary.json"
     snapshot_path = output_dir / "memory_snapshot.json"
     events_path = output_dir / "events.jsonl"
+    report_path = output_dir / "report.html"
 
     assert memory_db.exists()
     assert summary_path.exists()
     assert snapshot_path.exists()
     assert events_path.exists()
+    assert report_path.exists()
 
     saved_summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert saved_summary == summary
@@ -55,3 +59,45 @@ def test_phase1a_cli_runner_writes_experiment_artifacts(tmp_path: Path) -> None:
         "reuse_different_start",
         "missing_and_relocation",
     }
+
+    report_html = report_path.read_text(encoding="utf-8")
+    for trial_id in (
+        "discover_and_verify",
+        "reuse_same_start",
+        "reuse_different_start",
+        "missing_and_relocation",
+    ):
+        assert trial_id in report_html
+    assert "water_dispenser_001" in report_html
+    assert "missing" in report_html
+    assert "water_dispenser_002" in report_html
+    assert "reusable" in report_html
+    assert "possible_relocation_of" in report_html
+    assert "frontier_selected" in report_html
+    assert "path_cost_m" in report_html
+    assert "final_candidate_score" in report_html
+
+    parser = AnchorParser()
+    parser.feed(report_html)
+    missing_anchors = {
+        href[1:]
+        for href in parser.hrefs
+        if href.startswith("#") and href[1:] not in parser.ids
+    }
+    assert missing_anchors == set()
+
+
+class AnchorParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: set[str] = set()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if "id" in attributes and attributes["id"] is not None:
+            self.ids.add(attributes["id"])
+        if tag == "a" and attributes.get("href"):
+            href = attributes["href"]
+            assert href is not None
+            self.hrefs.append(href)
