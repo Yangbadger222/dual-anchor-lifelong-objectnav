@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>硬件解耦版 Dual-Anchor Lifelong ObjectNav 系统架构</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f2;
+      --paper: #ffffff;
+      --ink: #17202a;
+      --muted: #5f6b7a;
+      --line: #d9ded5;
+      --green: #2f6f59;
+      --blue: #315f88;
+      --red: #9b3f3f;
+      --gold: #a86c1d;
+      --soft-green: #e7f1ec;
+      --soft-blue: #e8eef5;
+      --soft-gold: #f7eddc;
+      --soft-red: #f6e7e5;
+      --shadow: 0 16px 50px rgba(23, 32, 42, 0.09);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, #eef3ef 0, var(--bg) 360px),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.72;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: var(--blue);
+    }
+
+    code {
+      padding: 2px 6px;
+      border: 1px solid #d5dcd2;
+      border-radius: 5px;
+      background: #f8faf6;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    header {
+      display: grid;
+      gap: 22px;
+      padding: 36px 0 28px;
+    }
+
+    .eyebrow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 980px;
+      margin: 0;
+      font-size: clamp(34px, 5vw, 62px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 900px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .nav a {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 8px 12px;
+      color: var(--ink);
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .hero-grid,
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .summary {
+      grid-column: span 7;
+      padding: 24px;
+    }
+
+    .facts {
+      grid-column: span 5;
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+    }
+
+    .fact {
+      border-left: 4px solid var(--green);
+      padding: 10px 12px;
+      background: var(--soft-green);
+      border-radius: 6px;
+    }
+
+    .fact:nth-child(2) {
+      border-left-color: var(--blue);
+      background: var(--soft-blue);
+    }
+
+    .fact:nth-child(3) {
+      border-left-color: var(--gold);
+      background: var(--soft-gold);
+    }
+
+    .fact:nth-child(4) {
+      border-left-color: var(--red);
+      background: var(--soft-red);
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    section {
+      margin-top: 36px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 26px;
+      line-height: 1.28;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    .callout {
+      margin-top: 16px;
+      border-left: 5px solid var(--green);
+      border-radius: 7px;
+      background: var(--soft-green);
+      padding: 14px 16px;
+    }
+
+    .callout.warn {
+      border-left-color: var(--gold);
+      background: var(--soft-gold);
+    }
+
+    .callout.risk {
+      border-left-color: var(--red);
+      background: var(--soft-red);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 16px;
+    }
+
+    .card h3 {
+      margin-top: 0;
+    }
+
+    .diagram {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+      overflow-x: auto;
+    }
+
+    .diagram-row {
+      display: grid;
+      grid-template-columns: 1fr 44px 1fr 44px 1fr;
+      gap: 8px;
+      align-items: center;
+      min-width: 760px;
+    }
+
+    .node {
+      min-height: 90px;
+      border: 1px solid #cbd5cc;
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .node strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--green);
+    }
+
+    .arrow {
+      color: var(--blue);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 14px;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 11px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf2ed;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child th,
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 16px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .phase {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    footer {
+      margin-top: 32px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 860px) {
+      .summary,
+      .facts {
+        grid-column: 1 / -1;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .step {
+        grid-template-columns: 1fr;
+      }
+
+      section {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="eyebrow">
+        <span>正式设计阅读版</span>
+        <span>2026-05-24</span>
+        <span>Hardware-Independent First</span>
+      </div>
+      <h1>硬件解耦版 Dual-Anchor Lifelong ObjectNav 系统架构</h1>
+      <p class="subtitle">
+        先把 ObjectNav 核心系统从实车中解耦出来，用离线地图、fake target、回放数据和确定性测试跑通，再通过 ROS 2/Nav2/传感器 adapter 接入真实车。这样系统更泛化，实验更可复现，论文叙事也更强。
+      </p>
+      <nav class="nav" aria-label="文档导航">
+        <a href="#summary">核心结论</a>
+        <a href="#why">为什么先脱离实车</a>
+        <a href="#frontier">前沿定位</a>
+        <a href="#pain">研究痛点</a>
+        <a href="#models">模型接入</a>
+        <a href="#layers">三层架构</a>
+        <a href="#interfaces">接口边界</a>
+        <a href="#flow">数据流</a>
+        <a href="#roadmap">阶段路线</a>
+        <a href="#phase1a">Phase 1A</a>
+        <a href="#verification">验证计划</a>
+        <a href="#paper">论文价值</a>
+        <a href="#risks">风险</a>
+      </nav>
+    </header>
+
+    <div id="summary" class="hero-grid">
+      <article class="panel summary">
+        <h2>核心结论</h2>
+        <p>
+          当前研究方向应该收敛为：一个硬件无关的 Dual-Anchor Lifelong Semantic ObjectNav 系统。核心系统负责目标导航状态机、frontier 选择、长期语义记忆、双锚点表示、到达验证和实验日志；真实车只通过 adapter 提供地图、位姿、传感器观测和 Nav2 执行能力。
+        </p>
+        <div class="callout">
+          <strong>一句话论文叙事：</strong>
+          我们不是把某个视觉模型接到小车上，而是提出一套可脱离硬件开发、可回放验证、可接入真实 ROS 2 自主车的双锚点长期语义 ObjectNav 系统。
+        </div>
+      </article>
+      <aside class="panel facts">
+        <div class="fact">
+          <strong>第一优先级</strong>
+          离线最小闭环：goal -> memory -> frontier -> fake object -> verifier -> memory reuse。
+        </div>
+        <div class="fact">
+          <strong>核心贡献</strong>
+          Dual-anchor semantic memory + memory-aware frontier scoring + stale repair。
+        </div>
+        <div class="fact">
+          <strong>工程策略</strong>
+          核心逻辑不依赖具体车、相机、RTK、地图路径或 launch 文件。
+        </div>
+        <div class="fact">
+          <strong>投稿准备</strong>
+          baseline、消融、日志、失败案例和多 session 实验从第一版就设计进去。
+        </div>
+      </aside>
+    </div>
+
+    <section id="why">
+      <h2>为什么先脱离实车</h2>
+      <div class="cards">
+        <article class="card">
+          <h3>算法问题更清楚</h3>
+          <p>如果直接在车上开发，定位漂移、相机标定、Nav2 恢复行为和硬件安全会混在一起。离线先跑通，可以先证明 ObjectNav 逻辑本身正确。</p>
+        </article>
+        <article class="card">
+          <h3>实验更可复现</h3>
+          <p>固定地图、固定目标、固定 baseline、固定随机种子，才能让 success、路径长度、time-to-success 和 memory reuse 这些指标可比较。</p>
+        </article>
+        <article class="card">
+          <h3>论文更像系统贡献</h3>
+          <p>硬件无关边界能证明这不是单车 demo，而是一套可迁移到不同 SLAM/Nav2 底座的 ObjectNav 框架。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="frontier">
+      <h2>前沿相关工作定位</h2>
+      <p>
+        2024-2026 年的 ObjectNav 和开放词汇机器人系统已经明显转向 foundation-model semantics、显式记忆、frontier reasoning 和系统级组合。我们的方向最接近 lifelong semantic memory，但不能只说“用了记忆”；真正要做深的是长期运行中记忆如何被验证、失效、修复，并且如何跨 indoor map 与 outdoor ENU/RTK 锚点保持可信。
+      </p>
+      <table>
+        <tr>
+          <th>工作</th>
+          <th>对我们的启发</th>
+          <th>我们的差异</th>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2401.12202">OK-Robot</a></td>
+          <td>语义记忆、导航 primitive 和真实机器人 heuristics 的系统组合很关键。</td>
+          <td>它主要使用预扫描静态记忆做 pick-and-drop；我们做在线 ObjectNav、记忆修复和双锚点。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2311.06430">GOAT</a></td>
+          <td>Lifelong、multi-modal、instance-aware semantic memory 已经是强相关方向。</td>
+          <td>我们第一阶段聚焦坐标锚点可靠性、stale/missing/relocation 状态机和 ROS/Nav2/RTK adapter。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2411.17735">3D-Mem</a></td>
+          <td>3D memory snapshot 和 frontier snapshot 说明 memory 不应只有标签和坐标。</td>
+          <td>我们先用可验证的 symbolic/SQLite memory 跑通闭环，再把 snapshot/VLM memory 作为后续模块接入。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2411.04999">DynaMem</a></td>
+          <td>动态场景里物体出现、消失、移动是核心问题。</td>
+          <td>我们把动态变化转成可审计的 verifier 状态、trial log 和 anchor-aware memory，而不是只做在线地图。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2501.04279">OpenIN</a></td>
+          <td>同类多实例和移动物体需要 instance-level 关系记忆。</td>
+          <td>Phase 1A 只记录保守的 <code>possible_relocation_of</code>，不急着把新旧目标强行合并。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2511.08935">SCOPE</a> / <a href="https://arxiv.org/abs/2603.08475">R2F</a></td>
+          <td>frontier 可以有语义价值，但大模型频繁调用会影响实时性。</td>
+          <td>语义 frontier scoring 只作为低频可替换模块；高频控制依然依赖缓存、几何和传统导航约束。</td>
+        </tr>
+        <tr>
+          <td><a href="https://arxiv.org/abs/2603.06914">SysNav</a> / <a href="https://arxiv.org/abs/2605.01700">TrajRAG</a> / <a href="https://arxiv.org/abs/2509.12129">NavFoM</a></td>
+          <td>系统解耦、轨迹经验检索、跨 embodiment navigation foundation model 都在成为主线。</td>
+          <td>我们的落点是 dual-anchor lifelong memory：把 object、viewpoint、frontier、anchor 和失效证据统一存储与评估。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="pain">
+      <h2>我们主要解决的痛点</h2>
+      <div class="cards">
+        <article class="card">
+          <h3>记忆会过期</h3>
+          <p>真实环境不是静态 benchmark。系统必须处理 <code>stale</code>、<code>suspect_missing</code>、<code>missing</code> 和 relocation evidence，而不是把旧坐标当真理。</p>
+        </article>
+        <article class="card">
+          <h3>看不到不等于消失</h3>
+          <p>目标可能被遮挡、掉出 FOV、定位有误、costmap 不让车靠近，也可能真的被移走。两次确认和 yaw scan 能把这些情况先分层，而不是一次失败就下结论。</p>
+        </article>
+        <article class="card">
+          <h3>模型不能进 10Hz 闭环</h3>
+          <p>VLM/LLM 适合低频语义推理、frontier 解释和查询消歧，不适合直接接管高频重规划、避障或 Nav2 控制。</p>
+        </article>
+        <article class="card">
+          <h3>目标点不是物体中心</h3>
+          <p>机器人需要能到达、能看见、姿态合适的 verification viewpoint；这比“投影出物体坐标”更接近真实 ObjectNav。</p>
+        </article>
+        <article class="card">
+          <h3>坐标锚点会不可靠</h3>
+          <p>室内 FAST-LIO2/PGO 地图与室外 RTK/ENU 在门口可能跳变。记忆必须保留 native anchor 和 covariance，等 transform 质量足够再融合。</p>
+        </article>
+        <article class="card">
+          <h3>论文结果要可审计</h3>
+          <p>trial event、候选分数、memory state transition 和 failure label 必须从第一版就记录，否则后续很难支撑可信论文结论。</p>
+        </article>
+      </div>
+      <div class="callout">
+        <strong>核心研究问题：</strong>
+        机器人如何跨 session 复用语义 ObjectNav 记忆，同时抵抗 stale objects、missing targets、坐标锚点不确定性和真实机器人 adapter 噪声？
+      </div>
+    </section>
+
+    <section id="models">
+      <h2>什么阶段接入模型</h2>
+      <p>
+        我的判断是：不要在 Phase 1A 接入真实 detector 或 VLM。第一阶段的价值是证明状态机、frontier、verification viewpoint、SQLite memory 和 trial metrics 是正确的。模型应该作为 adapter 逐步接入，而不是一开始就成为系统正确性的来源。
+      </p>
+      <table>
+        <tr>
+          <th>阶段</th>
+          <th>模型策略</th>
+          <th>原因</th>
+        </tr>
+        <tr>
+          <td>Phase 1A</td>
+          <td>不接 learned model；使用 hidden scene truth 触发 fake observation。</td>
+          <td>先隔离并验证 ObjectNav core，不让 perception noise 掩盖架构问题。</td>
+        </tr>
+        <tr>
+          <td>Phase 1B / Phase 2</td>
+          <td>默认仍走确定性路径；可用记录图片做 closed-set perception side experiment。</td>
+          <td>先检查 anchor、projection、memory schema，而不是追求开放词汇效果。</td>
+        </tr>
+        <tr>
+          <td>Phase 4</td>
+          <td>补齐 model-free 和 model-light baseline。</td>
+          <td>论文必须知道 memory/verifier/frontier 各自贡献了什么。</td>
+        </tr>
+        <tr>
+          <td>Phase 5</td>
+          <td>首次正式接 detector、segmenter、embedding、arrival verifier，但只在 offline/replay 中评估。</td>
+          <td>用保存的图像、视频或 rosbag 衡量 precision/recall、投影误差和验证准确率。</td>
+        </tr>
+        <tr>
+          <td>Phase 6</td>
+          <td>真实车接感知 adapter，异步、限频、带 source metadata。</td>
+          <td>模型输出是 evidence record，不是直接控制命令。</td>
+        </tr>
+        <tr>
+          <td>Phase 7+</td>
+          <td>VLM/LLM/VLA 可用于低频 semantic frontier scoring、query disambiguation 或候选解释。</td>
+          <td>大模型适合高层语义决策，不应成为局部避障或高频重规划的必要组件。</td>
+        </tr>
+      </table>
+      <div class="callout warn">
+        <strong>接入模型的门槛：</strong>
+        Phase 1A 四个 deterministic runs 必须稳定通过；接口测试必须覆盖 <code>ObjectObservationSource</code> 和 <code>ArrivalVerifier</code>；回放数据必须有人工检查标签；模型输出必须携带 confidence、timestamp、anchor_id、source 和 failure reason。
+      </div>
+    </section>
+
+    <section id="layers">
+      <h2>三层架构</h2>
+      <div class="diagram" aria-label="三层系统架构图">
+        <div class="diagram-row">
+          <div class="node">
+            <strong>Layer 1: ObjectNav Core</strong>
+            状态机、frontier、目标选择、语义记忆、verifier、trial logger。
+          </div>
+          <div class="arrow">-&gt;</div>
+          <div class="node">
+            <strong>Layer 2: Replay / Simulation</strong>
+            离线 grid、fake object、图片/rosbag 回放、确定性 baseline。
+          </div>
+          <div class="arrow">-&gt;</div>
+          <div class="node">
+            <strong>Layer 3: Robot Adapters</strong>
+            ROS 2 topic/action/service、Nav2、TF、相机、点云、RTK/ENU。
+          </div>
+        </div>
+      </div>
+      <div class="callout warn">
+        <strong>关键边界：</strong>
+        core 只认识抽象接口和稳定数据结构，不直接读取某台车的 topic 名、设备路径、地图路径或 launch 参数。
+      </div>
+    </section>
+
+    <section id="interfaces">
+      <h2>接口边界</h2>
+      <table>
+        <tr>
+          <th>接口</th>
+          <th>职责</th>
+          <th>第一版来源</th>
+        </tr>
+        <tr>
+          <td><code>MapProvider</code></td>
+          <td>提供 occupancy-like grid、resolution、origin、free/occupied/unknown cells。</td>
+          <td>离线 fixture；后续接 <code>/global_costmap/costmap</code>。</td>
+        </tr>
+        <tr>
+          <td><code>PoseProvider</code></td>
+          <td>提供机器人当前 pose、时间戳、定位质量和 covariance。</td>
+          <td>离线轨迹；后续接 TF/PGO/localizer。</td>
+        </tr>
+        <tr>
+          <td><code>ObjectObservationSource</code></td>
+          <td>提供目标类别、置信度、pose estimate、detector name、anchor type。</td>
+          <td>fake target；后续接 YOLO/YOLO-World 和 object projector。</td>
+        </tr>
+        <tr>
+          <td><code>MemoryStore</code></td>
+          <td>查询和更新 object、place、frontier、anchor、session memory。</td>
+          <td>SQLite 优先，极小原型可先 JSON。</td>
+        </tr>
+        <tr>
+          <td><code>NavigationClient</code></td>
+          <td>发送、取消和回报导航目标。</td>
+          <td>离线 navigator；后续接 Nav2 <code>NavigateToPose</code>。</td>
+        </tr>
+        <tr>
+          <td><code>ArrivalVerifier</code></td>
+          <td>到达目标附近后返回 <code>verified</code>、<code>not_found</code> 或 <code>ambiguous</code>。</td>
+          <td>fake verifier；后续接近距离图像检测。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="flow">
+      <h2>数据流</h2>
+      <ol>
+        <li>输入目标，例如 <code>trash_bin</code>。</li>
+        <li><code>ObjectNavManager</code> 查询语义记忆。</li>
+        <li>如果有可靠记忆，生成 memory target；如果没有，进入 frontier selection。</li>
+        <li><code>GoalSelector</code> 综合 target belief、information gain、memory prior、path cost、revisit penalty、anchor uncertainty 和 stale risk 打分。</li>
+        <li><code>NavigationClient</code> 执行选中的目标点。</li>
+        <li>导航过程中如果观测到目标，允许取消 frontier 并切换到 object target。</li>
+        <li>到达后 <code>ArrivalVerifier</code> 做确认。</li>
+        <li><code>MemoryStore</code> 更新为 <code>fresh</code>、<code>verified</code>、<code>stale</code>、<code>missing</code> 或 <code>ambiguous</code>。</li>
+        <li><code>TrialLogger</code> 记录每次状态切换、候选分数、导航结果、验证结果和指标。</li>
+      </ol>
+    </section>
+
+    <section id="roadmap">
+      <h2>阶段路线</h2>
+      <div class="timeline">
+        <div class="step">
+          <div class="phase">Phase 0</div>
+          <div>
+            <strong>架构固化</strong>
+            <p>完成正式设计文档、中文阅读版和 devlog。之后再写 implementation plan。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 1A</div>
+          <div>
+            <strong>室内饮水机闭环</strong>
+            <p>只启用 indoor_map anchor，用单走廊和靠墙饮水机跑通 frontier、可视触发 fake detector、verification viewpoint、memory reuse、stale/missing/relocation。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 1B</div>
+          <div>
+            <strong>室外兼容接口</strong>
+            <p>代码仍可先跑室内，但 object observation、memory schema 和 query API 必须携带 anchor_id、anchor_type、frame_id 和 covariance。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 2</div>
+          <div>
+            <strong>室外单锚点 ObjectNav</strong>
+            <p>单独验证 outdoor_enu anchor，不处理门口切换；先证明 RTK/ENU 也能使用同一套 memory/query/scoring 接口。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 3</div>
+          <div>
+            <strong>Transition Zone</strong>
+            <p>等室内和室外都单独跑通后，再处理门厅、楼门口、SLAM/RTK 同时不稳定、双锚点观测融合和 transform uncertainty。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 4</div>
+          <div>
+            <strong>Baseline 和回放实验</strong>
+            <p>实现 nearest frontier、information gain、semantic frontier、memory baseline 和完整方法。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 5</div>
+          <div>
+            <strong>离线视觉感知</strong>
+            <p>用图片、视频或 rosbag 接 detector、object projection 和 arrival verification。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 6</div>
+          <div>
+            <strong>真实车 adapter</strong>
+            <p>通过 ROS 2 adapter 接 Nav2、costmap、TF、相机、点云和 RTK，先 bag replay，再 live trial。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="phase">Phase 7</div>
+          <div>
+            <strong>双锚点真实评估</strong>
+            <p>在室内、室外和过渡区做完整 real-world trials，包含 stale、missing、relocation 和 transition-zone repair。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="phase1a">
+      <h2>Phase 1A：室内饮水机闭环</h2>
+      <p>
+        第一阶段工程上先实现室内单锚点，但接口必须从一开始支持 anchor abstraction。默认目标是 <code>water_dispenser</code>，场景是单走廊里一个靠墙独立摆放的饮水机，相机假设为固定前视。
+      </p>
+      <table>
+        <tr>
+          <th>设计项</th>
+          <th>Phase 1A 决策</th>
+        </tr>
+        <tr>
+          <td>Anchor</td>
+          <td>只启用 <code>indoor_map</code>，但 observation 和 memory 都必须保存 <code>anchor_id</code>、<code>anchor_type</code>、<code>frame_id</code>。</td>
+        </tr>
+        <tr>
+          <td>Object source</td>
+          <td><code>ConfigTruthObjectSource</code> 用于可复现测试，<code>ManualInjectedObjectSource</code> 用于 RViz/实车调试，后续替换为视觉检测。</td>
+        </tr>
+        <tr>
+          <td>Fake detector</td>
+          <td>只有机器人进入饮水机可视扇区时才发布 observation：距离、水平 FOV、line of sight 和 object active 状态都要满足。</td>
+        </tr>
+        <tr>
+          <td>Navigation target</td>
+          <td>导航到 <code>verification_viewpoint</code>，不是饮水机本体中心。第一版从饮水机前方约 1.2m 处观察，朝向目标中心。</td>
+        </tr>
+        <tr>
+          <td>Memory states</td>
+          <td><code>observed</code>、<code>verified</code>、<code>reusable</code>、<code>stale</code>、<code>suspect_missing</code>、<code>missing</code>。</td>
+        </tr>
+      </table>
+
+      <h3>实验 Run</h3>
+      <table>
+        <tr>
+          <th>Run</th>
+          <th>名称</th>
+          <th>目的</th>
+        </tr>
+        <tr>
+          <td>A</td>
+          <td><code>discover_and_verify</code></td>
+          <td>空 memory，从探索中发现饮水机，验证成功后写成 reusable memory。</td>
+        </tr>
+        <tr>
+          <td>B</td>
+          <td><code>reuse_same_start</code></td>
+          <td>同起点复用 saved viewpoint，证明 memory reuse 能减少探索。</td>
+        </tr>
+        <tr>
+          <td>C</td>
+          <td><code>reuse_different_start</code></td>
+          <td>不同起点复用同一个目标记忆，证明不是路线复现。</td>
+        </tr>
+        <tr>
+          <td>D</td>
+          <td><code>missing_and_relocation</code></td>
+          <td>先隐藏旧目标触发 <code>suspect_missing -> missing</code>，再把目标移动到新位置并记录 relocation evidence。</td>
+        </tr>
+      </table>
+
+      <div class="callout">
+        <strong>Relocation 策略：</strong>
+        第一版不强行判断“是不是同一台饮水机”。旧 object 标记为 <code>missing</code>，新位置 object 标记为 <code>verified</code>，并记录 <code>possible_relocation_of(new_id, old_id)</code> 关系。等后续有视觉外观、尺寸和局部 place descriptor 后再考虑合并。
+      </div>
+
+      <h3>Fixture 与仿真模型</h3>
+      <table>
+        <tr>
+          <th>设计项</th>
+          <th>决定</th>
+        </tr>
+        <tr>
+          <td>地图</td>
+          <td><code>straight_corridor_one_water_dispenser_unknown</code>：12.0m x 2.4m 单走廊，起点只知道前 3m，其余走廊初始为 unknown。</td>
+        </tr>
+        <tr>
+          <td>Reveal model</td>
+          <td><code>forward_sector</code>：以机器人朝向展开扇形揭示 unknown cell，mapping FOV 约 120deg，raycast 检查 line of sight。</td>
+        </tr>
+        <tr>
+          <td>Fake detector FOV</td>
+          <td>前视相机检测 FOV 约 70deg，小于 mapping/reveal FOV；地图知道某区域不代表相机一定看到目标。</td>
+        </tr>
+        <tr>
+          <td>Frontier goal</td>
+          <td>选择 frontier 前方 known free 区域中的 reachable viewpoint，朝向 frontier centroid；不直接导航到 raw frontier centroid。</td>
+        </tr>
+        <tr>
+          <td>Navigation backend</td>
+          <td>第一版用 <code>DiscreteStepNavigationClient</code>，接口保留给后续 A* 和 Nav2 <code>NavigateToPose</code> adapter。</td>
+        </tr>
+      </table>
+
+      <h3>Core 工程边界</h3>
+      <p>
+        第一版采用 <code>objectnav_core</code> + 后续 <code>objectnav_ros</code> adapter 的结构。<code>objectnav_core</code> 不 import <code>rclpy</code>，不依赖 ROS message，只处理 Pydantic schema、numpy/grid 和离线仿真接口。ROS topic、TF、Nav2 action 和 RViz marker 都放进后续 adapter。
+      </p>
+      <table>
+        <tr>
+          <th>模块</th>
+          <th>职责</th>
+        </tr>
+        <tr>
+          <td><code>models</code></td>
+          <td>Pydantic schema：pose、anchor、object、frontier、navigation、trial event、metrics。</td>
+        </tr>
+        <tr>
+          <td><code>mapping</code></td>
+          <td>grid、forward-sector reveal、frontier extraction。</td>
+        </tr>
+        <tr>
+          <td><code>planning</code></td>
+          <td>frontier viewpoint、verification viewpoint、candidate scoring。</td>
+        </tr>
+        <tr>
+          <td><code>memory</code></td>
+          <td>SQLite store、memory state transitions、JSON snapshot export。</td>
+        </tr>
+        <tr>
+          <td><code>simulation</code></td>
+          <td>scene config、fake detector、discrete navigation、trial runner。</td>
+        </tr>
+        <tr>
+          <td><code>evaluation</code></td>
+          <td>trial logger、metrics aggregation、candidate-score records。</td>
+        </tr>
+      </table>
+
+      <h3>Memory 与日志</h3>
+      <p>
+        Phase 1A 使用 SQLite 作为主存储，JSON snapshot 只用于调试和人工阅读。高频 tick 不允许扫全表；SQLite query 只在 task start、memory mutation、replan event 或低频 refresh 触发，tick 阶段只读 active memory cache。
+      </p>
+      <p>
+        Trial log 记录关键事件和每次 replan 的候选评分，不记录每个 tick。默认 metrics 包括 success、path length、elapsed time、frontier count、repeated exploration ratio、time-to-first-observation、time-to-verify、memory reuse、missing detection、relocation recorded 和 num replans。SQLite query count、cache hit 和模块耗时作为 debug metrics。
+      </p>
+
+      <div class="callout warn">
+        <strong>Missing 判据：</strong>
+        不能一次看不到就标记 missing。第一次 verification 失败进入 <code>suspect_missing</code>；第二次在原地执行 yaw scan，例如目标朝向 ±25deg，仍看不到才进入 <code>missing</code>。
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>验证计划</h2>
+      <table>
+        <tr>
+          <th>阶段</th>
+          <th>必须验证什么</th>
+        </tr>
+        <tr>
+          <td>Phase 1A</td>
+          <td>frontier extraction 单元测试、memory 状态转移测试、饮水机 fake detector 闭环、同起点/不同起点 memory reuse、missing_and_relocation。</td>
+        </tr>
+        <tr>
+          <td>Phase 1B</td>
+          <td>确认 observation、memory 和 query API 不写死 indoor_map，能接受 outdoor_enu anchor fixture。</td>
+        </tr>
+        <tr>
+          <td>Phase 2</td>
+          <td>单独跑 outdoor_enu anchor 的 ObjectNav 和 memory reuse。</td>
+        </tr>
+        <tr>
+          <td>Phase 3</td>
+          <td>模拟 anchor health 和 transform uncertainty，验证过渡区观测不会被强行提升为可靠记忆。</td>
+        </tr>
+        <tr>
+          <td>Phase 4-7</td>
+          <td>ROS 2 package build、workspace source、bag replay、最后才是真实车 live trial。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="paper">
+      <h2>论文价值</h2>
+      <div class="cards">
+        <article class="card">
+          <h3>更泛化</h3>
+          <p>硬件无关 core 让系统不绑定一台车，审稿时更容易被理解为方法和系统架构贡献。</p>
+        </article>
+        <article class="card">
+          <h3>更可消融</h3>
+          <p>frontier、semantic prior、memory、dual anchor、verifier 和 repair 都可以独立打开或关闭。</p>
+        </article>
+        <article class="card">
+          <h3>更可复现</h3>
+          <p>trial log、session config、metrics 和 experiment report 从早期就进入流程，支撑后续论文图表。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与控制</h2>
+      <table>
+        <tr>
+          <th>风险</th>
+          <th>控制方式</th>
+        </tr>
+        <tr>
+          <td>core 逐渐混入车辆 topic 和路径</td>
+          <td>代码 review 时检查 import、config、launch 依赖，把车辆细节移到 adapter。</td>
+        </tr>
+        <tr>
+          <td>离线跑通但实车失败</td>
+          <td>在 live trial 前增加 rosbag replay 和 adapter-level tests。</td>
+        </tr>
+        <tr>
+          <td>旧记忆把车带到错误位置</td>
+          <td>arrival verifier 失败后标记 <code>missing</code>，降低记忆权重并回到探索。</td>
+        </tr>
+        <tr>
+          <td>baseline 不可比较</td>
+          <td>固定 map、target、seed、session config，并把所有事件写入 trial log。</td>
+        </tr>
+      </table>
+      <div class="callout risk">
+        <strong>当前未完成：</strong>
+        本文档只是架构固化，还没有实现 Phase 1 的代码，也没有产生任何实验结果。
+      </div>
+    </section>
+
+    <footer>
+      对应正式 Markdown 设计文档：<code>docs/design/2026-05-24-system-architecture.md</code>
+    </footer>
+  </div>
+</body>
+</html>
