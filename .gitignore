@@ -1,0 +1,29 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Runtime / experiment outputs
+runtime-data/
+outputs/
+runs/
+logs/
+artifacts/
+*.bag
+*.db3
+
+# Large model and dataset files
+models/
+datasets/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+
