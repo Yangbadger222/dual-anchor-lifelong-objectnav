@@ -1,0 +1,31 @@
+from pathlib import Path
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+
+def generate_launch_description() -> LaunchDescription:
+    config_path = Path(get_package_share_directory("objectnav_ros")) / "config" / "indoor_nav2_adapter.yaml"
+    return LaunchDescription(
+        [
+            Node(
+                package="objectnav_ros",
+                executable="objectnav_adapter",
+                name="objectnav_adapter",
+                output="screen",
+                parameters=[str(config_path)],
+            ),
+            Node(
+                package="objectnav_ros",
+                executable="objectnav_synthetic_replay",
+                name="objectnav_synthetic_replay",
+                output="screen",
+                parameters=[
+                    {"map_frame": "map"},
+                    {"base_frame": "base_link"},
+                    {"publish_period_s": 1.0},
+                ],
+            ),
+        ]
+    )

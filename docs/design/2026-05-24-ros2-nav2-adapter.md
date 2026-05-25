@@ -2,7 +2,7 @@
 
 Date: 2026-05-24  
 Owner: Codex  
-Status: Draft
+Status: First skeleton implemented
 
 ## Goal
 
@@ -12,7 +12,6 @@ The adapter should translate ROS 2 topics, TF, costmaps, object observations, vi
 
 ## Non-Goals
 
-- This design does not implement ROS 2 code yet.
 - This design does not change `objectnav_core` imports or schemas.
 - This design does not tune Nav2 controllers, costmaps, localization, FAST-LIO2, or PGO.
 - This design does not add a real detector, VLM, RTK driver, or robot launch stack.
@@ -28,7 +27,7 @@ The architecture boundary remains:
 - `objectnav_core` owns ObjectNav state, memory semantics, candidate scoring, verification logic, metrics, and artifact generation.
 - `objectnav_ros` owns ROS 2 subscriptions, publications, TF lookups, Nav2 actions, RViz markers, and deployment-specific parameters.
 
-The user's current computer does not have ROS 2 installed. Therefore the immediate output should be design and later an adapter skeleton that can be syntax-checked where possible, but only built with `colcon` on a ROS 2 environment.
+The current development environment has ROS 2 Humble available. The adapter can therefore be built and tested with `colcon`, while `objectnav_core` must remain runnable on non-ROS machines through pytest.
 
 ## System Boundary
 
@@ -78,6 +77,29 @@ The user's current computer does not have ROS 2 installed. Therefore the immedia
 | Output | Adapter logs | SQLite/event log payloads | Include ROS time, frame ids, topic names, and Nav2 status. |
 
 ## Interfaces
+
+### First implementation slice
+
+The first ROS 2 implementation should be a minimal `objectnav_ros` package that can build and test in a ROS 2 Humble environment without driving a robot.
+
+Implemented scope for this slice:
+
+- `nav_msgs/msg/OccupancyGrid` to `objectnav_core.mapping.grid.OccupancyGrid` conversion with explicit free, occupied, and unknown thresholds.
+- `geometry_msgs/msg/PoseStamped` and `geometry_msgs/msg/TransformStamped` conversion to and from core `Pose2D`.
+- Nav2/action status mapping into the core `NavigationStatus` enum.
+- A mock-testable Nav2 `NavigateToPose` action-client wrapper that handles server availability, goal acceptance, result mapping, and cancel requests.
+- `std_msgs/msg/String` JSON object-observation conversion into core `ObjectObservation`, including optional stale timestamp rejection.
+- A minimal `rclpy` node shell that declares adapter parameters and exposes configurable goal, object-observation, status, and selected-goal interfaces.
+- Synthetic replay and RViz marker publication are covered by `docs/design/2026-05-25-ros2-synthetic-replay-rviz.md`.
+- Adapter tests that run without a live Nav2 server, TF tree, robot, detector, or bag file.
+
+Still outside this first slice:
+
+- Running the Phase 1A state machine inside a ROS node.
+- Rosbag replay orchestration.
+- Live Nav2 action-server or robot execution tests.
+- Manual RViz screenshot verification.
+- Custom ROS messages or actions.
 
 ### Package layout target
 
@@ -179,14 +201,14 @@ Minimum adapter parameters:
 
 ## Verification Plan
 
-### On this non-ROS machine
+### On non-ROS machines
 
 - Keep `objectnav_core` ROS-free by scanning for `rclpy`, ROS messages, TF, and Nav2 imports under `src/objectnav_core/objectnav_core`.
-- Add only design docs until a ROS 2 environment is available.
+- Develop and test only the ROS-free core.
 - Review package boundaries and parameter names.
 - Verify docs do not contain unresolved placeholders.
 
-### On a ROS 2 machine or container
+### On this ROS 2 Humble machine or container
 
 1. Build packages:
 

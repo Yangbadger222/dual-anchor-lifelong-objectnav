@@ -8,7 +8,7 @@ Status: Ready for Review
 
 Phase 1A now has a first ROS-free executable core under `src/objectnav_core`.
 
-The user's current computer does not have ROS installed. The project is still ROS 2-oriented: `src/objectnav_core` now has `ament_python` package metadata so it can later be built with `colcon` on a ROS 2 machine or container. Local development on this computer should continue through pytest.
+Update later on 2026-05-24: the current environment now has ROS 2 Humble and `colcon`. `objectnav_core` and the new `objectnav_ros` skeleton have been built and tested with `colcon`; see `docs/handoff/2026-05-24-ros2-nav2-adapter-skeleton.md`. The core package still remains ROS-free and should continue to support pytest-only development on non-ROS machines.
 
 Implemented:
 
@@ -263,14 +263,14 @@ Noted:
 
 - Placeholder scan output includes template files, historical devlog mentions of placeholder scans, the implementation plan's verification checklist item, and the `placeholders` SQL helper variable in `sqlite_store.py`; no unresolved working-document placeholders were identified.
 
-Not run:
+Earlier not run before the ROS 2 environment became available:
 
-- No ROS 2 build.
-- No `colcon build` because this computer does not have a ROS 2 environment.
-- No `objectnav_ros` package implementation yet.
-- No Nav2 adapter test.
 - No robot trial.
 - No detector/VLM/perception replay.
+
+Superseding update:
+
+- `objectnav_core` and the first `objectnav_ros` skeleton now build and test with `colcon`; see `docs/handoff/2026-05-24-ros2-nav2-adapter-skeleton.md`.
 
 ## Known Risks
 

@@ -1,0 +1,17 @@
+assumed_target_nav2_smoke:
+  ros__parameters:
+    map_frame: map
+    target_class: water_dispenser
+    # TurtleBot3 default map frame. This is an assumed semantic target pose,
+    # not a detected object location.
+    target_x: 1.5
+    target_y: 0.0
+    target_yaw: 0.0
+    status_topic: /objectnav/status
+    selected_goal_topic: /objectnav/selected_goal
+    trigger_topic: /objectnav/goal
+    navigate_to_pose_action: navigate_to_pose
+    navigation_timeout_s: 30.0
+    status_period_s: 1.0
+    send_goal_on_start: false
+    exit_on_result: false

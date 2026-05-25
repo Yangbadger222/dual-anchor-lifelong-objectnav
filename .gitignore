@@ -20,6 +20,9 @@ runs/**
 !runs/phase1a/latest/summary.json
 !runs/phase1a/latest/memory_snapshot.json
 logs/
+log/
+build/
+install/
 artifacts/
 *.bag
 *.db
@@ -33,7 +36,7 @@ coverage/
 .ruff_cache/
 
 # Large model and dataset files
-models/
+/models/
 datasets/
 checkpoints/
 *.pt

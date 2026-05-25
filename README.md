@@ -54,7 +54,49 @@ This repository is intended to become a ROS 2 workspace, but this computer does 
 On a ROS 2 machine, the expected future check is:
 
 ```bash
-colcon build --packages-select objectnav_core
+colcon build --packages-select objectnav_core objectnav_ros
+source install/setup.zsh
+colcon test --packages-select objectnav_core objectnav_ros
+colcon test-result --verbose
 ```
 
-On this machine, use pytest for the ROS-free core until a ROS 2 environment or container is available.
+The first ROS 2 adapter skeleton lives under `src/objectnav_ros`. It currently provides message conversion, a mock-testable Nav2 `NavigateToPose` action-client wrapper, JSON object-observation conversion, a minimal `rclpy` node shell, launch/config files, synthetic replay, RViz markers, and adapter unit tests. It does not yet run the full ObjectNav state machine inside ROS or perform robot trials.
+
+Run the synthetic replay and RViz inspection launch:
+
+```bash
+source install/setup.zsh
+ros2 launch objectnav_ros synthetic_replay_rviz.launch.py
+```
+
+For a non-GUI replay run, use:
+
+```bash
+ros2 launch objectnav_ros synthetic_replay.launch.py
+```
+
+The RViz launch starts `objectnav_adapter`, `objectnav_synthetic_replay`, and RViz with `synthetic_replay.rviz`. The replay progressively reveals the corridor costmap, moves `map -> base_link`, publishes the object observation only when visible, and overlays a small legend marker. Inspect these topics:
+
+- `/objectnav/status`
+- `/objectnav/selected_goal`
+- `/objectnav/frontier_markers`
+- `/objectnav/memory_markers`
+- `/objectnav/debug_markers`
+- `/global_costmap/costmap`
+
+If an older RViz/replay launch is already running, close it before re-launching so RViz sees the current transient-local costmap publisher and updated replay behavior.
+
+Run the TurtleBot3 Gazebo/Nav2 assumed-target smoke after building:
+
+```bash
+source install/setup.zsh
+ros2 launch objectnav_ros turtlebot3_assumed_target_nav2.launch.py
+```
+
+This launch uses open-source TurtleBot3 Gazebo and Navigation2 assets. It treats `water_dispenser` as a configured map-frame goal pose instead of a detected object. The default launch does not send the goal immediately; after Nav2 is localized, trigger it with:
+
+```bash
+ros2 topic pub --once /objectnav/goal std_msgs/msg/String "{data: water_dispenser}"
+```
+
+For the verified TurtleBot3 smoke, initialize AMCL near the Gazebo spawn pose (`x=-2.0`, `y=-0.5`, `yaw=0.0`). The wrapper launch also disables Gazebo Classic's online model database lookup by default so startup does not depend on `models.gazebosim.org`.

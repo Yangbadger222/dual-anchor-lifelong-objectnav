@@ -13,15 +13,15 @@
   },
   "runs": [
     {
-      "event_count": 7,
+      "event_count": 8,
       "metrics": {
         "elapsed_time_s": 52.0,
         "failed_viewpoint_count": 0,
         "failure_reason": null,
-        "final_candidate_score": 5.2,
+        "final_candidate_score": 2.4999999999999996,
         "final_state": "reusable",
-        "frontier_count_total": 42,
-        "frontier_selected_count": 5,
+        "frontier_count_total": 61,
+        "frontier_selected_count": 6,
         "map_coverage_at_success": 0.0,
         "memory_hit_count": 0,
         "memory_query_count": 1,
@@ -29,10 +29,10 @@
         "memory_state_transition_count": 2,
         "missing_detection_success": false,
         "num_nav_failures": 0,
-        "num_nav_goals": 6,
+        "num_nav_goals": 7,
         "num_replans": 0,
         "observation_count": 2,
-        "path_length_m": 12.60093582811952,
+        "path_length_m": 12.23286593828514,
         "relocation_recorded": false,
         "repeated_exploration_ratio": 0.0,
         "selected_candidate_types": [

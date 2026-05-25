@@ -1,0 +1,21 @@
+objectnav_adapter:
+  ros__parameters:
+    map_frame: map
+    base_frame: base_link
+    goal_topic: /objectnav/goal
+    status_topic: /objectnav/status
+    selected_goal_topic: /objectnav/selected_goal
+    frontier_marker_topic: /objectnav/frontier_markers
+    memory_marker_topic: /objectnav/memory_markers
+    object_observation_topic: /objectnav/object_observations
+    costmap_topic: /global_costmap/costmap
+    navigate_to_pose_action: navigate_to_pose
+    target_anchor_id: indoor_map_corridor_a
+    memory_db_path: objectnav_memory.sqlite
+    free_threshold: 25
+    occupied_threshold: 65
+    unknown_value: -1
+    navigation_timeout_s: 120.0
+    replan_interval_s: 2.0
+    max_observation_age_s: 0.0
+    publish_markers: true

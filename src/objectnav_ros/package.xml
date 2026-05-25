@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>objectnav_ros</name>
+  <version>0.1.0</version>
+  <description>ROS 2 adapter layer for the Dual-Anchor ObjectNav core.</description>
+  <maintainer email="research@example.invalid">Dual Anchor ObjectNav Contributors</maintainer>
+  <license>UNLICENSED</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>objectnav_core</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>turtlebot3_gazebo</exec_depend>
+  <exec_depend>turtlebot3_navigation2</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
