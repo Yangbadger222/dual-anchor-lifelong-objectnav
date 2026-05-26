@@ -26,3 +26,9 @@ def test_objectnav_core_is_ament_python_package_without_ros_runtime_imports() ->
     assert "objectnav_core.cli.run_phase1a:main" in setup_text
     assert "objectnav_phase1a_report" in setup_text
     assert "objectnav_core.cli.generate_phase1a_report:main" in setup_text
+    assert "objectnav_usability_stress" in setup_text
+    assert "objectnav_core.cli.run_usability_stress:main" in setup_text
+    assert "objectnav_grid_trace_experiment" in setup_text
+    assert "objectnav_core.cli.run_grid_trace_experiment:main" in setup_text
+    assert "objectnav_localization_bag_audit" in setup_text
+    assert "objectnav_core.cli.run_localization_bag_audit:main" in setup_text

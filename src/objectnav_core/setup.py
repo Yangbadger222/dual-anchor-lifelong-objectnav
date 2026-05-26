@@ -24,6 +24,9 @@ setup(
         "console_scripts": [
             "objectnav_phase1a = objectnav_core.cli.run_phase1a:main",
             "objectnav_phase1a_report = objectnav_core.cli.generate_phase1a_report:main",
+            "objectnav_usability_stress = objectnav_core.cli.run_usability_stress:main",
+            "objectnav_grid_trace_experiment = objectnav_core.cli.run_grid_trace_experiment:main",
+            "objectnav_localization_bag_audit = objectnav_core.cli.run_localization_bag_audit:main",
         ]
     },
 )

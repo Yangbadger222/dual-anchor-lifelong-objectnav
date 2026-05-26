@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>可用性中心长期物体记忆算法设计</title>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']],
+        processEscapes: true
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <style>
+    :root {
+      --bg: #f7f6f1;
+      --paper: #ffffff;
+      --ink: #182024;
+      --muted: #657078;
+      --line: #d8d5ca;
+      --blue: #235f8f;
+      --green: #2f6f59;
+      --gold: #9a6a1b;
+      --red: #9a3e3e;
+      --soft-blue: #e8f1f7;
+      --soft-green: #e8f2ed;
+      --soft-gold: #f7edd9;
+      --soft-red: #f7e7e4;
+      --code: #f1eee6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+        "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.72;
+      font-size: 15.5px;
+    }
+
+    .page {
+      width: min(1080px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 34px 0 72px;
+    }
+
+    header {
+      border-bottom: 3px solid var(--blue);
+      padding: 18px 0 24px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 4.8vw, 54px);
+      line-height: 1.12;
+      letter-spacing: 0;
+      color: var(--blue);
+    }
+
+    .subtitle {
+      max-width: 900px;
+      color: var(--muted);
+      margin: 12px 0 0;
+      font-size: 18px;
+    }
+
+    nav {
+      margin: 22px 0 30px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+    }
+
+    nav strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    nav a {
+      display: inline-block;
+      margin: 4px 10px 4px 0;
+      color: var(--blue);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    nav a:hover { border-bottom-color: var(--blue); }
+
+    section {
+      margin-top: 28px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      color: var(--blue);
+      font-size: 25px;
+      letter-spacing: 0;
+      line-height: 1.25;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      color: var(--gold);
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    h4 {
+      margin: 18px 0 6px;
+      font-size: 15px;
+    }
+
+    p { margin: 10px 0; }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 8px 0;
+    }
+
+    li { margin: 4px 0; }
+
+    code {
+      background: var(--code);
+      border: 1px solid #ded9cc;
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 0.91em;
+    }
+
+    pre {
+      margin: 14px 0;
+      padding: 14px 16px;
+      background: #fbfaf6;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--blue);
+      border-radius: 6px;
+      overflow-x: auto;
+      line-height: 1.55;
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      background: var(--paper);
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #ece9df;
+      font-weight: 700;
+    }
+
+    .callout {
+      margin: 16px 0;
+      padding: 13px 16px;
+      border-left: 5px solid var(--blue);
+      background: var(--soft-blue);
+      border-radius: 0 6px 6px 0;
+    }
+
+    .callout.good {
+      border-left-color: var(--green);
+      background: var(--soft-green);
+    }
+
+    .callout.warn {
+      border-left-color: var(--gold);
+      background: var(--soft-gold);
+    }
+
+    .callout.risk {
+      border-left-color: var(--red);
+      background: var(--soft-red);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .card strong {
+      display: block;
+      color: var(--green);
+      margin-bottom: 4px;
+    }
+
+    .step {
+      border-left: 4px solid var(--gold);
+      background: #fffdf8;
+      padding: 12px 15px;
+      margin: 14px 0;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .eqn {
+      margin: 12px 0;
+      padding: 12px 16px;
+      text-align: center;
+      background: #fff;
+      border: 1px dashed var(--line);
+      border-radius: 6px;
+      font-family: "Cambria Math", "STIX Two Math", Georgia, serif;
+      font-size: 16px;
+      overflow-x: auto;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      color: #fff;
+      background: var(--blue);
+      font-size: 12px;
+      margin-right: 6px;
+    }
+
+    .tag.green { background: var(--green); }
+    .tag.gold { background: var(--gold); }
+    .tag.red { background: var(--red); }
+
+    footer {
+      margin-top: 34px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+      section { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="eyebrow">算法路线重写 · 2026-05-26 · Draft</div>
+      <h1>可用性中心长期物体记忆算法</h1>
+      <p class="subtitle">
+        Usability-Centered Lifelong Object Memory for ObjectNav。核心不再是证明物体是否客观存在，
+        而是判断一条记忆是否还值得被导航系统使用。
+      </p>
+    </header>
+
+    <nav aria-label="目录">
+      <strong>目录</strong>
+      <a href="#positioning">1. 定位</a>
+      <a href="#problem">2. 问题定义</a>
+      <a href="#state">3. 记忆状态</a>
+      <a href="#algorithm">4. 七步算法</a>
+      <a href="#xjtlu-interfaces">5. XJTLU接口</a>
+      <a href="#derivation">6. 数学推导</a>
+      <a href="#implementation">7. 怎么落地</a>
+      <a href="#verification">8. 验证计划</a>
+      <a href="#risks">9. 风险</a>
+      <a href="#paper">10. 论文贡献</a>
+    </nav>
+
+    <section id="positioning">
+      <h2>1. 研究定位：从“坐标对齐”转向“记忆可用性”</h2>
+      <p>
+        之前的双锚点路线把 RTK / LIO map 对齐、协方差传播、跨锚点匹配作为主要贡献。
+        这条路线可以成为扎实的系统工程，但算法创新偏弱，而且室内 RTK、SLAM covariance、RGB-D 观测质量都不稳定。
+      </p>
+      <div class="callout good">
+        <strong>新的主问题：</strong>
+        机器人在长期 ObjectNav 中，如何让不可靠、过期、不可验证的物体记忆自动退出导航决策，
+        同时避免把真实物体因为一次坏观测误删？
+      </div>
+      <p>
+        因此，论文主线不再是“我们能证明物体存在/消失”，而是：
+        <strong>在真实传感器不可靠时，维护对导航有用的长期物体记忆。</strong>
+      </p>
+    </section>
+
+    <section id="problem">
+      <h2>2. 问题定义：Object Memory 的目标不是世界真相，而是任务可用性</h2>
+      <p>真实机器人会遇到几类长期记忆污染：</p>
+      <div class="grid">
+        <div class="card">
+          <strong>感知污染</strong>
+          误检、漏检、bbox 抖动、深度中心落到背景、玻璃或边缘飞点。
+        </div>
+        <div class="card">
+          <strong>环境变化</strong>
+          物体被移动、拿走、遮挡，或者新障碍物让旧验证点不可达。
+        </div>
+        <div class="card">
+          <strong>定位漂移</strong>
+          SLAM 位姿和 anchor covariance 不可靠，旧位置投影可能漂移。
+        </div>
+      </div>
+      <p>
+        这些问题无法靠单个可靠性分数解决。我们把每条记忆拆成三个 belief：
+      </p>
+      <pre><code>P_existence        物体可能仍然存在
+P_location_valid   旧位置是否仍可信
+P_usable           这条记忆是否值得参与 ObjectNav 决策</code></pre>
+      <p>
+        导航决策主要使用 <code>P_usable</code>。一条记忆可以“也许还存在”，但因为位置冲突、
+        长期遮挡或路径不可达而不再可用。
+      </p>
+    </section>
+
+    <section id="state">
+      <h2>3. 状态机：允许不确定，不强行删除</h2>
+      <pre><code>raw detection
+  -> tracklet
+  -> candidate
+  -> confirmed
+  -> reusable
+  -> stale
+  -> location_conflict / occluded / unverifiable
+  -> retired
+  -> revived by positive evidence</code></pre>
+      <p>
+        <code>missing</code> 不是常规终态。真实 RGB-D 下很难可靠证明物体消失。
+        更常见、更安全的做法是把低可用性记忆 <code>retire/archive</code>，
+        让它退出默认 ObjectNav 决策，但保留证据日志，未来重新观察到时可以恢复。
+      </p>
+      <table>
+        <tr><th>状态</th><th>含义</th><th>导航行为</th></tr>
+        <tr><td>candidate</td><td>短期证据支持，但还不能长期复用</td><td>不作为默认目标</td></tr>
+        <tr><td>reusable</td><td>位置、可达性、可用性都足够高</td><td>可被 trust 或 verify</td></tr>
+        <tr><td>location_conflict</td><td>旧位置出现冲突证据</td><td>优先 verify 或 search，不直接 trust</td></tr>
+        <tr><td>occluded</td><td>旧位置被遮挡，无法确认</td><td>短期保留，长期降低 usability</td></tr>
+        <tr><td>unverifiable</td><td>长期无法获得诊断性证据</td><td>降低 usability</td></tr>
+        <tr><td>retired</td><td>不再值得默认参与导航</td><td>默认隐藏，可被重新观察恢复</td></tr>
+      </table>
+    </section>
+
+    <section id="algorithm">
+      <h2>4. 七步算法：每一步做什么、怎么做</h2>
+
+      <div class="step">
+        <h3>Step 1 · 延迟出生</h3>
+        <p><span class="tag">做什么</span>阻止孤立误检直接写入长期记忆。</p>
+        <p><span class="tag green">怎么做</span>检测先进入短期 tracklet buffer。只有当它相对 clutter 假设持续积累证据时，才变成 candidate。</p>
+        <pre><code>L_h(t) = L_h(t-1)
+       + log p(z_t | H_object, h)
+       - log p(z_t | H_clutter)</code></pre>
+        <p>
+          如果同类物体靠得很近，或 bbox 跳动导致关联不确定，就保留为 ambiguous cluster，
+          不强行更新长期 memory。
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Step 2 · 延迟晋升</h3>
+        <p><span class="tag">做什么</span>防止 candidate 太早成为 reusable memory。</p>
+        <p><span class="tag green">怎么做</span>要求多帧/多视角一致、定位健康可接受、验证视点可达，必要时完成一次诊断性验证。</p>
+        <p>
+          如果 SLAM health 差、anchor 不可靠、深度异常，即使观测看起来像目标，也只能存弱证据，不能 promote 或 merge。
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Step 3 · 证据分级</h3>
+        <p><span class="tag">做什么</span>把“没看到”拆成不同证据类型，而不是直接当作物体消失。</p>
+        <table>
+          <tr><th>证据</th><th>含义</th><th>更新倾向</th></tr>
+          <tr><td>POSITIVE</td><td>重新看到目标</td><td>提高三种 belief</td></tr>
+          <tr><td>FREE</td><td>旧位置核心区域被保守证明为空</td><td>降低 location_valid</td></tr>
+          <tr><td>NON_CONFIRMATION</td><td>尝试看了，但证据不足</td><td>弱降低 usable</td></tr>
+          <tr><td>OCCLUDED</td><td>旧位置前方被挡住</td><td>存在不变，可用性随持续遮挡下降</td></tr>
+          <tr><td>UNKNOWN</td><td>深度坏、姿态不准、ray 不足</td><td>单次不更新，多次可降低 usable</td></tr>
+          <tr><td>ACCESS_BLOCKED</td><td>验证点不可达或路径被堵</td><td>降低 usable</td></tr>
+        </table>
+      </div>
+
+      <div class="step">
+        <h3>Step 4 · 可用性更新</h3>
+        <p><span class="tag">做什么</span>用事件驱动 hazard 更新 <code>P_usable</code>，不是手写每个类别半衰期。</p>
+        <pre><code>lambda_u =
+  lambda_base
+  + lambda_conflict
+  + lambda_access
+  + lambda_scene_change
+  + lambda_non_confirmation
+
+P_usable(t + dt) = P_usable(t) * exp(-lambda_u * dt)</code></pre>
+        <p>
+          类别只做粗先验，例如 structural / furniture / movable / unknown。
+          真正让记忆退休的是事件：反复不可确认、路径不可达、场景变化、位置冲突。
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Step 5 · 有限预算决策</h3>
+        <p><span class="tag">做什么</span>在当前 episode 预算内决定 trust、verify、search 还是 retire。</p>
+        <pre><code>P_v = P_existence * P_location_valid * P_usable
+
+E[C_trust] =
+  P_v * D_nav
+  + (1 - P_v) * (D_nav + C_fail + E[C_search | failed])</code></pre>
+        <p>
+          成本统一用米或秒。剩余预算只作为可行性约束和诊断信号，不在每个分支里直接截断；否则低预算会把失败分支变成“便宜失败”，诱导机器人无脑相信低可信旧位置。
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Step 6 · 路径代价缓存与失效</h3>
+        <p><span class="tag">做什么</span>避免每次对全库跑 planner，但在地图变化时不相信旧缓存。</p>
+        <pre><code>inflated_changed_region =
+  dilation(changed_cells,
+           robot_radius + safety_margin + costmap_inflation_radius)
+
+path_tube =
+  dilation(planned_path,
+           robot_radius + tracking_error_margin)</code></pre>
+        <p>
+          如果 <code>inflated_changed_region</code> 与 <code>path_tube</code> 相交，
+          或路径 tube 内 cost 明显上升，就刷新 finalist 的路径代价。
+          这能处理“箱子本体没压住中线，但 inflation layer 已经堵路”的真实 Nav2 问题。
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Step 7 · 顺路验证</h3>
+        <p><span class="tag">做什么</span>利用去目标 A 的路上顺便维护目标 B 的 memory。</p>
+        <p><span class="tag green">怎么做</span>如果验证 B 的额外代价很小，就加入转头、侧视或短 detour。</p>
+        <pre><code>if extra_cost(B along route) < opportunistic_budget:
+    verify B without changing the primary task</code></pre>
+      </div>
+    </section>
+
+    <section id="xjtlu-interfaces">
+      <h2>5. XJTLU 真车项目接口</h2>
+      <p>
+        之后实车实验统一在 <code>/Users/badger/Desktop/XJTLU-autonomous-vehicle</code> 中运行。
+        本算法仓负责算法核心、离线 replay、指标和报告；XJTLU 仓负责真实车 ROS 2 runtime、
+        RTK、深度相机、rosbag、Nav2、FAST-LIO2/PGO 和最终小规模闭环。
+      </p>
+      <div class="callout good">
+        <strong>两仓契约：</strong>
+        XJTLU 仓输出 rosbag 或中间 trace；算法仓消费 trace/evidence，不直接依赖 XJTLU 的 ROS 包。
+      </div>
+
+      <h3>5.1 当前可复用运行模式</h3>
+      <table>
+        <tr><th>模式</th><th>命令</th><th>在本研究中的用途</th></tr>
+        <tr>
+          <td>Indoor Nav</td>
+          <td><code>make launch-indoor-nav</code></td>
+          <td>室内 FAST-LIO2 / PGO / Nav2 点击点导航，采集无 GNSS 的导航可用性证据。</td>
+        </tr>
+        <tr>
+          <td>Explore</td>
+          <td><code>make launch-explore</code></td>
+          <td>采集局部导航、costmap、路径、避障和 access-blocked 证据。</td>
+        </tr>
+        <tr>
+          <td>Explore GPS</td>
+          <td><code>make launch-explore-gps</code></td>
+          <td>UM982 RTK 验证后，采集 GNSS/RTK health 与 PGO GPS factor 证据。</td>
+        </tr>
+        <tr>
+          <td>Corridor</td>
+          <td><code>make launch-corridor</code></td>
+          <td>RTK route 重采后，采集室外路径代价、alignment、goal_map/path_map 证据。</td>
+        </tr>
+      </table>
+
+      <h3>5.2 当前 rosbag / 日志接口</h3>
+      <table>
+        <tr><th>证据组</th><th>Topic / 文件</th><th>用途</th></tr>
+        <tr>
+          <td>定位</td>
+          <td><code>/tf</code>, <code>/tf_static</code>, <code>/fastlio2/lio_odom</code>, <code>/pgo/optimized_odom</code></td>
+          <td>估计机器人轨迹、pose health、投影误差和 replay 时间线。</td>
+        </tr>
+        <tr>
+          <td>RTK / GNSS</td>
+          <td><code>/fix</code>, <code>/heading</code>, <code>runtime-data/logs/latest/data/nmea_navsat.log</code></td>
+          <td>判断 RTK Fixed/Float、航向可用性、anchor health。</td>
+        </tr>
+        <tr>
+          <td>导航上下文</td>
+          <td><code>/cmd_vel</code>, <code>/plan</code>, <code>/gps_corridor/status</code>, <code>/gps_corridor/alignment_status</code>, <code>/gps_corridor/goal_map</code>, <code>/gps_corridor/path_map</code></td>
+          <td>生成 trust / verify / search 的路径代价和失败证据。</td>
+        </tr>
+        <tr>
+          <td>Costmap</td>
+          <td><code>/local_costmap/costmap</code>, <code>/global_costmap/costmap</code>, 后续优先加 costmap update topics</td>
+          <td>检测 access-blocked、scene changed、inflated path tube 缓存失效。</td>
+        </tr>
+        <tr>
+          <td>系统健康</td>
+          <td><code>tegrastats.log</code>, <code>session_info.yaml</code>, Nav2 console logs</td>
+          <td>区分算法失败、算力过载、Nav2 recovery、传感器异常。</td>
+        </tr>
+      </table>
+
+      <h3>5.3 RTK 和深度相机装好后新增接口</h3>
+      <table>
+        <tr><th>证据组</th><th>预期 Topic / Artifact</th><th>用途</th></tr>
+        <tr>
+          <td>RGB-D</td>
+          <td><code>/camera/color/image_raw</code>, <code>/camera/depth/image_rect_raw</code>, <code>/camera/color/camera_info</code>, camera TF</td>
+          <td>产生 POSITIVE / NON_CONFIRMATION / OCCLUDED / UNKNOWN / FREE 证据。</td>
+        </tr>
+        <tr>
+          <td>检测器输出</td>
+          <td>JSON topic、custom msg 或 bag sidecar，包含 bbox / class / score / timestamp</td>
+          <td>进入短期 tracklet，支持 delayed birth。</td>
+        </tr>
+        <tr>
+          <td>相机标定</td>
+          <td><code>camera_link -> base_link</code> TF，深度和彩色对齐记录</td>
+          <td>让投影误差和 UNKNOWN 判定可审计。</td>
+        </tr>
+        <tr>
+          <td>人工标签</td>
+          <td>JSONL / CSV：present、moved、occluded、removed、unreachable</td>
+          <td>计算 false deletion、ghost retirement、replay correctness。</td>
+        </tr>
+      </table>
+
+      <h3>5.4 中间 TraceEvent 格式</h3>
+      <pre><code>TraceEvent =
+  timestamp
+  robot_pose
+  localization_health
+  rtk_quality
+  costmap_state_or_delta
+  nav_status
+  object_observation?
+  depth_evidence_summary?
+  manual_label?</code></pre>
+      <p>
+        XJTLU 仓第一步应该新增研究数据采集能力，而不是直接实现 ObjectNav 算法。
+        未来可以做 <code>make launch-objectnav-trace</code>，或者先扩展现有 rosbag 录制脚本。
+      </p>
+    </section>
+
+    <section id="derivation">
+      <h2>6. 算法推导</h2>
+
+      <h3>5.1 延迟出生的序贯似然比</h3>
+      <p>
+        对一个局部假设 <code>h</code>，每条观测 <code>z_t</code> 有两种解释：
+        它来自真实物体，或者来自 clutter / false positive。
+      </p>
+      <div class="eqn">
+        \[
+        L_h(t) = \sum_{\tau=1}^{t}
+        \log \frac{p(z_\tau \mid H_{\mathrm{object}}, h)}
+        {p(z_\tau \mid H_{\mathrm{clutter}})}
+        \]
+      </div>
+      <p>
+        当 <code>L_h</code> 越过上边界 <code>A</code> 时，候选出生；越过下边界 <code>B</code> 时丢弃。
+        这比固定 N 帧或固定 IoU 阈值更可解释，因为边界对应的是可接受的误晋升/误拒绝风险。
+      </p>
+
+      <h3>5.2 可用性 belief 的拆分</h3>
+      <p>单个存在概率不够，因为物体可能存在但不可用。定义：</p>
+      <div class="eqn">
+        \[
+        b_m = (p_e, p_l, p_u)
+        \]
+      </div>
+      <p>
+        其中 <code>p_e</code> 是存在概率，<code>p_l</code> 是位置有效概率，
+        <code>p_u</code> 是导航可用性。ObjectNav 的决策主要使用：
+      </p>
+      <div class="eqn">
+        \[
+        P_v(m) \approx p_e \cdot p_l \cdot p_u
+        \]
+      </div>
+      <p>
+        这不是说三者真实独立，而是一个保守的可实现近似：任何一个维度低，记忆都不应该被轻易 trust。
+      </p>
+
+      <h3>5.3 事件驱动 hazard</h3>
+      <p>不使用手写类别半衰期表。可用性衰减由事件驱动：</p>
+      <div class="eqn">
+        \[
+        \lambda_u(m,t) =
+        \lambda_{\mathrm{base}}
+        + \lambda_{\mathrm{conflict}}
+        + \lambda_{\mathrm{access}}
+        + \lambda_{\mathrm{scene}}
+        + \lambda_{\mathrm{nonconfirm}}
+        \]
+      </div>
+      <div class="eqn">
+        \[
+        p_u(t+\Delta t) =
+        p_u(t)\exp(-\lambda_u(m,t)\Delta t)
+        \]
+      </div>
+      <p>
+        如果 memory 长期不可确认、路径受阻、局部场景变化，<code>p_u</code> 会下降。
+        这不会断言物体消失，只会让该记忆退出默认导航决策。
+      </p>
+
+      <h3>5.4 有限预算期望成本</h3>
+      <p>用户提出的 trust 期望成本应成为正式公式：</p>
+      <div class="eqn">
+        \[
+        \mathbb{E}[C_{\mathrm{trust}}] =
+        P_v D_{\mathrm{nav}}
+        + (1-P_v)\left(
+          D_{\mathrm{nav}} + C_{\mathrm{fail}}
+          + \mathbb{E}[C_{\mathrm{search}}\mid \mathrm{failed}]
+        \right)
+        \]
+      </div>
+      <p>
+        对 verify 和 search：
+      </p>
+      <div class="eqn">
+        \[
+        \mathbb{E}[C_{\mathrm{verify}}] =
+        D_{\mathrm{verify}} + \sum_o P(o\mid \mathrm{verify},m)
+        \mathbb{E}[C_{\mathrm{after}}(o)]
+        \]
+      </div>
+      <div class="eqn">
+        \[
+        \mathbb{E}[C_{\mathrm{search}}] =
+        C_{\mathrm{default\_search}}
+        \]
+      </div>
+      <p>最终选择：</p>
+      <div class="eqn">
+        \[
+        a^* = \arg\min_{a \in \{\mathrm{trust}, \mathrm{verify}, \mathrm{search}, \mathrm{retire}\}}
+        \mathbb{E}[C_a]
+        \]
+      </div>
+      <p>
+        这里 <code>B_remain</code> 不再直接用 <code>min()</code> 截断每个失败分支。
+        预算应作为可行性约束和日志诊断；如果把失败成本截断到剩余预算，系统会把“预算快耗尽”误解成“失败很便宜”，从而偏向 trust 一个几乎失效的记忆。
+        这不是全局 POMDP，只是对当前 query 相关 top-K 记忆做低频预算决策。
+      </p>
+
+      <h3>5.5 路径缓存失效推导</h3>
+      <p>
+        旧路径是否仍可用，不能只看障碍物本体是否碰到路径中线。
+        Nav2 的 inflation layer 可能已经让走廊不可通行。因此定义：
+      </p>
+      <div class="eqn">
+        \[
+        R_{\mathrm{changed}}^{\mathrm{inflated}}
+        = \operatorname{dilate}\left(
+          R_{\mathrm{changed}},
+          r_{\mathrm{robot}} + r_{\mathrm{safety}} + r_{\mathrm{inflation}}
+        \right)
+        \]
+      </div>
+      <div class="eqn">
+        \[
+        T_{\mathrm{path}}
+        = \operatorname{dilate}\left(
+          path,
+          r_{\mathrm{robot}} + r_{\mathrm{tracking}}
+        \right)
+        \]
+      </div>
+      <p>若：</p>
+      <div class="eqn">
+        \[
+        R_{\mathrm{changed}}^{\mathrm{inflated}} \cap T_{\mathrm{path}} \neq \emptyset
+        \]
+      </div>
+      <p>
+        则缓存路径代价失效，需要对 finalist 重新调用 planner 或局部 A*。
+      </p>
+    </section>
+
+    <section id="implementation">
+      <h2>7. 怎么落地到当前项目</h2>
+      <ol>
+        <li>先扩展 core model：加入 <code>p_existence</code>、<code>p_location_valid</code>、<code>p_usable</code>、<code>retired_reason</code>。</li>
+        <li>扩展 SQLite：新增 memory evidence 表，记录 POSITIVE / NON_CONFIRMATION / OCCLUDED / UNKNOWN / ACCESS_BLOCKED。</li>
+        <li>在 Phase 1A deterministic runner 中先做无 RGB-D 的版本：用 non-confirmation 和 access-blocked 更新 usability。</li>
+        <li>再接 synthetic replay：模拟 FREE / OCCLUDED / UNKNOWN，验证状态转移。</li>
+        <li>从 XJTLU 真车仓采集 RGB-D / RTK / costmap / Nav2 trace，离线 replay 后再做小规模闭环。</li>
+      </ol>
+      <div class="callout warn">
+        第一版不要直接上实车闭环。应先采日志、离线 replay，然后再做小规模真车闭环。
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>8. 验证计划</h2>
+      <table>
+        <tr><th>阶段</th><th>要证明什么</th><th>核心指标</th></tr>
+        <tr>
+          <td>Deterministic simulation</td>
+          <td>状态机和 belief 更新不犯基本错误</td>
+          <td>retire/revive 正确，单帧不误删</td>
+        </tr>
+        <tr>
+          <td>RGB-D trace collection</td>
+          <td>真实传感器下 FREE/OCCLUDED/UNKNOWN 比例</td>
+          <td>深度孔洞、bbox 抖动、non-confirmation 频率</td>
+        </tr>
+        <tr>
+          <td>Trace-driven replay</td>
+          <td>算法比 naive/aggressive/conservative baselines 更少白跑和误删</td>
+          <td>false deletion、false write、wasted navigation</td>
+        </tr>
+        <tr>
+          <td>Small live robot closure</td>
+          <td>真实闭环中可减少幽灵记忆对导航的污染</td>
+          <td>memory reuse success、verification cost、retired ghost count</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="risks">
+      <h2>9. 风险与边界</h2>
+      <table>
+        <tr><th>风险</th><th>为什么危险</th><th>设计回应</th></tr>
+        <tr>
+          <td>FREE 很少出现</td>
+          <td>系统可能一直 UNKNOWN</td>
+          <td>FREE 不是唯一负证据；non-confirmation 和 access failure 也降低 P_usable。</td>
+        </tr>
+        <tr>
+          <td>延迟晋升不够新</td>
+          <td>MOT 已有类似机制</td>
+          <td>论文重点不是 tracking，而是 navigation usability belief 和 retire 决策。</td>
+        </tr>
+        <tr>
+          <td>类别衰减变调参表</td>
+          <td>泛化性差</td>
+          <td>只用粗类别先验，主要靠事件驱动 hazard。</td>
+        </tr>
+        <tr>
+          <td>路径缓存过期</td>
+          <td>箱子在边缘也可能通过 inflation 堵路</td>
+          <td>使用 inflated changed region 与 path tube 检查。</td>
+        </tr>
+        <tr>
+          <td>OOD 传感器故障</td>
+          <td>坏深度可能批量清空记忆</td>
+          <td>批量异常进入 quarantine，冻结负面更新。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="paper">
+      <h2>10. 论文贡献表述</h2>
+      <ol>
+        <li>
+          <strong>Usability-centered memory belief：</strong>
+          将长期物体记忆拆成 existence、location validity、navigation usability，
+          避免把“可能存在”误当作“值得导航”。
+        </li>
+        <li>
+          <strong>Event-driven usability retirement：</strong>
+          即使无法获得强 FREE 证据，系统也能根据 non-confirmation、access blocked、
+          persistent occlusion、scene change 让幽灵记忆退出默认决策。
+        </li>
+        <li>
+          <strong>Budgeted trust / verify / search / retire policy：</strong>
+          用有限预算期望成本选择动作，并用 inflated path-tube cache invalidation 保证路径代价不过期。
+        </li>
+      </ol>
+      <div class="callout good">
+        这条路线的承诺不是“我知道世界真相”，而是“我让长期记忆在不可信感知下仍然对 ObjectNav 有用，并减少灾难性误用”。
+      </div>
+    </section>
+
+    <footer>
+      对应 Markdown 设计文档：docs/design/2026-05-26-usability-centered-lifelong-object-memory.md
+    </footer>
+  </div>
+</body>
+</html>

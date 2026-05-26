@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Habitat-Sim 真实仿真操作方案 - Usability-Centered Object Memory</title>
+  <style>
+    :root {
+      --ink: #152033;
+      --muted: #526071;
+      --line: #d9e0ea;
+      --panel: #f6f8fb;
+      --accent: #1f6f78;
+      --warn: #8a4b00;
+      --bad: #8a2432;
+      --good: #1c6b3c;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: white;
+      line-height: 1.62;
+    }
+    header {
+      padding: 40px 7vw 28px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f7fbfc 0%, #ffffff 100%);
+    }
+    main {
+      padding: 28px 7vw 56px;
+      max-width: 1180px;
+    }
+    h1, h2, h3 {
+      line-height: 1.22;
+      margin: 0 0 14px;
+    }
+    h1 {
+      font-size: 34px;
+    }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 {
+      margin-top: 24px;
+      font-size: 18px;
+    }
+    p {
+      margin: 10px 0;
+    }
+    .meta, .note {
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 18px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: #eef3f7;
+      text-align: left;
+    }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: #0f1724;
+      color: #e9eef6;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .good { color: var(--good); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
+    .bad { color: var(--bad); font-weight: 600; }
+    .flow {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-26 · 操作文档</p>
+    <h1>Habitat-Sim 真实仿真操作方案</h1>
+    <p>目标是在进入实车 RGB-D/RTK 之前，把当前的 usability-centered object memory 算法接入 Habitat-Sim / Habitat-Lab 的真实室内场景、深度传感器和导航 episode，获得比 2D Grid Trace 更接近物理传感器退化的验证。</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>0. 本文边界</h2>
+      <div class="grid">
+        <div class="box">
+          <h3>要做什么</h3>
+          <p>跑 Habitat 中的 RGB-D + agent pose + ObjectNav episode，提取中间 evidence trace，再复用当前 `UsabilityUpdater` 和 `UsabilityDecisionPolicy`。</p>
+        </div>
+        <div class="box">
+          <h3>不做什么</h3>
+          <p>第一轮不训练模型、不接 GroundingDINO、不追求 leaderboard、不把 Habitat 结果伪装成实车结果。</p>
+        </div>
+        <div class="box">
+          <h3>验收标准</h3>
+          <p>能在至少一个真实 Habitat 场景中生成 `habitat_trace.csv`、`summary.json`、`report.html`，并统计 UNKNOWN / FREE / OCCLUDED / POSITIVE 的比例。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>1. 总体路线</h2>
+      <div class="flow">Habitat Scene Dataset
+  -> Habitat-Sim RGB-D + agent state
+  -> Object evidence extractor
+  -> intermediate trace schema
+  -> objectnav_core.memory.usability
+  -> trust / verify / search / retire decision report</div>
+      <p>核心原则：Habitat 只负责产生更真实的传感器和几何观测；算法仍然在 `objectnav_core` 里运行。这样以后替换成 XJTLU rosbag 或实车话题时，不需要改 belief / decision 逻辑。</p>
+    </section>
+
+    <section>
+      <h2>2. 推荐阶段</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>目标</th>
+            <th>输入</th>
+            <th>输出</th>
+            <th>风险</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>P0 环境 smoke</td>
+            <td>确认 Habitat-Sim 能启动、RGB-D 非空、agent pose 正常</td>
+            <td>1 个 scene，10-20 step</td>
+            <td>截图、深度统计、pose 序列</td>
+            <td>安装/显卡/数据集路径</td>
+          </tr>
+          <tr>
+            <td>P1 Trace replay</td>
+            <td>把 Habitat 输出转成当前算法需要的 evidence trace</td>
+            <td>RGB-D、semantic 或 oracle object state、agent pose</td>
+            <td>`habitat_trace.csv`</td>
+            <td>证据定义过强或过弱</td>
+          </tr>
+          <tr>
+            <td>P2 Monte Carlo</td>
+            <td>跑足够多 episode，看 false deletion / ghost / over-verify</td>
+            <td>多 scene、多 object category、多起点</td>
+            <td>`summary.json`、`report.html`</td>
+            <td>参数被 synthetic 过拟合</td>
+          </tr>
+          <tr>
+            <td>P3 对照实验</td>
+            <td>比较 baseline memory 与 usability memory</td>
+            <td>同一批 episode trace</td>
+            <td>decision/error table</td>
+            <td>baseline 选得不公平</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3. 环境准备</h2>
+      <p>官方安装方式会随版本变化，实际执行前应以 Habitat 官方文档为准。本文建议把 Habitat 相关 repo 和大数据放在 git 忽略目录中。</p>
+      <pre><code># 推荐目录
+cd /Users/badger/Desktop/dual-anchor-lifelong-objectnav
+mkdir -p third_party datasets/habitat/scene_datasets datasets/habitat/object_datasets runs/habitat_usability
+
+# 建议使用单独 conda 环境
+conda create -n objectnav-habitat python=3.9 -y
+conda activate objectnav-habitat
+
+# 安装项目 core，先不装 ROS runtime
+python -m pip install -e src/objectnav_core
+</code></pre>
+      <p class="note">如果在 Mac 上遇到 Habitat-Sim wheel / OpenGL / Metal 兼容问题，优先转到 Linux + NVIDIA GPU 环境。本文的项目接口设计不依赖安装位置。</p>
+    </section>
+
+    <section>
+      <h2>4. 数据集选择</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>数据集</th>
+            <th>用途</th>
+            <th>第一轮建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Replica / ReplicaCAD</td>
+            <td>室内几何质量较高，适合调 RGB-D / depth edge / occlusion 逻辑</td>
+            <td><span class="good">优先 smoke</span></td>
+          </tr>
+          <tr>
+            <td>HM3D</td>
+            <td>大规模真实扫描，适合多 scene Monte Carlo</td>
+            <td><span class="good">第二阶段</span></td>
+          </tr>
+          <tr>
+            <td>MP3D</td>
+            <td>历史 ObjectNav 常用，但授权和下载流程更麻烦</td>
+            <td><span class="warn">非第一优先</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>第一轮不要追求 benchmark 完整性，只要选一个能稳定加载的 scene，把证据链跑通。</p>
+    </section>
+
+    <section>
+      <h2>5. Trace Schema</h2>
+      <p>Habitat 输出必须转换成和 2D Grid Trace / XJTLU bag replay 兼容的中间格式。第一版建议字段如下：</p>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>类型</th>
+            <th>来源</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>`episode_id`</td><td>string/int</td><td>Habitat episode</td><td>分组统计</td></tr>
+          <tr><td>`step_index`</td><td>int</td><td>simulation step</td><td>时间顺序</td></tr>
+          <tr><td>`scene_id`</td><td>string</td><td>scene path</td><td>跨场景分析</td></tr>
+          <tr><td>`agent_x/y/z/yaw`</td><td>float</td><td>agent state</td><td>位姿和视角</td></tr>
+          <tr><td>`target_category`</td><td>string</td><td>episode goal 或 oracle object</td><td>目标类别</td></tr>
+          <tr><td>`target_x/y/z`</td><td>float</td><td>oracle semantic object</td><td>只用于评估，不用于算法作弊</td></tr>
+          <tr><td>`rgb_path`</td><td>string</td><td>optional artifact</td><td>人工 debug</td></tr>
+          <tr><td>`depth_valid_ratio`</td><td>float</td><td>depth map</td><td>传感器退化度量</td></tr>
+          <tr><td>`depth_edge_invalid_ratio`</td><td>float</td><td>depth map around object mask/bbox</td><td>flying pixel / hole 风险</td></tr>
+          <tr><td>`visible_fraction`</td><td>float</td><td>semantic/oracle visibility</td><td>区分 POSITIVE / OCCLUDED / UNKNOWN</td></tr>
+          <tr><td>`ray_free_fraction`</td><td>float</td><td>depth ray test</td><td>FREE 证书强度</td></tr>
+          <tr><td>`evidence_type`</td><td>enum</td><td>extractor</td><td>喂给 usability memory</td></tr>
+          <tr><td>`evidence_strength`</td><td>float</td><td>extractor</td><td>控制 belief update 幅度</td></tr>
+          <tr><td>`quarantined`</td><td>bool</td><td>sensor health gate</td><td>OOD / depth failure 保护</td></tr>
+          <tr><td>`d_nav/d_verify/c_search`</td><td>float</td><td>geodesic distance / planner</td><td>决策成本</td></tr>
+          <tr><td>`decision`</td><td>enum</td><td>policy</td><td>trust / verify / search / retire</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6. 证据提取规则</h2>
+      <p>第一版不要用 GroundingDINO。先用 Habitat 的 oracle semantic/object visibility 做上界实验，再逐步替换成真实检测器。否则我们分不清是算法失败，还是检测器失败。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>证据</th>
+            <th>Habitat 条件</th>
+            <th>算法处理</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>POSITIVE</td>
+            <td>目标类别在视野内，visible fraction 高，depth 有效</td>
+            <td>提高 `P_existence`、`P_location_valid`、`P_usable`</td>
+          </tr>
+          <tr>
+            <td>OCCLUDED</td>
+            <td>目标位置在视锥内，但前方有遮挡面，目标不可见</td>
+            <td>保持 existence，轻微降低 usability 或不降</td>
+          </tr>
+          <tr>
+            <td>FREE</td>
+            <td>记忆核心体素/区域被可靠深度射线穿过，且 depth health 良好</td>
+            <td>降低 `P_location_valid` 和 `P_usable`，不直接归零 existence</td>
+          </tr>
+          <tr>
+            <td>NON_CONFIRMATION</td>
+            <td>视角/距离还可以，但没有形成可靠 FREE 或 OCCLUDED</td>
+            <td>弱负证据</td>
+          </tr>
+          <tr>
+            <td>UNKNOWN</td>
+            <td>视角差、距离远、深度大面积无效、运动模糊或 sensor health 差</td>
+            <td>不更新或极弱更新</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="warn">关键保护：depth edge invalid ratio 过高时，禁止生成 FREE。这样专门防 RealSense/Habitat 深度边缘毛刺导致的误删。</p>
+    </section>
+
+    <section>
+      <h2>7. 第一轮命令形态</h2>
+      <p>下面是目标命令形态。代码还没有实现时，先把它作为接口规格。</p>
+      <pre><code>PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_habitat_usability_replay \
+  --config configs/habitat/usability_smoke.yaml \
+  --scene datasets/habitat/scene_datasets/replica/room_0/habitat/mesh_semantic.ply \
+  --output runs/habitat_usability/smoke \
+  --episodes 20 \
+  --max-steps 250 \
+  --seed 23
+</code></pre>
+      <p>输出应为：</p>
+      <pre><code>runs/habitat_usability/smoke/
+  summary.json
+  habitat_trace.csv
+  decisions.csv
+  evidence_stats.csv
+  report.html
+  debug_frames/          # optional, ignored
+</code></pre>
+    </section>
+
+    <section>
+      <h2>8. 配置文件草案</h2>
+      <pre><code># configs/habitat/usability_smoke.yaml
+seed: 23
+dataset:
+  type: replica
+  scene_root: datasets/habitat/scene_datasets
+  split: smoke
+
+simulator:
+  rgb_width: 640
+  rgb_height: 480
+  depth_width: 640
+  depth_height: 480
+  hfov_deg: 79
+  depth_min_m: 0.1
+  depth_max_m: 10.0
+  enable_depth_noise: true
+
+evidence:
+  min_visible_fraction_positive: 0.08
+  min_depth_valid_ratio: 0.70
+  max_edge_invalid_ratio_for_free: 0.20
+  min_ray_free_fraction: 0.85
+  quarantine_depth_valid_ratio: 0.35
+
+decision:
+  search_cost_mode: geodesic_frontier_proxy
+  verify_viewpoint_count: 8
+  max_planner_calls_per_step: 16
+</code></pre>
+    </section>
+
+    <section>
+      <h2>9. Baseline 设计</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Baseline</th>
+            <th>含义</th>
+            <th>为什么公平</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Last-Seen Memory</td>
+            <td>只要曾经看到目标，就一直相信旧位置</td>
+            <td>检验幽灵记忆问题</td>
+          </tr>
+          <tr>
+            <td>Log-Odds Occupancy Memory</td>
+            <td>FREE / HIT 用传统 log-odds 更新</td>
+            <td>检验“只做占据更新”是否足够</td>
+          </tr>
+          <tr>
+            <td>Conservative Unknown</td>
+            <td>非正证据几乎都 UNKNOWN</td>
+            <td>检验过度保守导致不清理记忆</td>
+          </tr>
+          <tr>
+            <td>Usability Memory</td>
+            <td>本文算法：分开 `existence/location/usable`</td>
+            <td>主方法</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>10. 指标</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>定义</th>
+            <th>对应审稿质疑</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>False deletion rate</td><td>目标仍存在但 memory 被 retire 或 location_valid 过低</td><td>FREE 误删</td></tr>
+          <tr><td>Ghost retention rate</td><td>目标已移除但 memory 长期保持 usable</td><td>幽灵记忆</td></tr>
+          <tr><td>Unknown ratio</td><td>负面观测中 UNKNOWN 占比</td><td>过度保守是否等于没更新</td></tr>
+          <tr><td>Verify ratio</td><td>决策为 verify 的比例和额外路程</td><td>是否疯狂验证</td></tr>
+          <tr><td>Task cost regret</td><td>相对 oracle policy 的路径/时间差</td><td>期望成本是否真的有效</td></tr>
+          <tr><td>Recovery after occlusion</td><td>遮挡解除后 belief 恢复速度</td><td>OCCLUDED 死锁</td></tr>
+          <tr><td>Depth quarantine count</td><td>因深度健康差拒绝 FREE 的次数</td><td>OOD 深度崩坏保护</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>11. 实验矩阵</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>实验</th>
+            <th>Episodes</th>
+            <th>目的</th>
+            <th>通过条件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Smoke</td>
+            <td>20</td>
+            <td>跑通 Habitat 到 trace 到 memory</td>
+            <td>无崩溃，RGB-D/pose/evidence 非空</td>
+          </tr>
+          <tr>
+            <td>Depth Failure</td>
+            <td>500</td>
+            <td>深度孔洞和边缘毛刺是否导致 FREE 误删</td>
+            <td>false deletion 低于 Last-Seen/Log-Odds</td>
+          </tr>
+          <tr>
+            <td>Moved/Removed Object</td>
+            <td>1000+</td>
+            <td>幽灵记忆是否清理</td>
+            <td>ghost retention 明显低于 Last-Seen</td>
+          </tr>
+          <tr>
+            <td>Occlusion Stress</td>
+            <td>1000+</td>
+            <td>纸箱/遮挡物前后是否死锁</td>
+            <td>长期 OCCLUDED 会降 usability 或触发 search</td>
+          </tr>
+          <tr>
+            <td>Multi-Scene Monte Carlo</td>
+            <td>10000+</td>
+            <td>统计稳定性</td>
+            <td>置信区间收敛，决策比例合理</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>12. 实施顺序</h2>
+      <ol>
+        <li>创建 `configs/habitat/usability_smoke.yaml`，只写路径和传感器参数。</li>
+        <li>写 `src/objectnav_core/objectnav_core/evaluation/habitat_trace_schema.py`，定义 trace row dataclass。</li>
+        <li>写一个不依赖 Habitat 的单元测试：用 fake RGB-D/depth stats 生成 evidence。</li>
+        <li>写 Habitat adapter，第一版只跑 oracle semantic，不接 detector。</li>
+        <li>生成 `habitat_trace.csv` 后复用现有 `UsabilityUpdater`。</li>
+        <li>跑 20 episode smoke，检查 UNKNOWN / POSITIVE / FREE 是否都能出现。</li>
+        <li>再上 500/1000 episode stress，不要太早调参。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>13. 风险和防线</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>风险</th>
+            <th>防线</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Habitat 安装耗时过长</td><td>先在独立 conda/env 和 `third_party/` 中隔离，不污染 repo。</td></tr>
+          <tr><td>Oracle semantic 太理想</td><td>先把它声明为上界实验，下一阶段再替换 detector。</td></tr>
+          <tr><td>FREE 条件过严导致 UNKNOWN 过高</td><td>报告 UNKNOWN ratio，不把保守当成功。</td></tr>
+          <tr><td>参数阈值被质疑</td><td>做 threshold sweep，报告敏感性而不是单点数值。</td></tr>
+          <tr><td>算力不足</td><td>先 trace 离线化：Habitat 生成 trace，算法可重复 replay。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>14. 官方参考</h2>
+      <ul>
+        <li><a href="https://aihabitat.org/docs/habitat-sim/">Habitat-Sim Documentation</a></li>
+        <li><a href="https://aihabitat.org/docs/habitat-lab/">Habitat-Lab Documentation</a></li>
+        <li><a href="https://github.com/facebookresearch/habitat-sim">facebookresearch/habitat-sim</a></li>
+        <li><a href="https://github.com/facebookresearch/habitat-lab">facebookresearch/habitat-lab</a></li>
+      </ul>
+      <p class="note">执行安装命令前，以官方文档和当前机器平台为准。本文固定的是项目接口和实验流程，不固定上游包版本。</p>
+    </section>
+  </main>
+</body>
+</html>
+

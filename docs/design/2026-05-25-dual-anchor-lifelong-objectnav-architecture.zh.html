@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>双锚点终身语义 ObjectNav 算法架构</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --accent: #0d4f8b;
+    --accent2: #b85c00;
+    --code-bg: #f0ede5;
+    --border: #d0cdc4;
+    --warn: #b71c1c;
+    --good: #2e7d32;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+    line-height: 1.75;
+    font-size: 15.5px;
+  }
+  header {
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 8px;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+  .subtitle { color: var(--muted); font-size: 14px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  nav.toc {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 24px;
+    margin: 24px 0;
+    font-size: 14px;
+  }
+  nav.toc h2 {
+    font-size: 14px;
+    margin: 0 0 8px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    border: none;
+    padding: 0;
+  }
+  nav.toc ol { margin: 0; padding-left: 20px; color: var(--muted); }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  h2 {
+    font-size: 22px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+    margin-top: 48px;
+  }
+  h3 { font-size: 17px; color: var(--accent2); margin-top: 28px; }
+  h4 { font-size: 15px; margin-top: 20px; color: #333; }
+  p { margin: 12px 0; }
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+  }
+  pre {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    border-radius: 3px;
+  }
+  pre.diagram {
+    font-size: 12px;
+    line-height: 1.4;
+    background: #fcfcf8;
+    border-left-color: var(--accent2);
+    white-space: pre;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 14px 0;
+    background: #fff;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #ece9df; font-weight: 600; }
+  blockquote {
+    border-left: 4px solid var(--accent2);
+    margin: 18px 0;
+    padding: 6px 18px;
+    background: #fff7eb;
+    color: #5a3a00;
+    font-style: italic;
+  }
+  .callout {
+    background: #eaf4fb;
+    border-left: 4px solid var(--accent);
+    padding: 12px 18px;
+    margin: 18px 0;
+    border-radius: 0 3px 3px 0;
+  }
+  .callout.warn {
+    background: #fdecea;
+    border-left-color: var(--warn);
+    color: #5a1010;
+  }
+  .callout.good {
+    background: #ecf6ec;
+    border-left-color: var(--good);
+    color: #1c421f;
+  }
+  .callout strong { color: inherit; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 4px 0; }
+  .formula {
+    background: #fff;
+    border: 1px dashed var(--border);
+    padding: 10px 16px;
+    margin: 10px 0;
+    text-align: center;
+    font-family: "Cambria Math", Georgia, serif;
+    font-size: 15px;
+  }
+  footer {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+  }
+  .pill {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    margin-right: 6px;
+  }
+  .pill.alt { background: var(--accent2); }
+  .pill.muted { background: var(--muted); }
+  .pill.green { background: var(--good); }
+  .state-machine {
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 16px;
+    border-radius: 4px;
+    margin: 14px 0;
+  }
+  /* === 数学推导专用样式 === */
+  .math {
+    font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", Cambria, Georgia, serif;
+    font-style: italic;
+  }
+  .math .op { font-style: normal; }
+  .math .vec { font-weight: bold; font-style: normal; }
+  .math .mat { font-weight: bold; font-style: normal; }
+  .derivation-block {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    padding: 12px 18px;
+    margin: 14px 0;
+    border-radius: 3px;
+  }
+  .derivation-block .step {
+    font-weight: 600;
+    color: var(--accent);
+    margin-top: 10px;
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+  .eqn {
+    background: #fdfcf6;
+    border: 1px dashed var(--border);
+    padding: 12px 18px;
+    margin: 10px 0;
+    text-align: center;
+    font-family: "Cambria Math", "STIX Two Math", Cambria, Georgia, serif;
+    font-size: 16px;
+    line-height: 1.9;
+    overflow-x: auto;
+  }
+  .eqn .label {
+    float: right;
+    font-style: normal;
+    color: var(--muted);
+    font-family: -apple-system, "PingFang SC", sans-serif;
+    font-size: 13px;
+  }
+  .matrix {
+    display: inline-block;
+    vertical-align: middle;
+    border-left: 2px solid #333;
+    border-right: 2px solid #333;
+    padding: 0 6px;
+    margin: 0 2px;
+  }
+  .matrix table {
+    border: none;
+    margin: 0;
+    background: transparent;
+  }
+  .matrix td {
+    border: none;
+    padding: 1px 6px;
+    text-align: center;
+    background: transparent;
+    font-style: italic;
+  }
+  .deriv-note {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 4px 0 8px 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>双锚点终身语义 ObjectNav 算法架构</h1>
+  <div class="subtitle">Dual-Anchor Lifelong Semantic ObjectNav Architecture</div>
+  <div class="meta">
+    日期：2026-05-25 · 项目：dual-anchor-lifelong-objectnav · 状态：草案 (Draft, v2)<br>
+    说明：本文档替代同日先前那份"出口发现"架构。出口发现降级为可选子能力，不在论文主 method 中出现。
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#background">研究背景与主线</a></li>
+    <li><a href="#task">任务定义</a></li>
+    <li><a href="#hardware">硬件能力与设计约束</a></li>
+    <li><a href="#contributions">三条核心研究贡献</a></li>
+    <li><a href="#arch">算法整体架构（7 层）</a></li>
+    <li><a href="#sub-algorithms">核心子算法详解</a>
+      <ol>
+        <li><a href="#anchor-mgr">A. Anchor Manager</a></li>
+        <li><a href="#router">B. 观测路由器</a></li>
+        <li><a href="#matcher">C. 跨锚点物体匹配</a></li>
+        <li><a href="#memory">D. 记忆生命周期与状态机</a></li>
+        <li><a href="#updater">E. 信念更新与衰减</a></li>
+        <li><a href="#scheduler">F. 主动探索/验证调度</a></li>
+      </ol>
+    </li>
+    <li><a href="#dataflow">数据流与持久化</a></li>
+    <li><a href="#model-policy">模型集成策略</a></li>
+    <li><a href="#edge-cases">特殊情况处理</a></li>
+    <li><a href="#roadmap">实施路线图</a></li>
+    <li><a href="#experiments">论文实验设计</a></li>
+    <li><a href="#risks">风险与待验证假设</a></li>
+    <li><a href="#derivation">算法数学推导</a>
+      <ol>
+        <li><a href="#d-notation">D.0 记号与基础设定</a></li>
+        <li><a href="#d-anchor">D.1 Anchor Manager: T̂<sub>ENU←map</sub> 的闭式解</a></li>
+        <li><a href="#d-anchor-cov">D.2 锚点变换的协方差估计</a></li>
+        <li><a href="#d-obs-cov">D.3 单帧观测的位置协方差链</a></li>
+        <li><a href="#d-route">D.4 观测路由的最小迹判据</a></li>
+        <li><a href="#d-match">D.5 跨锚点物体匹配的 Mahalanobis 推导</a></li>
+        <li><a href="#d-bayes">D.6 多证据贝叶斯融合 (log-odds)</a></li>
+        <li><a href="#d-kalman">D.7 位置 Kalman 融合</a></li>
+        <li><a href="#d-decay">D.8 信念衰减: hazard rate 推导</a></li>
+        <li><a href="#d-miss">D.9 应见而未见时的贝叶斯更新</a></li>
+        <li><a href="#d-score">D.10 决策评分函数的设计动机</a></li>
+        <li><a href="#d-end2end">D.11 端到端: 一帧观测的完整推导链</a></li>
+      </ol>
+    </li>
+    <li><a href="#open">待用户确认的设计选项</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="background">1. 研究背景与主线</h2>
+
+<p>本项目最初的研究方向为<strong>双锚点终身语义 ObjectNav</strong>。在硬件升级到实车 + FAST-LIO2 + RGB-D + RTK 后，方向不变，但<strong>研究问题更具体</strong>：</p>
+
+<div class="callout">
+  <strong>核心研究问题：</strong> 机器人如何在<em>跨室内外、跨 session</em> 的长期部署中，可靠地<em>维护、复用、修复</em>语义物体记忆？
+</div>
+
+<p>更精确地，要回答三个层次的问题：</p>
+<ol>
+  <li><strong>跨锚点</strong>：室内 SLAM map frame 与室外 RTK ENU frame 不一致，如何让一条物体记忆<em>在两个锚点下都可用</em>？</li>
+  <li><strong>跨 session</strong>：每次启动 FAST-LIO 的 map frame 都变，如何让记忆<em>跨重启复用</em>？</li>
+  <li><strong>跨时间</strong>：物体会被挪、消失、出现，如何让记忆<em>跟上世界变化</em>而不是无限累积错误？</li>
+</ol>
+
+<p>"找出去的门"等场景在演示或子能力中可能出现，但<strong>不在论文 method 章节</strong>。</p>
+
+<!-- ============================================================ -->
+<h2 id="task">2. 任务定义</h2>
+
+<h3>2.1 形式化</h3>
+<p>每个 session 给定：</p>
+<ul>
+  <li><strong>目标</strong> <code>G = (class | instance_id | description)</code>，例如 <code>"找一个垃圾桶"</code> / <code>"找之前看过的那个垃圾桶 #042"</code>。</li>
+  <li><strong>初始位姿</strong> <code>p₀</code>。</li>
+  <li>实时传感器流：<code>fastlio2/lio_odom</code>、<code>rtk/fix + status</code>、<code>camera/rgb + depth</code>、<code>tf</code>。</li>
+  <li><strong>跨 session 持久化的记忆库</strong> <code>M_{n-1}</code>（首次 session 为空）。</li>
+</ul>
+
+<p>系统输出：</p>
+<ul>
+  <li>导航轨迹与最终结论（<code>found / not_found / ambiguous</code>）。</li>
+  <li>本次 session 的<strong>更新后</strong>记忆库 <code>M_n</code>。</li>
+  <li>结构化 trial events（用于审稿人复现）。</li>
+</ul>
+
+<h3>2.2 任务的多种 query 形式（按实现优先级）</h3>
+<table>
+  <tr><th>优先级</th><th>Query 形式</th><th>对应 Layer 0 行为</th></tr>
+  <tr><td>P0</td><td><code>class_name</code></td><td>直接匹配类别（首要实现）</td></tr>
+  <tr><td>P1</td><td><code>instance_id</code>（"上次看到的那个 #042"）</td><td>用记忆库 ID 直查</td></tr>
+  <tr><td>P2</td><td>自然语言描述</td><td>LLM 解析为结构化 query</td></tr>
+  <tr><td>P3</td><td>图像/草图</td><td>视觉嵌入相似度</td></tr>
+</table>
+
+<h3>2.3 评测指标</h3>
+<table>
+  <tr><th>指标</th><th>含义</th><th>方向</th></tr>
+  <tr><td>SR</td><td>找到目标的成功率</td><td>↑</td></tr>
+  <tr><td>SPL</td><td>路径长度加权成功率</td><td>↑</td></tr>
+  <tr><td>R_speedup</td><td>第 N+1 次 vs 第 1 次的时间缩减比</td><td>↑（lifelong 卖点）</td></tr>
+  <tr><td>Map fidelity (P/R)</td><td>记忆库 vs ground truth 物体集合的精度/召回</td><td>↑</td></tr>
+  <tr><td>Stale rate</td><td>记忆库中错误信念占比</td><td>↓</td></tr>
+  <tr><td>Change detection rate</td><td>实际变化中被算法识别到的比例</td><td>↑</td></tr>
+  <tr><td>Cross-anchor consistency</td><td>同一物体跨锚点位置的均方误差</td><td>↓</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="hardware">3. 硬件能力与设计约束</h2>
+
+<table>
+  <tr><th>组件</th><th>输出</th><th>对算法的影响</th></tr>
+  <tr><td>FAST-LIO2</td><td>map-frame 位姿 + 局部点云</td><td>每次启动 map frame 不同；长走廊缓慢漂移</td></tr>
+  <tr><td>RTK</td><td>ENU-frame 位姿 + fix_type</td><td>提供跨 session 不变的全局参考；室内可能失效</td></tr>
+  <tr><td>RGB-D (D435 等)</td><td>RGB + 对齐深度</td><td>深度有效 0.3–4 m，验证视点须落在此区间</td></tr>
+  <tr><td>开词汇检测器 (GroundingDINO 等)</td><td>2D bbox + 类别 + 置信度</td><td>不可信任单次检测，需要多帧投票</td></tr>
+  <tr><td>视觉嵌入 (CLIP/DINO)</td><td>每个物体的视觉特征向量</td><td>instance 级匹配的关键</td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>必须 Week 0 / W1 验证的硬件假设：</strong>
+  <ul>
+    <li>FAST-LIO2 在你们目标场景的漂移率（每分钟？每 100 米？）</li>
+    <li>RTK 在<em>实验楼室内</em>的真实表现（完全无信号 vs 靠窗 FLOAT vs 深处 NO_FIX）</li>
+    <li>RGB-D 在不同光照下的深度噪声</li>
+  </ul>
+  这些数字决定算法参数（窗口长度、协方差阈值、验证视点距离）。<strong>没有这些数字之前不要调参，会白调。</strong>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="contributions">4. 三条核心研究贡献</h2>
+
+<pre class="diagram">
+╭───────────────────────────────────────────────────────╮
+│  贡献 3:  记忆生命周期与修复                            │
+│   observed → verified → reusable                       │
+│           ↓ (信念衰减 + 主动验证)                       │
+│        stale → suspect_missing → missing               │
+│                                ↓                        │
+│              NEW + possible_relocation_of (旧)         │
+│   区分"感知失败" vs "世界变了"                          │
+├───────────────────────────────────────────────────────┤
+│  贡献 2:  协方差感知的跨锚点物体匹配                     │
+│   每条记忆带 anchor_id, anchor_type, frame_id          │
+│   不强行投影到单一坐标系                                │
+│   匹配概率 = P_class · P_position · P_appearance       │
+│   P_position 通过 T_ENU←map 投影 + 协方差传播          │
+├───────────────────────────────────────────────────────┤
+│  贡献 1:  Anchor Manager (基础设施)                    │
+│   T_ENU←map 在线估计 + 6×6 协方差                      │
+│   基于 LIO 漂移 / RTK 质量的健康度评估                  │
+│   不依赖 RTK 持续可用; RTK 缺失时降级单锚点              │
+╰───────────────────────────────────────────────────────╯
+</pre>
+
+<div class="callout good">
+  <strong>三层共同支撑论文叙事</strong>："dual-anchor"不再是空字段，而是<em>真正影响算法决策</em>的几何基础；"lifelong"不是口号，而是一组<em>可审计的状态转换 + 信念衰减</em>。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="arch">5. 算法整体架构（7 层）</h2>
+
+<pre class="diagram">
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 0 · 任务接口                                          │
+│  接收 ObjectNav goal: class / instance_id / 描述              │
+│  (P0 阶段硬编码, P2 阶段可接 LLM)                            │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 1 · 感知 (现成检测器, 非论文贡献)                       │
+│  GroundingDINO + RGB-D                                       │
+│  输出: (class, bbox, 3D pose, cov, vis_embedding, t)         │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 2 · Anchor Manager     ★ 基础设施贡献                  │
+│  T_ENU←map 在线估计 + 协方差                                  │
+│  Anchor Health: LIO drift / RTK fix quality                  │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 3 · 观测路由器                                         │
+│  根据当前 LIO/RTK 质量, 决定观测存哪个锚点                     │
+│  不确定性传播: 检测 + 深度 + 位姿 + 锚点变换                   │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 4 · 跨锚点物体匹配     ★★ 论文核心贡献                  │
+│  P(match) = P_class · P_position · P_appearance              │
+│  跨锚点 Mahalanobis 距离 + 视觉特征相似度                     │
+│  输出: MATCH(existing) | NEW                                 │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 5 · 记忆生命周期管理   ★★ 论文核心贡献                  │
+│  状态机 + 信念更新 (P_existence, P_location)                  │
+│  双轨衰减; 验证视点规划; possible_relocation_of 边             │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 6 · 主动探索/验证调度                                  │
+│  urgency(m) = (1 − P_exist) · importance / (1 + cost)        │
+│  frontier exploration + memory revisit 联合规划               │
+╰────────────────────────────┬────────────────────────────────╯
+                             ▼
+╭─────────────────────────────────────────────────────────────╮
+│  Layer 7 · 执行 (现成)                                        │
+│  Nav2 NavigateToPose / A* (objectnav_core 已实现)            │
+╰─────────────────────────────────────────────────────────────╯
+
+并行持久化层 (SQLite):
+  memory_objects · observations · relations · anchors
+  anchor_transforms · trial_events · algorithm_decisions
+</pre>
+
+<p><strong>层级原则</strong>：</p>
+<ul>
+  <li>Layer 0 / 1 / 7 = 现成或简单工程组件，<strong>不算研究贡献</strong>。</li>
+  <li>Layer 2 = 基础设施贡献，所有上层都依赖。</li>
+  <li>Layer 3 / 4 / 5 / 6 = 论文 method 章节的实质内容。</li>
+  <li>大模型只在 Layer 0 / 1 出现，<strong>永远不进入控制环</strong>。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="sub-algorithms">6. 核心子算法详解</h2>
+
+<!-- ============ A: Anchor Manager ============ -->
+<h3 id="anchor-mgr">A. Anchor Manager（Layer 2）</h3>
+
+<p><span class="pill">基础设施</span> 所有跨锚点操作的几何前提。</p>
+
+<h4>输入 / 输出</h4>
+<ul>
+  <li>输入：<code>(pose_map_t, pose_enu_t, rtk_quality_t, lio_quality_t)</code> 流</li>
+  <li>输出：<code>T_ENU←map</code> (SE(3)) + 6×6 协方差 + <code>AnchorHealth</code></li>
+</ul>
+
+<h4>原理</h4>
+<p>RTK FIXED 时，每个时刻得到一对 ground-truth 配对 <code>(p_map_t, p_enu_t)</code>。两个 frame 满足：</p>
+
+<div class="formula">p<sup>enu</sup><sub>t</sub> = T<sub>ENU←map</sub> · p<sup>map</sup><sub>t</sub> + ε</div>
+
+<p>在滑动窗口内求带权最小二乘（Kabsch / Horn 闭式解）：</p>
+
+<div class="formula">T̂ = arg min<sub>T</sub> Σ<sub>t</sub> w<sub>t</sub> ‖ T · p<sup>map</sup><sub>t</sub> − p<sup>enu</sup><sub>t</sub> ‖²</div>
+
+<h4>关键设计点</h4>
+<ul>
+  <li>窗口长度自适应（基于残差中位数 + RTK 稳定性）。</li>
+  <li>权重 <code>w_t = 1 / σ_rtk(t)²</code>，从 NavSatFix 协方差读取（不要硬编码）。</li>
+  <li>当窗口内可信配对 &lt; N_min，输出 <code>UNAVAILABLE</code>。</li>
+  <li>RTK 长期不可用时，记录 LIO 时钟下的版本号，使跨 session 复用时仍能<em>事后</em>对齐。</li>
+</ul>
+
+<div class="callout">
+  <strong>注</strong>：你们现有 G60 + 多 session bag 数据可立刻拿来<em>离线验证 Anchor Manager 在最差 GPS 条件下的工作</em>。如果 G60 都能给出可解释的协方差，RTK 升级后必然更稳。
+</div>
+
+<!-- ============ B: Observation Router ============ -->
+<h3 id="router">B. 观测路由器（Layer 3）</h3>
+
+<p><span class="pill">桥接</span> 单帧观测如何归属到锚点。</p>
+
+<pre><code>def route_observation(obs, lio_q, rtk_q, anchor_transform):
+    # 1. 估算两种锚点下的位置 + 协方差
+    pose_in_map, cov_in_map = obs.pose_map, obs.cov_map
+    pose_in_enu, cov_in_enu = project_to_enu(obs, anchor_transform)
+
+    # 2. 比较不确定性
+    if rtk_q == "FIXED" and trace(cov_in_enu) < trace(cov_in_map):
+        return Observation(anchor="enu", pose=pose_in_enu, cov=cov_in_enu)
+    if lio_q.recent_drift < THRESH:
+        return Observation(anchor="map", pose=pose_in_map, cov=cov_in_map)
+    return None  # 双低质量, 丢弃; 这是设计上的常态, 不是 bug
+</code></pre>
+
+<h4>关键</h4>
+<ul>
+  <li>检测协方差 + 深度噪声 + 位姿协方差 + 锚点变换协方差，<strong>必须全部传播</strong>（用 Jacobian）。</li>
+  <li>"丢弃低质量观测"的策略要在论文里做 ablation：太严会丢召回，太松会污染记忆。</li>
+</ul>
+
+<!-- ============ C: Matcher ============ -->
+<h3 id="matcher">C. 跨锚点物体匹配（Layer 4）</h3>
+
+<p><span class="pill alt">★ 论文核心</span> 解决 "this is the same object as #042" 的判断。</p>
+
+<h4>匹配概率</h4>
+<div class="formula">
+P(obs = m) ∝ P<sub>class</sub>(obs, m) · P<sub>position</sub>(obs, m) · P<sub>appearance</sub>(obs, m)
+</div>
+
+<ul>
+  <li><strong>P<sub>class</sub></strong>：硬约束（类别必须一致）或类别相似度</li>
+  <li><strong>P<sub>position</sub></strong>：跨锚点投影后的 Mahalanobis 距离 → χ² → 概率</li>
+  <li><strong>P<sub>appearance</sub></strong>：CLIP / DINOv2 嵌入余弦相似度</li>
+</ul>
+
+<h4>核心难点：跨锚点 P<sub>position</sub></h4>
+<pre><code># obs 在 ENU 下:   pose_obs_enu, cov_obs_enu
+# m   在 map 下:   pose_m_map,   cov_m_map
+# 用 Anchor Manager 给的 T_ENU←map 投影 m 到 ENU:
+pose_m_enu = T_ENU_map @ pose_m_map
+cov_m_enu  = J @ cov_m_map @ J.T  +  cov_transform   # 协方差传播!
+
+# 两者现在都在 ENU 下, 算 Mahalanobis:
+delta        = pose_obs_enu - pose_m_enu
+combined_cov = cov_obs_enu + cov_m_enu
+mahal        = delta.T @ inv(combined_cov) @ delta
+P_position   = chi2.sf(mahal, df=3)
+</code></pre>
+
+<h4>决策</h4>
+<ul>
+  <li>选概率最大的候选 <code>m*</code>，若 <code>P(obs = m*) &lt; τ_match</code>，标记为 <strong>NEW</strong>。</li>
+  <li>NEW 候选若 <strong>P<sub>class</sub> 一致 + 附近有 missing 同类记忆</strong>，写 <code>possible_relocation_of(new, old)</code> 边（不强行 merge）。</li>
+</ul>
+
+<!-- ============ D: Memory Lifecycle ============ -->
+<h3 id="memory">D. 记忆生命周期与状态机（Layer 5）</h3>
+
+<p><span class="pill alt">★ 论文核心</span> 解决"世界变了"的问题。</p>
+
+<h4>状态机</h4>
+<div class="state-machine">
+<pre class="diagram">
+                ╭──────────────╮
+                │   observed   │
+                ╰──────┬───────╯
+                       │  多次观测 + 验证视点确认
+                       ▼
+                ╭──────────────╮
+       ┌────────│   verified   │
+       │        ╰──────┬───────╯
+       │               │  显式 promote (满足 reusable 条件)
+       │               ▼
+       │        ╭──────────────╮
+       │        │   reusable   │  ◄─── 跨 session 持久化
+       │        ╰──────┬───────╯
+       │               │
+       │  P_exist 衰减 / 多次未观测到
+       │               ▼
+       │        ╭──────────────╮
+       └───────►│    stale     │
+                ╰──────┬───────╯
+                       │  应该看到却没看到 (一次)
+                       ▼
+                ╭───────────────────╮
+                │ suspect_missing   │
+                ╰──────┬────────────╯
+                       │  yaw 扫描 / 多视点确认仍未见
+                       ▼
+                ╭──────────────╮
+                │   missing    │
+                ╰──────┬───────╯
+                       │  附近出现同类 NEW 物体
+                       ▼
+            possible_relocation_of(new, old)
+</pre>
+</div>
+
+<h4>两个独立信念</h4>
+<table>
+  <tr><th>信念</th><th>含义</th><th>衰减率</th></tr>
+  <tr><td><code>P_existence</code></td><td>物体仍在 (没消失)</td><td>类别相关 λ_e</td></tr>
+  <tr><td><code>P_location</code></td><td>位置仍正确 (没被挪)</td><td>类别相关 λ_l</td></tr>
+</table>
+
+<div class="formula">
+P_existence(t + Δt) = P_existence(t) · exp(− λ_e · Δt)<br>
+P_location(t + Δt)  = P_location(t)  · exp(− λ_l · Δt)
+</div>
+
+<ul>
+  <li>墙、灭火器、消防栓：λ 很小（几乎不变）</li>
+  <li>椅子、垃圾桶：λ 中等</li>
+  <li>杯子、书、文件：λ 较大</li>
+</ul>
+
+<p>类别相关的衰减率可<strong>从 lifelong 数据 fit</strong>，本身就是论文一个 ablation/分析点。</p>
+
+<!-- ============ E: Updater ============ -->
+<h3 id="updater">E. 信念更新（Layer 5 子算法）</h3>
+
+<h4>看到时（Bayesian update + Kalman 融合）</h4>
+<pre><code>if match.is_new:
+    create_new_memory_object(obs)
+else:
+    m = match.existing
+    # Kalman update on position
+    K        = m.cov @ inv(m.cov + obs.cov)
+    m.pose   = m.pose + K @ (obs.pose - m.pose)
+    m.cov    = (I - K) @ m.cov
+    # Bayesian update on existence
+    m.P_existence = bayes_update(m.P_existence, evidence="seen")
+    m.P_location  = bayes_update(m.P_location,  evidence="confirmed")
+    m.last_seen_t  = now
+    m.observation_count += 1
+</code></pre>
+
+<h4>应该看到但没看到时</h4>
+<pre><code>def on_expected_but_not_seen(m):
+    # 机器人路过 m 的视野却没检测到
+    m.P_existence = bayes_update(m.P_existence, evidence="missed")
+    m.miss_count += 1
+    if m.P_existence < 0.3 and m.state == REUSABLE:
+        m.state = STALE
+    if m.P_existence < 0.1:
+        m.state = SUSPECT_MISSING
+</code></pre>
+
+<h4>验证视点</h4>
+<ul>
+  <li>验证物体是否真消失：导航到一个<em>该物体应该可见</em>的视点</li>
+  <li>视点必须满足：RGB-D sweet spot（0.5–3 m）+ 不在障碍物里 + 朝向物体 + Nav2 可达</li>
+  <li>失败时执行 yaw 扫描（±25°）作为第二次确认（你 objectnav_core 里已有此逻辑）</li>
+</ul>
+
+<!-- ============ F: Scheduler ============ -->
+<h3 id="scheduler">F. 主动探索/验证调度（Layer 6）</h3>
+
+<p>规划层：在<strong>探索新区域</strong>和<strong>复查/验证记忆</strong>之间做决策。</p>
+
+<h4>候选集</h4>
+<ul>
+  <li>新 frontier（探索未知）</li>
+  <li>所有 <code>stale</code> / <code>suspect_missing</code> 物体（验证）</li>
+  <li>目标类的所有 <code>reusable</code> 物体（如果与当前 query 匹配）</li>
+</ul>
+
+<h4>评分</h4>
+<div class="formula">
+score(c) = α · P<sub>relevant</sub>(c) + β · I<sub>gain</sub>(c) − γ · cost(c) − δ · revisit(c)
+</div>
+
+<p>对于<strong>记忆物体</strong>的复查紧迫度：</p>
+<div class="formula">
+urgency(m) = (1 − P_existence(m)) · importance(class) / (1 + path_cost(m))
+</div>
+
+<p>权重 <code>α, β, γ, δ</code> 可以静态调，<strong>也可以做成 contextual</strong>：当 ObjectNav goal 已锁定记忆中的物体时，<code>α</code> 大；当记忆库与 query 都无匹配时，<code>β</code> 大（鼓励探索）。</p>
+
+<!-- ============================================================ -->
+<h2 id="dataflow">7. 数据流与持久化</h2>
+
+<pre class="diagram">
+传感器                适配层            核心算法               持久化
+────────              ────────          ────────              ────────
+
+[LiDAR + IMU]
+     │
+     ▼
+FAST-LIO2 ─────► pose_map ──┐
+                            │
+                            ├──►  Anchor Manager  ──┐
+                            │           │           │
+[GNSS / RTK]                │           │           ▼
+     │                      │           │     anchor_transforms
+RTK Module ────► pose_enu ──┤           │     (SQLite)
+                fix_type ───┤           ▼
+                            │     T_ENU←map + cov
+                            │           │
+                            │           ▼
+[Camera]                    │     Observation Router
+     │                      │           │
+RGB-D ──────► rgb + depth ──┼──► Layer 1 Detector
+                            │           │
+                            │           ▼
+                            │     Observation (锚点已归属)
+                            │           │
+                            │           ▼
+                            │     Cross-Anchor Matcher  ◄── 查询记忆库
+                            │           │
+                            │           ▼
+                            │     Memory Lifecycle
+                            │           │
+                            │           ├──► memory_objects (SQLite)
+                            │           ├──► observations
+                            │           ├──► relations (relocation 边)
+                            │           ├──► trial_events
+                            │           └──► algorithm_decisions
+                            │
+                            ▼
+              OccupancyGrid ──► Frontier ──┐
+                                           ▼
+                                     Scheduler ──► Nav2 / A*
+                                                       │
+                                                       ▼
+                                                  /cmd_vel
+</pre>
+
+<h3>持久化 schema（在现有 sqlite_store 基础上扩展）</h3>
+<table>
+  <tr><th>表</th><th>关键字段</th><th>用途</th></tr>
+  <tr><td>memory_objects</td><td>id, class, primary_anchor, pose, cov, P_existence, P_location, state, last_seen_t, embedding</td><td>核心记忆</td></tr>
+  <tr><td>observations</td><td>id, object_id, t, pose, cov, anchor_id, source</td><td>原始观测</td></tr>
+  <tr><td>relations</td><td>src_id, dst_id, type ("possible_relocation_of" 等)</td><td>对象间关系</td></tr>
+  <tr><td>anchor_transforms</td><td>t, T_ENU_map, cov, source ("kabsch_window")</td><td>锚点变换时序</td></tr>
+  <tr><td>algorithm_decisions</td><td>t, layer, inputs, outputs, scores</td><td>每个决策可回放</td></tr>
+  <tr><td>trial_events</td><td>(已有)</td><td>不变</td></tr>
+  <tr><td>trial_metrics</td><td>(已有)</td><td>不变</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="model-policy">8. 模型集成策略</h2>
+
+<p>大模型不是禁区，但<strong>位置必须严格</strong>。</p>
+
+<pre class="diagram">
+╭─────────────────────────────────────────────────╮
+│  ① Layer 0  人机接口     LLM     可选, 低频, 工程组件│
+├─────────────────────────────────────────────────┤
+│  ② Layer 1  感知         开词汇检测器 + 视觉嵌入     │
+│              GroundingDINO / CLIP / DINOv2       │
+│              直接拿来用, 不训练, 不微调              │
+├─────────────────────────────────────────────────┤
+│  ③ Layer 2-6  决策核心   ❌ 大模型不进入             │
+│              纯算法, 可解释, 可消融                  │
+├─────────────────────────────────────────────────┤
+│  ④ Layer 7   控制        ❌ 绝对禁止                │
+╰─────────────────────────────────────────────────╯
+</pre>
+
+<table>
+  <tr><th>阶段</th><th>模型政策</th></tr>
+  <tr><td>W1–W6 (拿到第一张表前)</td><td>感知用<strong>闭集检测器</strong>替代；连开词汇都先不上</td></tr>
+  <tr><td>W7–W12 (论文实验)</td><td>感知加 GroundingDINO；视觉嵌入加 CLIP；这些都做成可拔插模块</td></tr>
+  <tr><td>论文之后</td><td>Layer 0 接 LLM；Layer 1 升级为 VLM；作为部署能力, 不算论文 contribution</td></tr>
+  <tr><td>永远</td><td>大模型不进入 Layer 2-7</td></tr>
+</table>
+
+<div class="callout">
+  <strong>叙事原则：</strong>"我"是算法，不是模型。论文 method 章节的主语应该是 Anchor Manager、Cross-Anchor Matcher、Memory Lifecycle，不是 GroundingDINO 或 CLIP。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="edge-cases">9. 特殊情况处理</h2>
+
+<table>
+  <tr><th>情况</th><th>对策</th></tr>
+  <tr><td>同类多实例（两台一样的打印机）</td><td>P<sub>position</sub> 区分；视觉嵌入弱区分；不强行 merge，保留两条记忆</td></tr>
+  <tr><td>物体被挪到附近</td><td>NEW + <code>possible_relocation_of</code>；旧 missing；不直接复用旧 id</td></tr>
+  <tr><td>物体被挪到很远（跨房间）</td><td>同上；relocation 边可能跨越较长距离，在 ablation 中讨论</td></tr>
+  <tr><td>FAST-LIO 长走廊大漂移</td><td>Anchor Manager 报告 <code>drift_warning</code>；记忆更新降权</td></tr>
+  <tr><td>RTK 室内完全无信号</td><td>所有室内观测存 map 锚点；session 结束前若 RTK 恢复，回溯计算 T 并补对齐</td></tr>
+  <tr><td>动态物体（被人推走、车辆移动）</td><td>P_location 快速衰减；类别先验 λ_l 较大；不会污染长期记忆</td></tr>
+  <tr><td>检测器误报</td><td>多帧投票 + 验证视点过滤；首次观测不进入 reusable</td></tr>
+  <tr><td>跨 session 时 LIO map 完全重建</td><td>所有记忆通过 ENU 锚点对齐；从未在 RTK 下出现的记忆<em>无法</em>跨 session（论文中明确限制）</td></tr>
+  <tr><td>跨建筑（多个室内场景）</td><td>不同 anchor_id 分组；查询时按 anchor 范围过滤</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="roadmap">10. 实施路线图</h2>
+
+<h3>10.1 双轨并行</h3>
+<pre class="diagram">
+─── 硬件/数据轨 ────────────────────────────────────────
+Week 0 (现在):  G60 + LIO 旧 bag 离线分析
+W1-2:           RTK + RGB-D 接入实车
+W3+:            按算法需要持续录新数据 (单 session + 多 session)
+
+─── 算法轨 ───────────────────────────────────────────
+W1: BagPlaybackAdapter (能读 sqlite3 bag → Frame 流)
+W2: Anchor Manager (滑动窗口 Kabsch, 离线验证用 G60 旧 bag)
+W3: 观测路由器 + 协方差传播
+W4: 跨锚点匹配 (单 session 内, 验证位置匹配的几何正确性)
+W5: 记忆生命周期 + 状态机
+W6: 端到端 + Baseline + 第一张表 ★
+</pre>
+
+<h3>10.2 Week 详细</h3>
+<table>
+  <tr><th>周</th><th>目标</th><th>产出</th></tr>
+  <tr><td>W1</td><td>读 bag, 对齐 LIO/RTK/RGB-D 多流</td><td>BagPlaybackAdapter, CSV 输出</td></tr>
+  <tr><td>W2</td><td>Anchor Manager 离线跑通</td><td>T̂ + cov 的时序图; 与 G60 噪声特性对比</td></tr>
+  <tr><td>W3</td><td>观测路由器 + 协方差传播</td><td>单帧测试: 每个观测的归属决策可视化</td></tr>
+  <tr><td>W4</td><td>跨锚点匹配</td><td>同 session 内 MOVED 物体匹配率</td></tr>
+  <tr><td>W5</td><td>记忆生命周期</td><td>状态机回放; missing 检测率</td></tr>
+  <tr><td>W6</td><td>Baseline + 端到端</td><td><strong>第一张表 (4 方法 × 多指标)</strong></td></tr>
+</table>
+
+<h3>10.3 Baseline 设计</h3>
+<table>
+  <tr><th>编号</th><th>方法</th><th>说明</th></tr>
+  <tr><td>B0</td><td>无记忆</td><td>每次都重新探索找物体</td></tr>
+  <tr><td>B1</td><td>单锚点记忆 (map only)</td><td>只用 LIO map frame; 跨 session 失效</td></tr>
+  <tr><td>B2</td><td>双锚点但无修复</td><td>有跨锚点匹配, 但不做衰减/missing 检测</td></tr>
+  <tr><td><strong>B3 (Ours)</strong></td><td>完整系统</td><td></td></tr>
+  <tr><td>B3 − cov传播</td><td>用硬阈值替代 Mahalanobis</td><td>证明协方差传播的价值</td></tr>
+  <tr><td>B3 − 视觉嵌入</td><td>P_appearance = 1</td><td>证明视觉嵌入的价值</td></tr>
+  <tr><td>B3 − 信念衰减</td><td>λ = 0</td><td>证明衰减的价值</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="experiments">11. 论文实验设计</h2>
+
+<h3>11.1 主实验：跨 session 物体记忆复用</h3>
+<ul>
+  <li>同一场景至少 5 次部署，每次间隔 1-3 天</li>
+  <li>每次给定 ObjectNav goal（class），看是否能找到</li>
+  <li>所有方法在<em>同样的物理布置序列</em>下跑</li>
+</ul>
+
+<h3>11.2 子实验</h3>
+<table>
+  <tr><th>子实验</th><th>设置</th><th>验证</th></tr>
+  <tr><td>物体未变</td><td>5 次 session, 物体位置不变</td><td>R_speedup, 记忆复用价值</td></tr>
+  <tr><td>物体被挪</td><td>session 间挪动 30% 物体</td><td>MOVED 检测率, relocation 边正确性</td></tr>
+  <tr><td>物体消失</td><td>session 间移走 20% 物体</td><td>missing 检测率, false alarm rate</td></tr>
+  <tr><td>新增物体</td><td>session 间加入 20% 新物体</td><td>NEW vs MATCH 分类正确率</td></tr>
+  <tr><td>跨锚点</td><td>同一物体在室内/室外都被观测</td><td>cross-anchor consistency (MSE)</td></tr>
+</table>
+
+<h3>11.3 定性分析</h3>
+<ul>
+  <li>同类多实例（两个一样的椅子）</li>
+  <li>物体被挪到很远</li>
+  <li>RTK 完全失效的 session</li>
+  <li>LIO 严重漂移的 session</li>
+</ul>
+
+<h3>11.4 目标会议</h3>
+<table>
+  <tr><th>会议</th><th>截稿</th><th>匹配</th></tr>
+  <tr><td>IROS 2027</td><td>2027 春</td><td>★★★★★ 系统 + 实车, 最合适</td></tr>
+  <tr><td>ICRA 2027</td><td>2026 秋</td><td>★★★★</td></tr>
+  <tr><td>RA-L</td><td>滚动</td><td>★★★★ 长 paper, 节奏灵活</td></tr>
+  <tr><td>CoRL 2026</td><td>2026 夏</td><td>★★★ 偏 learning, 但 system paper 也收</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="risks">12. 风险与待验证假设</h2>
+
+<table>
+  <tr><th>风险</th><th>影响</th><th>缓解</th></tr>
+  <tr>
+    <td>RTK 在实验楼室内完全无信号</td>
+    <td>"双锚点"在室内退化为单锚点</td>
+    <td>仍可论文，叙事调整为"跨室内外 transition 的锚点切换"，重点放在室外锚点的跨 session 价值</td>
+  </tr>
+  <tr>
+    <td>FAST-LIO 漂移过大</td>
+    <td>map 锚点记忆不可靠</td>
+    <td>Anchor Manager 显式报告 + 论文中作为系统局限</td>
+  </tr>
+  <tr>
+    <td>同一场景部署次数不够多</td>
+    <td>lifelong 实验数据稀薄</td>
+    <td>降级：主线主实验只做 1-2 次部署的"跨锚点"，lifelong 作 future work</td>
+  </tr>
+  <tr>
+    <td>检测器对实验楼物体类别召回低</td>
+    <td>观测不足导致记忆稀疏</td>
+    <td>限定 5-10 类<em>检测器表现好的</em>物体（垃圾桶、椅子、灭火器等）</td>
+  </tr>
+  <tr>
+    <td>陷入"完善架构"反模式</td>
+    <td>到 W6 仍没第一张表</td>
+    <td><strong>铁律：W6 前禁止再写 design doc / 加新 schema 字段</strong></td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="derivation">13. 算法数学推导</h2>
+
+<p>本章把前面 7 层架构里的每一个核心算法<strong>从问题陈述一步步推到可实现公式</strong>。所有推导自洽，可直接对照写入论文 Method 章节。</p>
+
+<!-- =============== D.0 =============== -->
+<h3 id="d-notation">D.0 记号与基础设定</h3>
+
+<table>
+  <tr><th>记号</th><th>含义</th></tr>
+  <tr><td><span class="math"><b>p</b> ∈ ℝ³</span></td><td>3D 位置向量（粗体竖列）</td></tr>
+  <tr><td><span class="math"><b>p</b><sup>F</sup><sub>X</sub></span></td><td>点 <i>X</i> 在坐标系 <i>F</i> 下的位置</td></tr>
+  <tr><td><span class="math"><b>T</b><sub>B←A</sub> ∈ SE(3)</span></td><td>从 A 系到 B 系的刚体变换，作用在齐次坐标上</td></tr>
+  <tr><td><span class="math"><b>R</b> ∈ SO(3), <b>t</b> ∈ ℝ³</span></td><td>变换的旋转与平移分量</td></tr>
+  <tr><td><span class="math"><b>Σ</b></span></td><td>协方差矩阵</td></tr>
+  <tr><td><span class="math"><b>I</b><sub>n</sub></span></td><td><i>n</i>×<i>n</i> 单位阵</td></tr>
+  <tr><td><span class="math">ε ∼ 𝒩(<b>0</b>, <b>Σ</b>)</span></td><td>零均值高斯噪声</td></tr>
+  <tr><td><span class="math">tr(·)</span></td><td>矩阵迹</td></tr>
+</table>
+
+<p>整个系统的随机变量在<strong>同一高斯近似框架</strong>下推导：每个位置量都带一个均值和协方差，每个非线性变换都用一阶 Jacobian 传播协方差（Extended Kalman 思路）。</p>
+
+<!-- =============== D.1 =============== -->
+<h3 id="d-anchor">D.1 Anchor Manager: T̂<sub>ENU←map</sub> 的闭式解</h3>
+
+<h4>问题陈述</h4>
+<p>设滑动窗口内有 <i>N</i> 对时间戳对齐的配对：</p>
+
+<div class="eqn">
+{ (<b>p</b><sub>i</sub><sup>map</sup>, <b>p</b><sub>i</sub><sup>enu</sup>) }<sub>i=1…N</sub>,&nbsp;&nbsp;
+  <b>p</b><sub>i</sub><sup>enu</sup> = <b>R</b> <b>p</b><sub>i</sub><sup>map</sup> + <b>t</b> + <b>ε</b><sub>i</sub>,&nbsp;&nbsp;
+  <b>ε</b><sub>i</sub> ∼ 𝒩(<b>0</b>, <b>Σ</b><sub>i</sub>)
+  <span class="label">(D.1.1)</span>
+</div>
+
+<p>求最优旋转 <b>R</b> ∈ SO(3) 和平移 <b>t</b> ∈ ℝ³，最小化带权重残差：</p>
+
+<div class="eqn">
+J(<b>R</b>, <b>t</b>) = ∑<sub>i</sub> w<sub>i</sub> ‖ <b>R</b> <b>p</b><sub>i</sub><sup>map</sup> + <b>t</b> − <b>p</b><sub>i</sub><sup>enu</sup> ‖²
+  <span class="label">(D.1.2)</span>
+</div>
+
+<p class="deriv-note">实际中 w<sub>i</sub> = 1/σ<sub>i</sub>²（标量近似）；完整版用 <b>Σ</b><sub>i</sub><sup>−1</sup> 加权，原理相同。</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：对 t 求导消去平移</div>
+<p>对 (D.1.2) 求 ∂J/∂<b>t</b> = 0：</p>
+<div class="eqn">
+∑<sub>i</sub> w<sub>i</sub> ( <b>R</b> <b>p</b><sub>i</sub><sup>map</sup> + <b>t</b> − <b>p</b><sub>i</sub><sup>enu</sup> ) = <b>0</b>
+</div>
+<p>令加权质心：</p>
+<div class="eqn">
+<b>p̄</b><sup>map</sup> = (∑w<sub>i</sub> <b>p</b><sub>i</sub><sup>map</sup>) / (∑w<sub>i</sub>),&nbsp;&nbsp;
+<b>p̄</b><sup>enu</sup> = (∑w<sub>i</sub> <b>p</b><sub>i</sub><sup>enu</sup>) / (∑w<sub>i</sub>)
+</div>
+<p>得到：</p>
+<div class="eqn">
+<b>t</b> = <b>p̄</b><sup>enu</sup> − <b>R</b> <b>p̄</b><sup>map</sup>
+  <span class="label">(D.1.3)</span>
+</div>
+
+<div class="step">第 2 步：去中心化，问题降为纯旋转</div>
+<p>令 <b>q</b><sub>i</sub><sup>map</sup> = <b>p</b><sub>i</sub><sup>map</sup> − <b>p̄</b><sup>map</sup>，<b>q</b><sub>i</sub><sup>enu</sup> = <b>p</b><sub>i</sub><sup>enu</sup> − <b>p̄</b><sup>enu</sup>，代回 (D.1.2)：</p>
+<div class="eqn">
+J(<b>R</b>) = ∑<sub>i</sub> w<sub>i</sub> ‖ <b>R</b> <b>q</b><sub>i</sub><sup>map</sup> − <b>q</b><sub>i</sub><sup>enu</sup> ‖²
+</div>
+<p>展开 ‖·‖² 后，与 <b>R</b> 相关的项只剩交叉项：</p>
+<div class="eqn">
+arg max<sub><b>R</b></sub> &nbsp; tr( <b>R</b> <b>H</b> ),&nbsp;&nbsp;
+  其中 <b>H</b> = ∑<sub>i</sub> w<sub>i</sub> <b>q</b><sub>i</sub><sup>map</sup> ( <b>q</b><sub>i</sub><sup>enu</sup> )<sup>⊤</sup>
+  <span class="label">(D.1.4)</span>
+</div>
+
+<div class="step">第 3 步：用 SVD 求解</div>
+<p>对 3×3 矩阵 <b>H</b> 做 SVD：<b>H</b> = <b>U</b> <b>D</b> <b>V</b><sup>⊤</sup>。最优旋转为：</p>
+<div class="eqn">
+<b>R̂</b> = <b>V</b> <b>S</b> <b>U</b><sup>⊤</sup>,&nbsp;&nbsp;
+  <b>S</b> = diag(1, 1, det(<b>V</b> <b>U</b><sup>⊤</sup>))
+  <span class="label">(D.1.5)</span>
+</div>
+<p class="deriv-note">中间的 <b>S</b> 是为了避免 SVD 给出反射解（行列式 −1）。这就是经典的 Kabsch–Umeyama 算法。</p>
+
+<div class="step">第 4 步：回代得到平移</div>
+<p>把 <b>R̂</b> 代入 (D.1.3) 得到 <b>t̂</b>。最终：</p>
+<div class="eqn">
+<b>T̂</b><sub>ENU←map</sub> =
+  <span class="matrix"><table><tr><td><b>R̂</b></td><td><b>t̂</b></td></tr><tr><td><b>0</b><sup>⊤</sup></td><td>1</td></tr></table></span>
+  <span class="label">(D.1.6)</span>
+</div>
+
+</div>
+
+<p><strong>意义</strong>：这是 SE(3) 上对齐两个点云的<em>解析解</em>，无需迭代。在每个新数据点到来时只需更新加权质心与 <b>H</b> 矩阵（O(N) 内存或滑动窗口 O(1) 更新），SVD 复杂度恒为 O(1)（3×3 矩阵）。<strong>非常适合在线运行</strong>。</p>
+
+<!-- =============== D.2 =============== -->
+<h3 id="d-anchor-cov">D.2 锚点变换的协方差估计</h3>
+
+<p>光有 <b>T̂</b> 不够，<strong>下游所有匹配都需要 cov(<b>T̂</b>)</strong>。我们用最大似然 + 残差经验估计：</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：定义在 se(3) 上的小扰动</div>
+<p>设真值 <b>T</b><sup>*</sup>，估计值 <b>T̂</b>。它们之间的差异用李代数小扰动 <b>ξ</b> ∈ ℝ⁶（前 3 维平移，后 3 维旋转向量）表示：</p>
+<div class="eqn">
+<b>T</b><sup>*</sup> = exp( [<b>ξ</b>]<sub>∧</sub> ) <b>T̂</b>,&nbsp;&nbsp;
+  <b>ξ</b> ∼ 𝒩(<b>0</b>, <b>Σ</b><sub>T</sub> ∈ ℝ<sup>6×6</sup>)
+  <span class="label">(D.2.1)</span>
+</div>
+
+<div class="step">第 2 步：残差与信息矩阵</div>
+<p>第 <i>i</i> 个配对的预测残差：</p>
+<div class="eqn">
+<b>r</b><sub>i</sub>(<b>ξ</b>) = exp([<b>ξ</b>]<sub>∧</sub>) <b>T̂</b> <b>p</b><sub>i</sub><sup>map</sup> − <b>p</b><sub>i</sub><sup>enu</sup>
+</div>
+<p>对 <b>ξ</b> 在零点处线性化，Jacobian：</p>
+<div class="eqn">
+<b>J</b><sub>i</sub> = ∂<b>r</b><sub>i</sub>/∂<b>ξ</b> |<sub><b>ξ</b>=<b>0</b></sub> = [ <b>I</b><sub>3</sub> &nbsp; −[<b>R̂</b> <b>p</b><sub>i</sub><sup>map</sup> + <b>t̂</b>]<sub>×</sub> ]
+  <span class="label">(D.2.2)</span>
+</div>
+<p class="deriv-note">[·]<sub>×</sub> 是叉乘矩阵（反对称矩阵）。这是 SE(3) 上点变换 Jacobian 的标准形式。</p>
+
+<div class="step">第 3 步：协方差 = 逆信息矩阵</div>
+<p>由高斯-牛顿信息矩阵：</p>
+<div class="eqn">
+<b>Σ</b><sub>T</sub> ≈ ( ∑<sub>i</sub> <b>J</b><sub>i</sub><sup>⊤</sup> <b>Σ</b><sub>i</sub><sup>−1</sup> <b>J</b><sub>i</sub> )<sup>−1</sup>
+  <span class="label">(D.2.3)</span>
+</div>
+
+<div class="step">第 4 步：用经验残差校正</div>
+<p>(D.2.3) 在模型完美时成立。实际中 LIO 有未建模漂移，建议乘上经验残差因子：</p>
+<div class="eqn">
+σ̂² = ( ∑<sub>i</sub> w<sub>i</sub> ‖<b>r</b><sub>i</sub>(<b>0</b>)‖² ) / ( 3N − 6 ),&nbsp;&nbsp;
+  <b>Σ</b><sub>T</sub><sup>final</sup> = σ̂² · <b>Σ</b><sub>T</sub>
+  <span class="label">(D.2.4)</span>
+</div>
+<p class="deriv-note">3N 个残差自由度减去 6 个估计参数（SE(3) 的 6 维）。</p>
+
+</div>
+
+<p><strong>这就是为什么 G60 数据也能离线验证 Anchor Manager</strong>：噪声越大，σ̂² 越大，<b>Σ</b><sub>T</sub> 越大，下游匹配阈值越宽松，系统会自动"知道自己不准"，这正是协方差感知的价值。</p>
+
+<!-- =============== D.3 =============== -->
+<h3 id="d-obs-cov">D.3 单帧观测的位置协方差链</h3>
+
+<p>从相机看到一个物体，到这个物体在 map / ENU 锚点下的位置 + 协方差，要经过<strong>4 次坐标变换 + 4 次协方差传播</strong>。</p>
+
+<div class="derivation-block">
+
+<div class="step">链条总览</div>
+<pre class="diagram">
+pixel (u,v) + depth d
+        │  (D.3.1) 相机反投影
+        ▼
+<b>p</b><sup>cam</sup>, <b>Σ</b><sup>cam</sup>
+        │  (D.3.2) 相机外参
+        ▼
+<b>p</b><sup>base</sup>, <b>Σ</b><sup>base</sup>
+        │  (D.3.3) 机器人位姿 (TF)
+        ▼
+<b>p</b><sup>map</sup>, <b>Σ</b><sup>map</sup>
+        │  (D.3.4) Anchor Manager
+        ▼
+<b>p</b><sup>enu</sup>, <b>Σ</b><sup>enu</sup>
+</pre>
+
+<div class="step">D.3.1 像素 + 深度 → 相机系 3D</div>
+<p>针孔模型（K 为内参）：</p>
+<div class="eqn">
+<b>p</b><sup>cam</sup> =
+  <span class="matrix"><table>
+    <tr><td>(u − c<sub>x</sub>) · d / f<sub>x</sub></td></tr>
+    <tr><td>(v − c<sub>y</sub>) · d / f<sub>y</sub></td></tr>
+    <tr><td>d</td></tr>
+  </table></span>
+</div>
+<p>主要噪声来自 <strong>深度</strong>（Realsense D435 类相机）：σ<sub>d</sub>(d) ≈ α · d²（深度噪声随距离平方增长）。像素中心噪声 σ<sub>uv</sub> 通常 1-2 像素。Jacobian：</p>
+<div class="eqn">
+<b>J</b><sub>cam</sub> = ∂<b>p</b><sup>cam</sup> / ∂(u, v, d) =
+  <span class="matrix"><table>
+    <tr><td>d/f<sub>x</sub></td><td>0</td><td>(u−c<sub>x</sub>)/f<sub>x</sub></td></tr>
+    <tr><td>0</td><td>d/f<sub>y</sub></td><td>(v−c<sub>y</sub>)/f<sub>y</sub></td></tr>
+    <tr><td>0</td><td>0</td><td>1</td></tr>
+  </table></span>
+</div>
+<div class="eqn">
+<b>Σ</b><sup>cam</sup> = <b>J</b><sub>cam</sub> · diag(σ<sub>uv</sub>², σ<sub>uv</sub>², σ<sub>d</sub>²(d)) · <b>J</b><sub>cam</sub><sup>⊤</sup>
+  <span class="label">(D.3.1)</span>
+</div>
+<p class="deriv-note">关键观察：<b>Σ</b><sup>cam</sup> 沿光轴方向方差最大（深度噪声主导），横向方差小。这是 RGB-D 物体定位的天然各向异性。</p>
+
+<div class="step">D.3.2 → 机器人基座系</div>
+<p><b>T</b><sub>base←cam</sub> 来自标定，假设已知且无噪声：</p>
+<div class="eqn">
+<b>p</b><sup>base</sup> = <b>R</b><sub>base←cam</sub> <b>p</b><sup>cam</sup> + <b>t</b><sub>base←cam</sub>,&nbsp;&nbsp;
+<b>Σ</b><sup>base</sup> = <b>R</b><sub>base←cam</sub> <b>Σ</b><sup>cam</sup> <b>R</b><sub>base←cam</sub><sup>⊤</sup>
+</div>
+
+<div class="step">D.3.3 → map 锚点系（关键：机器人位姿也带噪声）</div>
+<p>设机器人位姿 <b>T</b><sub>map←base</sub> 有协方差 <b>Σ</b><sub>pose</sub> ∈ ℝ<sup>6×6</sup>（来自 FAST-LIO 输出）。点的变换为：</p>
+<div class="eqn">
+<b>p</b><sup>map</sup> = <b>R</b><sub>map←base</sub> <b>p</b><sup>base</sup> + <b>t</b><sub>map←base</sub>
+</div>
+<p>两个噪声源：点本身的 <b>Σ</b><sup>base</sup> 和位姿的 <b>Σ</b><sub>pose</sub>。位姿对点位置的 Jacobian（用 D.2 的同形式）：</p>
+<div class="eqn">
+<b>J</b><sub>pose</sub> = [ <b>I</b><sub>3</sub> &nbsp; −[ <b>R</b> <b>p</b><sup>base</sup> ]<sub>×</sub> ]
+</div>
+<p>总协方差：</p>
+<div class="eqn">
+<b>Σ</b><sup>map</sup> = <b>R</b><sub>map←base</sub> <b>Σ</b><sup>base</sup> <b>R</b><sub>map←base</sub><sup>⊤</sup>
+&nbsp;+&nbsp;
+<b>J</b><sub>pose</sub> <b>Σ</b><sub>pose</sub> <b>J</b><sub>pose</sub><sup>⊤</sup>
+  <span class="label">(D.3.3)</span>
+</div>
+
+<div class="step">D.3.4 → ENU 锚点系（再加 T̂ 的协方差）</div>
+<p>同上，但这次 <b>T̂</b><sub>ENU←map</sub> 的协方差 <b>Σ</b><sub>T</sub> 来自 D.2：</p>
+<div class="eqn">
+<b>p</b><sup>enu</sup> = <b>R̂</b><sub>ENU←map</sub> <b>p</b><sup>map</sup> + <b>t̂</b><sub>ENU←map</sub>
+</div>
+<div class="eqn">
+<b>Σ</b><sup>enu</sup> = <b>R̂</b><sub>ENU←map</sub> <b>Σ</b><sup>map</sup> <b>R̂</b><sub>ENU←map</sub><sup>⊤</sup>
+&nbsp;+&nbsp;
+<b>J</b><sub>T</sub> <b>Σ</b><sub>T</sub> <b>J</b><sub>T</sub><sup>⊤</sup>
+  <span class="label">(D.3.4)</span>
+</div>
+
+</div>
+
+<p><strong>意义</strong>：<b>Σ</b><sup>enu</sup> 严格 ≥ <b>Σ</b><sup>map</sup>（额外加了 <b>Σ</b><sub>T</sub>）。这是物理直觉：把观测投到 ENU 锚点上一定不会比留在 map 锚点更确定。<strong>这个不等式直接驱动了 D.4 的路由决策</strong>。</p>
+
+<!-- =============== D.4 =============== -->
+<h3 id="d-route">D.4 观测路由的最小迹判据</h3>
+
+<p>观测应该归属到哪个锚点？我们用<strong>"哪个锚点下不确定性更小"</strong>作为决策。"不确定性"用矩阵迹度量（也可以用行列式，但迹计算便宜）。</p>
+
+<div class="derivation-block">
+
+<p>定义：</p>
+<div class="eqn">
+U<sub>map</sub> = tr( <b>Σ</b><sup>map</sup> ),&nbsp;&nbsp; U<sub>enu</sub> = tr( <b>Σ</b><sup>enu</sup> )
+</div>
+
+<p>决策规则（结合锚点健康度）：</p>
+<div class="eqn">
+anchor =
+{
+  ENU,&nbsp; if RTK = FIXED ∧ U<sub>enu</sub> &lt; U<sub>map</sub>&nbsp;&nbsp;
+  MAP,&nbsp; else if drift<sub>LIO</sub> &lt; τ<sub>drift</sub>&nbsp;&nbsp;
+  DROP,&nbsp; otherwise
+}
+  <span class="label">(D.4.1)</span>
+</div>
+
+<p><strong>注解</strong>：</p>
+<ul>
+  <li>由 D.3 的不等式，U<sub>enu</sub> &lt; U<sub>map</sub> 实际上意味着<em>原始观测离 RTK 锚点的"参考点"很近</em>（cov 投影后没放大太多）。</li>
+  <li>RTK FIXED 是<strong>必要条件</strong>但不充分；FIXED 状态下 <b>Σ</b><sub>T</sub> 仍可能很大（窗口短、配对少）。</li>
+  <li>DROP 是<strong>设计上的常态</strong>，不是 bug。</li>
+</ul>
+
+</div>
+
+<!-- =============== D.5 =============== -->
+<h3 id="d-match">D.5 跨锚点物体匹配的 Mahalanobis 推导</h3>
+
+<p>新观测 obs（已带锚点归属）和记忆物体 m（也已带锚点归属）做匹配。<strong>难点</strong>：两者可能在<strong>不同锚点</strong>下。</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：投到共同锚点（不妨投到 ENU）</div>
+<p>若 m 在 map 下：</p>
+<div class="eqn">
+<b>μ</b><sub>m</sub><sup>enu</sup> = <b>R̂</b><sub>ENU←map</sub> <b>μ</b><sub>m</sub><sup>map</sup> + <b>t̂</b><sub>ENU←map</sub>
+</div>
+<div class="eqn">
+<b>Σ</b><sub>m</sub><sup>enu</sup> = <b>R̂</b> <b>Σ</b><sub>m</sub><sup>map</sup> <b>R̂</b><sup>⊤</sup> + <b>J</b><sub>T</sub> <b>Σ</b><sub>T</sub> <b>J</b><sub>T</sub><sup>⊤</sup>
+  <span class="label">(D.5.1)</span>
+</div>
+<p>obs 已在 ENU 下：<b>μ</b><sub>obs</sub><sup>enu</sup>, <b>Σ</b><sub>obs</sub><sup>enu</sup>。</p>
+
+<div class="step">第 2 步：差向量分布</div>
+<p>假设 obs 和 m 独立（合理：一个是当前传感器读数，一个是历史记录），差向量：</p>
+<div class="eqn">
+<b>Δ</b> = <b>μ</b><sub>obs</sub><sup>enu</sup> − <b>μ</b><sub>m</sub><sup>enu</sup> ∼ 𝒩( <b>0</b>, <b>Σ</b><sub>Δ</sub> ),&nbsp;&nbsp;
+<b>Σ</b><sub>Δ</sub> = <b>Σ</b><sub>obs</sub><sup>enu</sup> + <b>Σ</b><sub>m</sub><sup>enu</sup>
+  <span class="label">(D.5.2)</span>
+</div>
+<p class="deriv-note">"如果两者真是同一个物体"则 <b>Δ</b> 应零均值。</p>
+
+<div class="step">第 3 步：Mahalanobis 距离 → χ² → 概率</div>
+<div class="eqn">
+d²<sub>M</sub> = <b>Δ</b><sup>⊤</sup> <b>Σ</b><sub>Δ</sub><sup>−1</sup> <b>Δ</b>
+</div>
+<p>当假设成立时，d²<sub>M</sub> ∼ χ²(3)。所以：</p>
+<div class="eqn">
+P<sub>position</sub>(obs = m) = 1 − F<sub>χ²(3)</sub>( d²<sub>M</sub> )
+  <span class="label">(D.5.3)</span>
+</div>
+<p class="deriv-note">F<sub>χ²(3)</sub> 是自由度 3 的 χ² 累积分布。distance 越小，概率越接近 1；distance 大时迅速衰减。</p>
+
+<div class="step">第 4 步：三因子融合</div>
+<div class="eqn">
+P(obs = m) = P<sub>class</sub>(obs, m) · P<sub>position</sub>(obs, m) · P<sub>appearance</sub>(obs, m)
+  <span class="label">(D.5.4)</span>
+</div>
+<p>其中：</p>
+<ul>
+  <li><span class="math">P<sub>class</sub></span>：硬约束 (0/1) 或 fine-grained 类别相似度</li>
+  <li><span class="math">P<sub>appearance</sub> = max(0, &lt;<b>e</b><sub>obs</sub>, <b>e</b><sub>m</sub>&gt; / (‖<b>e</b>‖²))</span>：CLIP/DINO 嵌入余弦相似度</li>
+</ul>
+
+<div class="step">第 5 步：决策</div>
+<p>对所有候选 m ∈ memory，找 m<sup>*</sup> = arg max P(obs = m)：</p>
+<div class="eqn">
+match =
+{
+  m<sup>*</sup>,&nbsp; if P(obs = m<sup>*</sup>) ≥ τ<sub>match</sub>&nbsp;&nbsp;
+  NEW,&nbsp; otherwise
+}
+  <span class="label">(D.5.5)</span>
+</div>
+<p class="deriv-note">τ<sub>match</sub> 是 ablation 关键参数；论文里要 sweep 不同值看 precision/recall trade-off。</p>
+
+</div>
+
+<!-- =============== D.6 =============== -->
+<h3 id="d-bayes">D.6 多证据贝叶斯融合 (log-odds)</h3>
+
+<p>D.5 是<em>位置 + 视觉 + 类别</em>的<strong>瞬时</strong>匹配。但对一条记忆 m 本身的"它还存在吗"信念，需要积累<strong>多次</strong>证据。</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：定义 log-odds</div>
+<p>对随机事件 E（"物体 m 还存在"），定义：</p>
+<div class="eqn">
+ℓ(E) = log [ P(E) / (1 − P(E)) ]
+  <span class="label">(D.6.1)</span>
+</div>
+<p>逆变换：P(E) = sigmoid( ℓ(E) ) = 1 / (1 + e<sup>−ℓ</sup>)。</p>
+
+<div class="step">第 2 步：贝叶斯规则的 log-odds 形式</div>
+<p>对单个证据 e<sub>i</sub>：</p>
+<div class="eqn">
+ℓ(E | e<sub>1</sub>, …, e<sub>k</sub>) = ℓ(E) + ∑<sub>i</sub> log [ P(e<sub>i</sub> | E) / P(e<sub>i</sub> | ¬E) ]
+  <span class="label">(D.6.2)</span>
+</div>
+<p class="deriv-note">假设证据条件独立（典型 Naive Bayes 假设，工程上够用）。这就是 log-odds 形式的关键优势：<strong>多个证据线性可加</strong>。</p>
+
+<div class="step">第 3 步：每类证据的 log-likelihood ratio</div>
+<table>
+  <tr><th>证据</th><th>取值</th><th>LLR 估计</th></tr>
+  <tr><td>"应见到 m 但没见到"</td><td>1 次</td><td>log [ P(miss | E) / P(miss | ¬E) ] = log [ p<sub>miss</sub> / 1 ] (负数, 减信念)</td></tr>
+  <tr><td>"看到了 m"（匹配概率 P(obs=m)）</td><td>P(obs=m)</td><td>log [ P(obs=m | E) / P(obs=m | ¬E) ] (正数, 加信念)</td></tr>
+  <tr><td>"附近出现同类 NEW 物体"</td><td>1 次</td><td>log [ P(new | relocated_m) / P(new | ¬E) ] (中性偏负)</td></tr>
+</table>
+
+<p>p<sub>miss</sub> 是检测器漏检率，可以从 calibration 数据估计。</p>
+
+</div>
+
+<!-- =============== D.7 =============== -->
+<h3 id="d-kalman">D.7 位置 Kalman 融合</h3>
+
+<p>D.6 更新的是<strong>存在性信念</strong>。当 D.5 决定 obs 匹配上某个 m 时，还要更新 m 的<strong>位置</strong>。这是经典 Kalman update。</p>
+
+<div class="derivation-block">
+
+<p>先验：m 的位置 <b>μ</b><sub>m</sub>, <b>Σ</b><sub>m</sub>。观测：<b>μ</b><sub>obs</sub>, <b>Σ</b><sub>obs</sub>（均已投到 m 的锚点系下）。</p>
+
+<div class="step">Kalman 增益</div>
+<div class="eqn">
+<b>K</b> = <b>Σ</b><sub>m</sub> ( <b>Σ</b><sub>m</sub> + <b>Σ</b><sub>obs</sub> )<sup>−1</sup>
+  <span class="label">(D.7.1)</span>
+</div>
+
+<div class="step">后验</div>
+<div class="eqn">
+<b>μ</b><sub>m</sub><sup>+</sup> = <b>μ</b><sub>m</sub> + <b>K</b> ( <b>μ</b><sub>obs</sub> − <b>μ</b><sub>m</sub> )
+</div>
+<div class="eqn">
+<b>Σ</b><sub>m</sub><sup>+</sup> = ( <b>I</b> − <b>K</b> ) <b>Σ</b><sub>m</sub>
+  <span class="label">(D.7.2)</span>
+</div>
+
+<p><strong>物理意义</strong>：</p>
+<ul>
+  <li>若 obs 很准（<b>Σ</b><sub>obs</sub> 小），<b>K</b> → <b>I</b>，记忆几乎采纳新观测。</li>
+  <li>若 obs 很噪（<b>Σ</b><sub>obs</sub> 大），<b>K</b> → <b>0</b>，记忆几乎不动。</li>
+  <li>多次观测后 <b>Σ</b><sub>m</sub> 持续收缩——记忆位置越来越准。</li>
+</ul>
+
+</div>
+
+<!-- =============== D.8 =============== -->
+<h3 id="d-decay">D.8 信念衰减: hazard rate 推导</h3>
+
+<p>没有任何观测时，记忆的存在性信念应该随时间衰减。为什么是指数衰减？</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：假设恒定 hazard rate</div>
+<p>设物体在 [t, t + dt] 内消失的条件概率为 λ · dt（λ 是常数 hazard rate）。则存活函数满足：</p>
+<div class="eqn">
+P_existence(t + dt) = P_existence(t) · ( 1 − λ · dt )
+</div>
+
+<div class="step">第 2 步：取连续极限</div>
+<p>整理为微分方程：</p>
+<div class="eqn">
+dP/dt = − λ · P&nbsp;&nbsp;⟹&nbsp;&nbsp; P(t) = P(0) · e<sup>−λt</sup>
+  <span class="label">(D.8.1)</span>
+</div>
+
+<div class="step">第 3 步：类别相关 λ</div>
+<table>
+  <tr><th>物体类别</th><th>典型 λ (1/天)</th><th>半衰期</th></tr>
+  <tr><td>墙、消防栓、灭火器</td><td>10<sup>−4</sup></td><td>~19 年</td></tr>
+  <tr><td>办公椅、垃圾桶</td><td>10<sup>−2</sup></td><td>~70 天</td></tr>
+  <tr><td>杯子、文件、个人物品</td><td>10<sup>−1</sup></td><td>~7 天</td></tr>
+</table>
+<p>λ 可手设，更好是从训练数据 fit：</p>
+<div class="eqn">
+λ̂ = arg max<sub>λ</sub> ∑<sub>(t, observed_or_not)</sub> log L(λ; data)
+</div>
+<p class="deriv-note">这就是 survival analysis 的 MLE，论文一个 ablation/分析点。</p>
+
+</div>
+
+<!-- =============== D.9 =============== -->
+<h3 id="d-miss">D.9 应见而未见时的贝叶斯更新</h3>
+
+<p>这是<strong>区分"感知失败"和"世界变化"</strong>的核心。</p>
+
+<div class="derivation-block">
+
+<div class="step">第 1 步：建模观测模型</div>
+<p>设记忆物体 m 在视野内，机器人此时进行了一次 detection 但 m 没出现。定义：</p>
+<ul>
+  <li>P(miss | exists) = p<sub>fn</sub>：检测器漏检率（false negative rate）</li>
+  <li>P(miss | ¬exists) = 1：物体不存在则一定看不到</li>
+</ul>
+
+<div class="step">第 2 步：贝叶斯更新</div>
+<div class="eqn">
+P<sub>exist</sub><sup>+</sup> = P<sub>exist</sub> · p<sub>fn</sub> &nbsp;/&nbsp; ( P<sub>exist</sub> · p<sub>fn</sub> + (1 − P<sub>exist</sub>) · 1 )
+  <span class="label">(D.9.1)</span>
+</div>
+
+<div class="step">第 3 步：log-odds 形式 (推导更直观)</div>
+<div class="eqn">
+ℓ<sup>+</sup> = ℓ + log( p<sub>fn</sub> )&nbsp;&nbsp; (注意 p<sub>fn</sub> &lt; 1, log 为负)
+  <span class="label">(D.9.2)</span>
+</div>
+
+<div class="step">第 4 步：连锁触发状态机</div>
+<pre class="diagram">
+P_exist 阈值                       状态
+─────────────                     ─────
+≥ 0.7                              reusable
+0.3 – 0.7                          stale
+0.1 – 0.3                          suspect_missing  → 触发主动 yaw 扫描
+&lt; 0.1                              missing          → 等待 NEW 同类做 relocation
+</pre>
+
+<p>p<sub>fn</sub> 越小（检测器越好），单次 miss 的衰减越剧烈；p<sub>fn</sub> 越大，需要多次 miss 才能确认。</p>
+
+<p><strong>这就是为什么不能用硬阈值</strong>：硬阈值在 p<sub>fn</sub> 改变时全崩，贝叶斯更新自动适应检测器质量。</p>
+
+</div>
+
+<!-- =============== D.10 =============== -->
+<h3 id="d-score">D.10 决策评分函数的设计动机</h3>
+
+<p>规划层选择"下一步去哪"。候选集 C 包括 frontier + 待验证记忆物体。评分函数：</p>
+
+<div class="eqn">
+score(c) = α · P<sub>relevant</sub>(c) + β · I<sub>gain</sub>(c) − γ · cost(c) − δ · revisit(c)
+  <span class="label">(D.10.1)</span>
+</div>
+
+<h4>各项的来源与单位</h4>
+<table>
+  <tr><th>项</th><th>定义</th><th>单位</th></tr>
+  <tr><td>P<sub>relevant</sub>(c)</td><td>该候选满足当前 ObjectNav goal 的概率</td><td>[0, 1]</td></tr>
+  <tr><td>I<sub>gain</sub>(c)</td><td>访问 c 预计揭示的未知面积</td><td>m²</td></tr>
+  <tr><td>cost(c)</td><td>从当前位姿到 c 的 A* 路径长度</td><td>m</td></tr>
+  <tr><td>revisit(c)</td><td>历史访问惩罚（计数或频率）</td><td>无量纲</td></tr>
+</table>
+
+<h4>对记忆物体 m 的 P<sub>relevant</sub></h4>
+<p>结合 D.9 的 P_existence 与匹配度：</p>
+<div class="eqn">
+P<sub>relevant</sub>(m | goal) = P<sub>existence</sub>(m) · P<sub>match</sub>(m, goal)
+  <span class="label">(D.10.2)</span>
+</div>
+
+<h4>对记忆物体的 urgency（用于待验证排序）</h4>
+<div class="eqn">
+urgency(m) = (1 − P<sub>existence</sub>(m)) · importance(class(m)) / (1 + cost(m))
+  <span class="label">(D.10.3)</span>
+</div>
+<p class="deriv-note">P_existence 越低（越不确定）+ 类别重要性越高 + 路径越短，越紧急复查。</p>
+
+<h4>权重调度</h4>
+<p>α, β 随时间动态调整：</p>
+<div class="eqn">
+α(t) = sigmoid( (t − t<sub>0</sub>) / τ ),&nbsp;&nbsp; β(t) = 1 − α(t)
+</div>
+<p>意义：早期 explore-heavy（β 大），后期 exploit-heavy（α 大）。τ 是切换时间尺度（建议 30-60 秒）。</p>
+
+<!-- =============== D.11 =============== -->
+<h3 id="d-end2end">D.11 端到端: 一帧观测的完整推导链</h3>
+
+<p>把 D.1–D.10 串起来，演示一帧 RGB-D 图来后系统完整的数学流程：</p>
+
+<div class="derivation-block">
+
+<pre class="diagram">
+┌─ 输入 ─────────────────────────────────────────────────┐
+│ frame_t = {                                            │
+│   rgb, depth, camera_info,                              │
+│   pose_map (FAST-LIO + cov),                            │
+│   rtk: (lat, lon, alt, fix_type, cov)                   │
+│ }                                                       │
+└─────────────────────┬───────────────────────────────────┘
+                      ▼
+[Step 1] Anchor Manager 更新 (用 D.1, D.2)
+   if rtk.fix_type == FIXED:
+      append (pose_map_t, pose_enu_t) to window
+      recompute T̂, Σ_T via (D.1.5), (D.2.3-4)
+
+                      ▼
+[Step 2] 检测 (Layer 1, 现成检测器)
+   for each bbox in GroundingDINO(rgb):
+      d = depth[bbox.center]
+      p_cam, Σ_cam ← (D.3.1)
+
+                      ▼
+[Step 3] 协方差链 (用 D.3.2-4)
+   p_base, Σ_base ← apply T_base_cam
+   p_map,  Σ_map  ← apply pose_map, propagate Σ_pose  (D.3.3)
+   if T̂ available:
+      p_enu, Σ_enu ← apply T̂, propagate Σ_T          (D.3.4)
+
+                      ▼
+[Step 4] 观测路由 (用 D.4)
+   anchor ← min trace decision (D.4.1)
+   if anchor == DROP: skip frame
+   else: emit Observation(anchor, μ_obs, Σ_obs, embed)
+
+                      ▼
+[Step 5] 跨锚点匹配 (用 D.5)
+   for each m in memory:
+      project m to obs's anchor if needed (D.5.1)
+      compute P(obs = m) via D.5.2-4
+   m* = argmax P(obs = m)
+   if P(obs = m*) ≥ τ_match: match = m*
+   else: match = NEW
+
+                      ▼
+[Step 6] 记忆更新 (用 D.6, D.7)
+   if match is NEW:
+      create new memory object, initialize with (μ_obs, Σ_obs, embed)
+      # 检查是否触发 relocation
+      for m' in nearby missing same-class:
+         add edge possible_relocation_of(NEW, m')
+   else:
+      # Kalman 位置融合 (D.7)
+      K ← (D.7.1); update m.μ, m.Σ via (D.7.2)
+      # 贝叶斯存在性更新 (D.6)
+      m.ℓ ← m.ℓ + log(P(obs|exists) / P(obs|¬exists))
+      m.last_seen_t ← t
+
+                      ▼
+[Step 7] 对所有 "应见而未见" 的 m 更新 (用 D.9)
+   for each m within current view frustum:
+      if m not matched this frame:
+         m.ℓ ← m.ℓ + log(p_fn)
+         if sigmoid(m.ℓ) < threshold:
+            transition state (reusable → stale → suspect_missing)
+
+                      ▼
+[Step 8] 时间衰减 (用 D.8)
+   for all m (low-frequency, e.g., every 10s):
+      m.P_existence ← m.P_existence · exp(-λ_class * Δt)
+
+                      ▼
+[Step 9] 规划层挑下一目标 (用 D.10)
+   candidates = frontiers ∪ {m: state ∈ {stale, suspect_missing, reusable_target}}
+   for c in candidates:
+      compute score(c) via (D.10.1-3)
+   goto argmax score(c)
+
+                      ▼
+[Step 10] 持久化
+   写 SQLite: observation, decision, anchor_transform, trial_event
+</pre>
+
+</div>
+
+<p><strong>整条链的关键性质</strong>：</p>
+<ol>
+  <li>每个状态量都带协方差，整条链<strong>没有任何硬阈值的"如果距离 &lt; X 米则匹配"</strong>之类的不可解释设计。</li>
+  <li>系统在<em>低质量传感器</em>下自动降级（DROP / 较大 Σ / 衰减更快），无需特例代码。</li>
+  <li>每个步骤的中间结果都<strong>可持久化、可回放、可可视化</strong>，论文的失败案例分析有据可查。</li>
+  <li>大模型只在 Step 2 出现（检测器），<strong>替换检测器</strong>不需要改其他任何一步。</li>
+</ol>
+
+<div class="callout good">
+  <strong>论文叙事支撑：</strong> 这一节即是论文 Method 章节的脊柱。每个子节 (D.1–D.10) 对应论文里一个 subsection，D.11 对应论文里的 "Algorithm 1" 伪代码。Method 写作的"难"主要在这里——一旦推导清晰，行文反而是体力活。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="open">14. 待用户确认的设计选项</h2>
+
+<p>本架构留下了几个<strong>需要你确认</strong>的选项；在 W1 开工之前应明确。</p>
+
+<ol>
+  <li><strong>"找门"的位置</strong>：完全不在论文中？还是作为<em>跨建筑 ObjectNav</em> 的子能力出现？（默认假设：完全不在 method 中。）</li>
+  <li><strong>主实验场地</strong>：实验楼室内 + 周边户外 / 多个房间纯室内 / 跨建筑？这影响"双锚点"是否真正发挥作用。</li>
+  <li><strong>物体选择</strong>：实验放置（椅子/垃圾桶/标记物等）还是环境固有（桌子/灭火器/打印机）？</li>
+  <li><strong>Lifelong 时间尺度</strong>：可做的部署频率（1 周 5 次 / 2 周 10 次 / 1 月持续）？</li>
+  <li><strong>实验楼 RTK 实际表现</strong>：完全无信号 / 靠窗 FLOAT / 深处 NO_FIX？</li>
+</ol>
+
+<p>这些回答会影响 W1-W6 的具体实施细节（特别是 Anchor Manager 的参数 + 物体类别白名单 + 部署节奏）。</p>
+
+<!-- ============================================================ -->
+<footer>
+  本文档为算法架构草案 v2。W1 真车数据回收后，应根据观测到的硬件真实表现修订。<br>
+  存储位置：<code>docs/design/2026-05-25-dual-anchor-lifelong-objectnav-architecture.zh.html</code><br>
+  替代关系：本文档替代同日先前的 "exit-finding-algorithm-architecture" 草案。
+</footer>
+
+</body>
+</html>

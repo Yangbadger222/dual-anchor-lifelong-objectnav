@@ -47,6 +47,80 @@ PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.generate_phase1a_rep
 
 The core package is under `src/objectnav_core/objectnav_core`. It intentionally does not import ROS 2, Nav2, TF, detector models, RTK, or vehicle-specific launch files.
 
+## Repository Map
+
+The current project layout is documented in [`docs/repository-file-management.md`](docs/repository-file-management.md). Use that file when deciding where to put new designs, simulation protocols, generated outputs, datasets, or handoff notes.
+
+## Usability Memory Stress Test
+
+The first algorithm-focused slice is a ROS-free stress harness for usability-centered object memory. It tests the math model before real RTK, RGB-D, detector, or robot closure are involved.
+
+Run it with:
+
+```bash
+PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_usability_stress --output runs/usability_stress/latest --seed 13 --monte-carlo-runs 200
+```
+
+This writes:
+
+- `runs/usability_stress/latest/summary.json`
+- `runs/usability_stress/latest/decision_boundary.csv`
+- `runs/usability_stress/latest/stress_report.html`
+
+The stress harness covers ghost-memory retirement, false-deletion guards, quarantined negative evidence, and bounded trust/verify/search/retire decision sweeps.
+
+## 2D Grid Trace Experiment
+
+The next pre-robot layer is a lightweight statistical 2D trace generator. It emits sequential evidence events, robot/target poses, navigation costs, stale/fresh path costs, multi-object association replay fields, belief values, and trust/verify/search/retire decisions.
+
+Run it with:
+
+```bash
+PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_grid_trace_experiment --output runs/grid_trace/latest --seed 17 --episodes 100000 --steps-per-episode 8
+```
+
+This writes:
+
+- `runs/grid_trace/latest/summary.json`
+- `runs/grid_trace/latest/events.csv`
+- `runs/grid_trace/latest/trace_report.html`
+
+The 100000-episode run writes about 800000 event rows; `events.csv` is large and intentionally ignored under `runs/`. Use fewer episodes for a quick smoke. This is not a sensor-realistic simulator. It is a fast logic harness before Habitat noisy-depth replay and XJTLU real-bag replay.
+
+## Localization-Only Bag Audit
+
+Existing XJTLU corridor bags can be audited before Habitat or RGB-D replay. This is a localization and anchor-health preflight, not an ObjectNav perception result.
+
+Run it with explicit bags:
+
+```bash
+PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_localization_bag_audit \
+  --output runs/localization_bag_audit/latest \
+  --bag /Users/badger/Desktop/my_local_data/logs/2026-03-25-17-46-15/bag \
+  --bag /Users/badger/Desktop/my_local_data/logs/2026-03-22-21-05-17/bag
+```
+
+This writes:
+
+- `runs/localization_bag_audit/latest/summary.json`
+- `runs/localization_bag_audit/latest/session_metrics.csv`
+- `runs/localization_bag_audit/latest/topic_counts.csv`
+- `runs/localization_bag_audit/latest/fix_samples.csv`
+- `runs/localization_bag_audit/latest/lio_samples.csv`
+- `runs/localization_bag_audit/latest/audit_report.html`
+
+The audit reads ROS 2 SQLite bags directly and intentionally avoids `rclpy`, `ros2 bag`, TF2, Nav2, detector, RTK, or vehicle-specific imports.
+
+## Habitat-Sim Next Step
+
+The next simulation protocol is documented as a Chinese HTML operation guide:
+
+```text
+docs/simulation/2026-05-26-habitat-sim-usability-memory.zh.html
+```
+
+It describes the staged Habitat-Sim route, trace schema, evidence extraction rules, baseline plan, metrics, and expected artifact layout before any Habitat-specific code is added.
+
 ## ROS 2 Boundary
 
 This repository is intended to become a ROS 2 workspace, but this computer does not need ROS installed to develop Phase 1A. The current `src/objectnav_core` package includes ROS 2 `ament_python` metadata (`package.xml`, `setup.py`, and `resource/objectnav_core`) so it can later be built with `colcon` on a ROS 2 machine.
