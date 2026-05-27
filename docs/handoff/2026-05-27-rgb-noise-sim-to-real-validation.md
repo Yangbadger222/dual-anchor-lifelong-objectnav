@@ -2,7 +2,7 @@
 
 Date: 2026-05-27  
 Owner: Codex  
-Status: Detector Prompt Fix Ready For Linux Rerun
+Status: Ready For Category Sweep
 
 ## Current State
 
@@ -83,10 +83,21 @@ After detector setup:
   - Low-threshold probes showed class competition: later visible target regions were often labeled `bed` or `sofa`.
   - `toilet_only` prompting improved target positives from 2/15 to 5/15 on the same 320 px trajectory.
 - Added target-conditioned YOLO prompt mode and raised the default harness sensor size to 320.
+- Pulled commit `28b01b9` on `badger-linux`, ran focused tests, and ran the
+  clean target-conditioned smoke:
+  - output: `runs/habitat_usability/rgb_noise_yolo_world_clean_smoke_target_default`
+  - `sensor_size=320`
+  - `yolo_prompt_mode=target`
+  - evidence counts: `positive=4`, `non_confirmation=10`, `unknown=1`
+  - decision counts: `TRUST=1`, `VERIFY=10`, `SEARCH=1`, `RETIRE=3`
+  - mean oracle recall: `0.333309`
+  - oracle-stop success rows: `1`
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
+- Category sweep across ObjectNav classes with target-conditioned prompts.
+- Full `clean/mild/heavy x memory on/off` matrix.
 
 ## Known Risks
 
@@ -100,10 +111,9 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Pull the prompt-mode fix on `badger-linux`.
-2. Run the clean 1-episode YOLO-World smoke with the new defaults
-   (`sensor_size=320`, `yolo_prompt_mode=target`).
-3. Run a category sweep before the full 6-cell matrix.
+1. Run a category sweep before the full 6-cell matrix.
+2. Improve revisit sampling so the detector gets full-object target views.
+3. Then run the `clean/mild/heavy x memory on/off` matrix.
 
 ## Context for Next Contributor
 

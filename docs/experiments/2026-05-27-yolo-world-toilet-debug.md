@@ -20,7 +20,7 @@ and partial target views in the deterministic out-and-back sequence.
 
 | Item | Value |
 |---|---|
-| Branch / commit | `main`, starting from `4060f3f` |
+| Branch / commit | `main`; debug started from `4060f3f`, target-conditioned rerun at `28b01b9` |
 | Machine | `badger-linux`, via `ssh badger@100.88.131.52` |
 | Dataset / scene | HM3D ObjectNav `val_mini`, episode `39`, scene `hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb` |
 | Simulator | Habitat-Sim 0.3.3 / Habitat-Lab 0.3.3 |
@@ -37,6 +37,13 @@ ssh badger@100.88.131.52 \
   'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/rgb_noise_yolo_world_clean_smoke_320 --noise-levels clean --detector yolo_world --memory-ablation on --max-episodes 1 --seed 313 --sensor-size 320'
 ```
 
+Run the target-conditioned smoke after the fix:
+
+```bash
+ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/rgb_noise_yolo_world_clean_smoke_target_default --noise-levels clean --detector yolo_world --memory-ablation on --max-episodes 1 --seed 313'
+```
+
 Run raw low-threshold YOLO-World probes on the same 320 px trajectory using
 prompt sets:
 
@@ -49,14 +56,15 @@ toilet_no_bed = chair, plant, sofa, toilet, tv_monitor
 
 ## Metrics
 
-| Metric | 96 px all6 | 224 px all6 | 320 px all6 |
-|---|---:|---:|---:|
-| Episodes completed | 1 | 1 | 1 |
-| Target-visible rows | 15 | 15 | 15 |
-| Positive evidence rows | 0 | 0 | 2 |
-| Mean detector precision | 0.0 | 0.0 | 0.122784 |
-| Mean oracle recall | 0.0 | 0.0 | 0.199976 |
-| Final `p_valid` | 0.011171 | 0.011171 | 0.027629 |
+| Metric | 96 px all6 | 224 px all6 | 320 px all6 | 320 px target |
+|---|---:|---:|---:|---:|
+| Episodes completed | 1 | 1 | 1 | 1 |
+| Target-visible rows | 15 | 15 | 15 | 15 |
+| Positive evidence rows | 0 | 0 | 2 | 4 |
+| Mean detector precision | 0.0 | 0.0 | 0.122784 | 0.199288 |
+| Mean oracle recall | 0.0 | 0.0 | 0.199976 | 0.333309 |
+| Oracle-stop success rows | 0 | 0 | 0 | 1 |
+| Final `p_valid` | 0.011171 | 0.011171 | 0.027629 | 0.067795 |
 
 Prompt-set probe at 320 px, counting frames where the top target-like
 detection reached confidence `>=0.25`:
@@ -86,6 +94,12 @@ detection reached confidence `>=0.25`:
   frames place the target on the lower/right image edge. These are technically
   oracle-visible but visually partial, so they should not be treated as proof
   that YOLO-World is broken.
+- After changing the harness default to target-conditioned prompting, the
+  formal smoke used prompt `toilet` on every trace row. It produced positive
+  evidence on steps 1, 2, 4, and 5, with detector confidences `0.684210`,
+  `0.721821`, `0.523669`, and `0.349874`. The reset frame also detected the
+  target at `0.737497`, but reset evidence is classified as `unknown` by the
+  current evidence rule.
 
 ## Result
 
@@ -99,11 +113,13 @@ environment:
 - The ObjectNav goal category is known, so the harness should default to
   target-conditioned YOLO prompting and keep the all-category prompt set only
   as an ablation/debug mode.
+- With the new defaults, the smoke no longer fails at the perception layer:
+  YOLO-World confirms the visible `toilet` on early full-target views. The
+  remaining misses are concentrated in edge-clipped revisit frames, which points
+  to the revisit trajectory as the next bottleneck.
 
 ## Follow-up
 
-- Rerun the clean 1-episode smoke after changing the default to
-  `--sensor-size 320 --yolo-prompt-mode target`.
 - Add a category sweep before the full noise-memory matrix.
 - Improve the revisit controller so detector validation samples full target
   views rather than many edge-clipped target fragments.
