@@ -106,11 +106,19 @@ in this run.
 This is not an official ObjectNav benchmark result: no learned navigation policy
 was run, no real YOLO model was run, and no success/SPL metric is reported.
 
+## Follow-up Result
+
+The requested temporal/multi-view confirmation gate and `episode_start` pass
+were completed in
+[`2026-05-27-habitat-valmini-episode-start-confirmation.md`](2026-05-27-habitat-valmini-episode-start-confirmation.md).
+That run reduced false-positive-positive rows from `4` to `0` under the
+goal-viewpoint setup, and found that official episode starts made the target
+visible in only `6 / 30` episodes and `27 / 210` scripted rows.
+
 ## Follow-up
 
-- Add temporal or multi-view confirmation before accepting `POSITIVE` evidence.
-- Run a second pass with `--start-source episode_start` to quantify how often
-  official starts see no target under scripted actions.
+- Tune temporal/multi-view/mask-consistency confirmation so it is less
+  conservative on clean repeated target views.
 - Add optional debug PNG export for low-precision mixed positives and missed
   visible targets.
 - Replace corrupted oracle masks with real detector masks once the memory

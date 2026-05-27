@@ -25,6 +25,7 @@ This directory stores the project memory. Keep it useful enough that a new human
 | Habitat usability replay result | [`experiments/2026-05-27-habitat-usability-replay.md`](experiments/2026-05-27-habitat-usability-replay.md) |
 | Habitat semantic YOLO-breaker result | [`experiments/2026-05-27-habitat-semantic-yolo-stress.md`](experiments/2026-05-27-habitat-semantic-yolo-stress.md) |
 | Habitat ObjectNav val_mini semantic stress | [`experiments/2026-05-27-habitat-objectnav-valmini-semantic-stress.md`](experiments/2026-05-27-habitat-objectnav-valmini-semantic-stress.md) |
+| Habitat ObjectNav val_mini confirmation / episode-start result | [`experiments/2026-05-27-habitat-valmini-episode-start-confirmation.md`](experiments/2026-05-27-habitat-valmini-episode-start-confirmation.md) |
 | Habitat ObjectNav val_mini semantic stress design | [`design/2026-05-27-habitat-val-mini-semantic-stress.md`](design/2026-05-27-habitat-val-mini-semantic-stress.md) |
 | Usability memory algorithm | [`design/2026-05-26-usability-centered-lifelong-object-memory.md`](design/2026-05-26-usability-centered-lifelong-object-memory.md) |
 | 2D trace generator | [`design/2026-05-26-2d-grid-trace-generator.md`](design/2026-05-26-2d-grid-trace-generator.md) |

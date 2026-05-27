@@ -44,6 +44,7 @@ The new runner owns:
 - resetting Habitat-Sim agents to official episode start poses
 - extracting target-category semantic masks from Habitat semantic observations
 - applying the existing YOLO-breaker mask corruptions
+- requiring temporal, multi-view, and mask-consistency confirmation before accepting positive masks
 - updating usability memory and exporting trace/summary/report artifacts
 
 It depends on:
@@ -60,6 +61,7 @@ It depends on:
 | Input | Episode directory | `objectnav_hm3d_v1/val_mini` | Reads `content/*.json.gz` |
 | Input | Scene root | `scene_datasets/hm3d` | Expects `habitat/` and optional `semantic/` |
 | Input | Breaker modes | CSV CLI string | `clean,miss,fly_point,edge_break,mixed` |
+| Input | Positive confirmation | CLI numeric args | Frames, minimum view-change thresholds, and mask-overlap threshold |
 | Output | Trace | CSV | One row per reset/action observation |
 | Output | Summary | JSON | Counts by evidence, decision, breaker mode, and scene |
 | Output | Report | HTML | Human-readable experiment summary |
@@ -88,9 +90,15 @@ It depends on:
 7. For reset and each scripted action, extract an oracle target mask for the
    episode object category.
 8. Apply the configured YOLO-breaker mode.
-9. Classify evidence, update usability memory, choose a trust/verify/search
+9. Classify raw evidence from mask quality.
+10. If the raw evidence is `POSITIVE`, hold it as a pending candidate until it
+   appears in at least `positive_confirmation_frames` observations, the agent
+   pose has changed by either `positive_confirmation_min_translation` meters or
+   `positive_confirmation_min_rotation_deg` degrees, and the detector mask has
+   at least `positive_confirmation_min_mask_iou` overlap with the pending mask.
+11. Update usability memory, choose a trust/verify/search
    decision, and append a trace row.
-10. Export CSV, JSON, and HTML artifacts.
+12. Export CSV, JSON, and HTML artifacts.
 
 ## Failure Modes
 
@@ -101,7 +109,8 @@ It depends on:
 | Scene semantic metadata is missing | Semantic object/category count is zero | Fail before claiming semantic stress |
 | Target category has no semantic ids in the scene | Empty category-id map | Rows become `UNKNOWN` with explicit reason |
 | Target is not visible under scripted actions | Oracle target pixels stay below threshold | Export `target_not_visible` rows; do not treat absence as `FREE` |
-| Corrupt masks survive quality gates | Positive with low precision | Count `false_positive_positive_rows` |
+| Corrupt masks survive quality gates in one frame | Raw positive with low precision | Suppress as pending/quarantined until temporal, view, and mask-consistency confirmation |
+| Corrupt masks survive confirmation | Positive with low precision | Count `false_positive_positive_rows` and `false_positive_candidate_rows` |
 
 ## Verification Plan
 
@@ -111,9 +120,12 @@ It depends on:
   - run-local scene dataset config generation
   - target-category semantic id lookup
   - evidence behavior when a target category is absent or out of view
+  - positive confirmation suppresses one-frame positives
+  - positive confirmation accepts repeated positives after view change
 - Import test to ensure Habitat imports remain lazy.
 - Run a one-episode probe against `TEEsavR23oF`.
 - Run the full local `val_mini` set: 30 episodes, 7 rows each.
+- Run an `episode_start` pass to quantify target visibility from official starts.
 - Run all Python tests and `compileall`.
 
 ## Research Relevance
@@ -126,7 +138,6 @@ reported.
 
 ## Open Questions
 
-- How much should positive evidence require temporal or multi-view confirmation?
 - Should the next runner use a learned or classical navigation policy to make
   target visibility less dependent on scripted actions?
 - Should real YOLO masks replace oracle semantic-mask corruptions after the

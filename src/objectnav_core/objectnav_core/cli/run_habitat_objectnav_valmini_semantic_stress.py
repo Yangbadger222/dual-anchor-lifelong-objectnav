@@ -56,6 +56,30 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
+    parser.add_argument(
+        "--positive-confirmation-frames",
+        type=int,
+        default=2,
+        help="Number of positive candidate frames required before memory update.",
+    )
+    parser.add_argument(
+        "--positive-confirmation-min-translation",
+        type=float,
+        default=0.05,
+        help="Minimum agent translation in meters for multi-view confirmation.",
+    )
+    parser.add_argument(
+        "--positive-confirmation-min-rotation-deg",
+        type=float,
+        default=5.0,
+        help="Minimum agent rotation in degrees for multi-view confirmation.",
+    )
+    parser.add_argument(
+        "--positive-confirmation-min-mask-iou",
+        type=float,
+        default=0.05,
+        help="Minimum detector-mask IoU between candidate views for confirmation.",
+    )
     args = parser.parse_args(argv)
 
     actions = [action.strip() for action in args.actions.split(",") if action.strip()]
@@ -74,6 +98,10 @@ def main(argv: list[str] | None = None) -> int:
         breaker_modes=breaker_modes,
         min_target_pixels=args.min_target_pixels,
         min_detector_pixels=args.min_detector_pixels,
+        positive_confirmation_frames=args.positive_confirmation_frames,
+        positive_confirmation_min_translation=args.positive_confirmation_min_translation,
+        positive_confirmation_min_rotation_deg=args.positive_confirmation_min_rotation_deg,
+        positive_confirmation_min_mask_iou=args.positive_confirmation_min_mask_iou,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0

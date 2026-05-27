@@ -2,11 +2,11 @@
 
 Date: 2026-05-26  
 Owner: Codex  
-Status: Official Val-Mini Semantic Stress Completed; Benchmark Metrics Still Pending
+Status: Val-Mini Confirmation Gate Completed; Benchmark Metrics Still Pending
 
 ## Current State
 
-The Habitat-Sim step now has both documentation and executable code. The repository has a synthetic Habitat-Lab ObjectNav smoke, an HM3D real-scene smoke, a multi-episode Habitat usability replay that feeds trace-derived evidence into `UsabilityUpdater` and `UsabilityDecisionPolicy`, a semantic-mask YOLO-breaker stress runner using Habitat-Sim RGB-D-semantic sensors, and an official HM3D ObjectNav `val_mini` semantic stress runner.
+The Habitat-Sim step now has both documentation and executable code. The repository has a synthetic Habitat-Lab ObjectNav smoke, an HM3D real-scene smoke, a multi-episode Habitat usability replay that feeds trace-derived evidence into `UsabilityUpdater` and `UsabilityDecisionPolicy`, a semantic-mask YOLO-breaker stress runner using Habitat-Sim RGB-D-semantic sensors, and an official HM3D ObjectNav `val_mini` semantic stress runner with temporal/multi-view/mask-consistency confirmation for positive evidence.
 
 The official HM3D ObjectNav v1 episode archive has been downloaded under ignored `datasets/habitat/`. The local `scene_datasets/hm3d/habitat` and `scene_datasets/hm3d/semantic` assets include the two `val_mini` scene ids, so the new runner maps official `hm3d/val/...` episode paths onto the local `hm3d/habitat/...` layout. This supports semantic stress against official episode metadata, but it is still not an official benchmark result because the run uses goal viewpoints/scripted actions and reports no success/SPL.
 
@@ -70,6 +70,16 @@ The official HM3D ObjectNav v1 episode archive has been downloaded under ignored
 - Ran a 1-episode probe and a full 30-episode `val_mini` stress under ignored `runs/habitat_usability/hm3d_valmini_semantic_stress_30ep`.
 - Main result: 30 episodes, 210 rows, target-visible episodes `27`, evidence counts `positive=58`, `non_confirmation=9`, `unknown=143`; decision counts `verify=175`, `trust=35`; mean final `p_valid=0.757149`.
 - Stress signals: clean mean final `p_valid=0.970945`, miss mean `0.569045`, fly-point mean `0.780606`, edge-break mean `0.721548`, mixed mean `0.743600`; mixed produced 4 false-positive-positive rows and miss produced 11 missed-visible-target rows.
+
+2026-05-27 positive confirmation and episode-start update:
+
+- Added positive confirmation to the `val_mini` semantic stress runner. A raw/candidate `POSITIVE` is now quarantined as `UNKNOWN` until it repeats across at least 2 observations, the agent pose changes by at least `0.05 m` or `5 deg`, and the detector mask overlaps the pending mask by IoU `0.05`.
+- Added trace and summary fields that separate candidate positives, confirmed positives, suppressed positives, false-positive candidates, and final false-positive-positive rows.
+- Ran a 30-episode goal-viewpoint confirmation pass under ignored `runs/habitat_usability/hm3d_valmini_semantic_stress_confirmed_30ep`.
+- Goal-viewpoint confirmation result: target-visible episodes `27`, target-visible rows `174`, candidate positives `58`, confirmed positives `31`, suppressed positives `27`, false-positive candidates `4`, false-positive-positive rows `0`, mean final `p_valid=0.683128`.
+- Ran a 30-episode official `--start-source episode_start` pass under ignored `runs/habitat_usability/hm3d_valmini_semantic_stress_episode_start_confirmed_30ep`.
+- Episode-start result: target-visible episodes `6`, target-visible rows `27`, candidate positives `24`, confirmed positives `4`, suppressed positives `20`, false-positive candidates `14`, false-positive-positive rows `0`, decision counts `VERIFY=210`, mean final `p_valid=0.625552`.
+- Main interpretation: official starts are bad for immediate semantic-memory visibility under scripted actions, while the confirmation gate blocks the observed single-frame low-precision positive updates.
 
 ## Files Touched
 
@@ -154,6 +164,20 @@ The official HM3D ObjectNav v1 episode archive has been downloaded under ignored
 - `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_valmini_semantic_stress.py`
 - `src/objectnav_core/tests/test_habitat_objectnav_valmini_semantic_stress.py`
 - `src/objectnav_core/tests/test_ros_packaging.py`
+
+2026-05-27 positive confirmation and episode-start additional files:
+
+- `README.md`
+- `docs/README.md`
+- `docs/repository-file-management.md`
+- `docs/design/2026-05-27-habitat-val-mini-semantic-stress.md`
+- `docs/experiments/2026-05-27-habitat-objectnav-valmini-semantic-stress.md`
+- `docs/experiments/2026-05-27-habitat-valmini-episode-start-confirmation.md`
+- `docs/handoff/2026-05-26-habitat-sim-usability-replay.md`
+- `docs/devlog/2026-05.md`
+- `src/objectnav_core/objectnav_core/cli/run_habitat_objectnav_valmini_semantic_stress.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_valmini_semantic_stress.py`
+- `src/objectnav_core/tests/test_habitat_objectnav_valmini_semantic_stress.py`
 
 ## Commands Run
 
@@ -317,6 +341,19 @@ HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet conda run -n habitat env PYTHONPATH=src/o
 find runs/habitat_usability/hm3d_valmini_semantic_stress_30ep -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
 ```
 
+2026-05-27 positive confirmation and episode-start commands:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests/test_habitat_objectnav_valmini_semantic_stress.py src/objectnav_core/tests/test_ros_packaging.py -q
+python3 -m compileall -q src/objectnav_core/objectnav_core
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/hm3d_valmini_semantic_stress_confirmed_30ep --max-episodes 30 --start-source goal_viewpoint --seed 313 --sensor-size 96 --positive-confirmation-frames 2 --positive-confirmation-min-translation 0.05 --positive-confirmation-min-rotation-deg 5.0 --positive-confirmation-min-mask-iou 0.05
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/hm3d_valmini_semantic_stress_episode_start_confirmed_30ep --max-episodes 30 --start-source episode_start --seed 313 --sensor-size 96 --positive-confirmation-frames 2 --positive-confirmation-min-translation 0.05 --positive-confirmation-min-rotation-deg 5.0 --positive-confirmation-min-mask-iou 0.05
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests -q
+git diff --check
+git check-ignore -v runs/habitat_usability/hm3d_valmini_semantic_stress_confirmed_30ep/summary.json runs/habitat_usability/hm3d_valmini_semantic_stress_episode_start_confirmed_30ep/summary.json
+rg -n "041027|password|密码" README.md docs src || true
+```
+
 ## Verification
 
 - Full core pytest: 37 tests passed.
@@ -400,6 +437,17 @@ The user explicitly said not to check HTML rendering, so no browser/render valid
 - Breaker mode means: clean `0.970945`, miss `0.569045`, fly-point `0.780606`, edge-break `0.721548`, mixed `0.743600`.
 - Mixed mode produced 4 false-positive-positive rows; miss mode produced 11 missed-visible-target rows.
 
+2026-05-27 positive confirmation and episode-start verification:
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests/test_habitat_objectnav_valmini_semantic_stress.py src/objectnav_core/tests/test_ros_packaging.py -q` passed with 12 tests after adding confirmation helpers.
+- `python3 -m compileall -q src/objectnav_core/objectnav_core` passed.
+- Full test suite `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests -q` passed with 63 tests and one existing `pythonpath` config warning.
+- Goal-viewpoint confirmation run completed with 30 episodes and 210 rows; false-positive-positive rows dropped from 4 in the previous no-confirmation report to 0.
+- Official `episode_start` confirmation run completed with 30 episodes and 210 rows; target-visible episodes were 6 and target-visible rows were 27.
+- `git diff --check` passed.
+- `git check-ignore -v` confirmed both new run `summary.json` files are ignored by the repository's `runs/**` rule.
+- Sensitive scan `rg -n "041027|password|密码" README.md docs src || true` found no matches.
+
 ## Known Risks
 
 - Habitat-Sim install commands can change; the HTML document points to official Habitat docs and keeps commands as a project-side operating plan.
@@ -418,20 +466,20 @@ The user explicitly said not to check HTML rendering, so no browser/render valid
 - The multi-episode replay evidence is proxy evidence from distance/depth/collision, not semantic object visibility or detector output.
 - Two HM3D example scenes report no semantic metadata in the current probe; only `GLAQ4DNUx5U` reports semantic metadata.
 - Semantic YOLO stress uses oracle semantic ids corrupted into detector-like masks. It is stronger than distance-proxy replay but still does not run a learned YOLO detector.
-- Single-frame false-positive masks can still inflate memory if they survive component/edge quality gates. Add temporal consistency before treating this as robust to detector hallucination.
+- Single-frame false-positive masks were blocked in the latest `val_mini` confirmation run, but the gate is conservative and suppresses some real positives when motion or mask consistency is weak.
 - The official `val_mini` semantic stress uses official episode metadata but starts from goal viewpoints by default to keep targets visible; it is not a navigation-policy benchmark and reports no success/SPL.
+- The official `episode_start` pass showed very poor immediate target visibility under scripted actions. Do not interpret low confidence there as a full ObjectNav failure until a navigation policy moves toward the target.
 - Local HM3D v0.2 scene layout is mapped onto official `hm3d/val/...` paths. Keep this as a runner-local resolver unless the dataset layout is deliberately normalized later.
 
 ## Next Recommended Step
 
 1. Keep using the local ROS 2 Humble workspace plus conda environment `habitat` as the execution target.
-2. Run a separate official `val_mini` pass with `--start-source episode_start` to measure target visibility from official starts under scripted actions.
-3. Add temporal and multi-view consistency gates for `POSITIVE` evidence from semantic/detector masks.
+2. Add semantic debug PNG export for representative suppressed false-positive candidates and missed-visible rows.
+3. Tune confirmation adaptively by category, mask size, range, and viewpoint motion instead of keeping one global strict threshold.
 4. Replace corrupted oracle masks with real detector replay.
 5. Provide Matterport/HM3D credentials or pre-downloaded HM3D v0.1/v0.2 val scene assets if full `val` or benchmark measurements are needed.
 6. Run official HM3D ObjectNav with a real navigation policy and task measurements enabled before claiming success/SPL.
-7. Add semantic debug PNG export for representative false-positive and missed-visible rows.
 
 ## Context for Next Contributor
 
-The implemented CLIs are documented in `docs/design/2026-05-26-habitat-sim-usability-replay.md` and `docs/design/2026-05-27-habitat-val-mini-semantic-stress.md`. Keep Habitat dependencies optional so `objectnav_core` tests still run on machines without ROS or Habitat. The strongest current conclusion is "semantic memory stress works against official ObjectNav `val_mini` metadata and local HM3D semantic assets"; the not-yet-supported conclusion is "official ObjectNav benchmark performance".
+The implemented CLIs are documented in `docs/design/2026-05-26-habitat-sim-usability-replay.md` and `docs/design/2026-05-27-habitat-val-mini-semantic-stress.md`. Keep Habitat dependencies optional so `objectnav_core` tests still run on machines without ROS or Habitat. The strongest current conclusions are "semantic memory stress works against official ObjectNav `val_mini` metadata and local HM3D semantic assets", "official starts expose little target visibility under scripted actions", and "temporal/multi-view/mask confirmation blocks the observed single-frame false positives". The not-yet-supported conclusion is "official ObjectNav benchmark performance".

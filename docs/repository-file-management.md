@@ -35,6 +35,7 @@ This repository is a research workspace, so files should make the project easier
 | Habitat-Sim usability replay | `docs/experiments/2026-05-27-habitat-usability-replay.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_usability_replay.py` |
 | Habitat semantic YOLO-breaker stress | `docs/experiments/2026-05-27-habitat-semantic-yolo-stress.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_semantic_yolo_stress.py` |
 | Habitat ObjectNav val_mini semantic stress | `docs/experiments/2026-05-27-habitat-objectnav-valmini-semantic-stress.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_valmini_semantic_stress.py` |
+| Habitat ObjectNav val_mini confirmation / episode-start stress | `docs/experiments/2026-05-27-habitat-valmini-episode-start-confirmation.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_valmini_semantic_stress.py` |
 
 ## Artifact Policy
 

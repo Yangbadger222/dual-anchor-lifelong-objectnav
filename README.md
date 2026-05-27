@@ -196,14 +196,37 @@ conda run -n habitat env PYTHONPATH=src/objectnav_core \
   python -m objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress \
   --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
   --scene-root datasets/habitat/scene_datasets/hm3d \
-  --output runs/habitat_usability/hm3d_valmini_semantic_stress_30ep \
+  --output runs/habitat_usability/hm3d_valmini_semantic_stress_confirmed_30ep \
   --max-episodes 30 \
   --start-source goal_viewpoint \
   --seed 313 \
-  --sensor-size 96
+  --sensor-size 96 \
+  --positive-confirmation-frames 2 \
+  --positive-confirmation-min-translation 0.05 \
+  --positive-confirmation-min-rotation-deg 5.0 \
+  --positive-confirmation-min-mask-iou 0.05
 ```
 
-This runner maps official `hm3d/val/...` scene ids to the local `hm3d/habitat/...` asset layout, generates a run-local scene dataset config, extracts target-category semantic masks, applies the same YOLO-breaker modes, and exports `objectnav_valmini_semantic_trace.csv`, `summary.json`, and `report.html`. It uses official episode metadata but still does not report ObjectNav success/SPL because no navigation policy is evaluated.
+This runner maps official `hm3d/val/...` scene ids to the local `hm3d/habitat/...` asset layout, generates a run-local scene dataset config, extracts target-category semantic masks, applies the same YOLO-breaker modes, requires temporal/view/mask consistency before accepting positive evidence, and exports `objectnav_valmini_semantic_trace.csv`, `summary.json`, and `report.html`. It uses official episode metadata but still does not report ObjectNav success/SPL because no navigation policy is evaluated.
+
+To quantify how little the target is visible from official ObjectNav starts under the scripted action sweep, switch the start source:
+
+```bash
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_usability/hm3d_valmini_semantic_stress_episode_start_confirmed_30ep \
+  --max-episodes 30 \
+  --start-source episode_start \
+  --seed 313 \
+  --sensor-size 96 \
+  --positive-confirmation-frames 2 \
+  --positive-confirmation-min-translation 0.05 \
+  --positive-confirmation-min-rotation-deg 5.0 \
+  --positive-confirmation-min-mask-iou 0.05
+```
 
 ## ROS 2 Boundary
 

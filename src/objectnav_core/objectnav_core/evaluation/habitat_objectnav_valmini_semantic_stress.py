@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+import math
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
@@ -64,6 +65,52 @@ class EpisodeStart:
     source_used: str
 
 
+@dataclass(frozen=True)
+class PositiveConfirmationConfig:
+    frames: int = 2
+    min_translation: float = 0.05
+    min_rotation_deg: float = 5.0
+    min_mask_iou: float = 0.05
+
+
+@dataclass
+class PositiveConfirmationState:
+    pending_count: int = 0
+    origin_position: tuple[float, float, float] | None = None
+    origin_rotation: tuple[float, float, float, float] | None = None
+    origin_mask: np.ndarray | None = None
+
+    def reset(self) -> None:
+        self.pending_count = 0
+        self.origin_position = None
+        self.origin_rotation = None
+        self.origin_mask = None
+
+    def observe(
+        self,
+        pose: tuple[tuple[float, float, float], tuple[float, float, float, float]],
+        mask: np.ndarray,
+    ) -> tuple[int, float, float, float]:
+        position, rotation = pose
+        candidate_mask = np.asarray(mask, dtype=bool)
+        if (
+            self.pending_count == 0
+            or self.origin_position is None
+            or self.origin_rotation is None
+            or self.origin_mask is None
+        ):
+            self.pending_count = 1
+            self.origin_position = position
+            self.origin_rotation = rotation
+            self.origin_mask = candidate_mask.copy()
+        else:
+            self.pending_count += 1
+        translation = _translation_delta(self.origin_position, position)
+        rotation_deg = _quaternion_angle_degrees(self.origin_rotation, rotation)
+        mask_iou = _mask_iou(self.origin_mask, candidate_mask)
+        return self.pending_count, translation, rotation_deg, mask_iou
+
+
 def run_habitat_objectnav_valmini_semantic_stress(
     output_dir: str | Path,
     *,
@@ -77,6 +124,10 @@ def run_habitat_objectnav_valmini_semantic_stress(
     breaker_modes: Sequence[str] = DEFAULT_BREAKER_MODES,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
+    positive_confirmation_frames: int = 2,
+    positive_confirmation_min_translation: float = 0.05,
+    positive_confirmation_min_rotation_deg: float = 5.0,
+    positive_confirmation_min_mask_iou: float = 0.05,
 ) -> dict[str, Any]:
     """Run semantic-mask YOLO-breaker stress from official HM3D val_mini episodes."""
 
@@ -88,6 +139,14 @@ def run_habitat_objectnav_valmini_semantic_stress(
         raise ValueError("min_target_pixels must be positive")
     if min_detector_pixels <= 0:
         raise ValueError("min_detector_pixels must be positive")
+    if positive_confirmation_frames <= 0:
+        raise ValueError("positive_confirmation_frames must be positive")
+    if positive_confirmation_min_translation < 0.0:
+        raise ValueError("positive_confirmation_min_translation must be non-negative")
+    if positive_confirmation_min_rotation_deg < 0.0:
+        raise ValueError("positive_confirmation_min_rotation_deg must be non-negative")
+    if not 0.0 <= positive_confirmation_min_mask_iou <= 1.0:
+        raise ValueError("positive_confirmation_min_mask_iou must be in [0, 1]")
     if not breaker_modes:
         raise ValueError("At least one breaker mode is required")
     unknown_modes = sorted(set(breaker_modes) - set(DEFAULT_BREAKER_MODES))
@@ -109,6 +168,12 @@ def run_habitat_objectnav_valmini_semantic_stress(
     selected_episodes = episodes[:max_episodes] if max_episodes is not None else episodes
     if not selected_episodes:
         raise ValueError(f"No ObjectNav episodes found under {dataset_path}")
+    positive_confirmation = PositiveConfirmationConfig(
+        frames=positive_confirmation_frames,
+        min_translation=positive_confirmation_min_translation,
+        min_rotation_deg=positive_confirmation_min_rotation_deg,
+        min_mask_iou=positive_confirmation_min_mask_iou,
+    )
 
     scene_config_path = output_path / "hm3d_valmini_annotated_basis.scene_dataset_config.json"
     _write_scene_dataset_config(
@@ -158,6 +223,7 @@ def run_habitat_objectnav_valmini_semantic_stress(
                     semantic_id_to_category=semantic_id_to_category,
                     min_target_pixels=min_target_pixels,
                     min_detector_pixels=min_detector_pixels,
+                    positive_confirmation=positive_confirmation,
                 )
                 trace_rows.extend(rows)
                 episode_summaries.append(episode_summary)
@@ -178,6 +244,7 @@ def run_habitat_objectnav_valmini_semantic_stress(
         breaker_modes=breaker_modes,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
+        positive_confirmation=positive_confirmation,
         scene_summaries=scene_summaries,
         rows=trace_rows,
         episode_summaries=episode_summaries,
@@ -324,6 +391,7 @@ def _run_official_episode(
     semantic_id_to_category: dict[int, str],
     min_target_pixels: int,
     min_detector_pixels: int,
+    positive_confirmation: PositiveConfirmationConfig,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
@@ -344,8 +412,13 @@ def _run_official_episode(
     negative_streak = 0
     collision_steps = 0
     false_positive_positive_rows = 0
+    false_positive_candidate_rows = 0
     missed_visible_target_rows = 0
     target_visible_rows = 0
+    candidate_positive_rows = 0
+    confirmed_positive_rows = 0
+    suppressed_positive_rows = 0
+    confirmation_state = PositiveConfirmationState()
     total_actions = ["reset", *actions]
 
     for step_index, action in enumerate(total_actions):
@@ -375,6 +448,25 @@ def _run_official_episode(
         )
         if not target_semantic_ids and evidence_reason == "target_out_of_current_view":
             evidence_reason = "target_category_not_in_semantic_scene"
+        candidate_evidence_type = evidence_type
+        candidate_evidence_strength = evidence_strength
+        candidate_quarantined = quarantined
+        candidate_evidence_reason = evidence_reason
+        confirmation = _apply_positive_confirmation(
+            evidence_type=evidence_type,
+            evidence_strength=evidence_strength,
+            quarantined=quarantined,
+            evidence_reason=evidence_reason,
+            state=confirmation_state,
+            pose=_agent_pose(agent),
+            detector_mask=breaker.detector_mask,
+            config=positive_confirmation,
+        )
+        evidence_type = confirmation["evidence_type"]
+        evidence_strength = confirmation["evidence_strength"]
+        quarantined = confirmation["quarantined"]
+        evidence_reason = confirmation["evidence_reason"]
+
         if evidence_type is EvidenceType.POSITIVE:
             negative_streak = 0
         elif evidence_type in {
@@ -402,9 +494,15 @@ def _run_official_episode(
         )
         if collided:
             collision_steps += 1
+        candidate_positive = candidate_evidence_type is EvidenceType.POSITIVE
+        confirmed_positive = candidate_positive and evidence_type is EvidenceType.POSITIVE
+        suppressed_positive = candidate_positive and evidence_type is not EvidenceType.POSITIVE
         false_positive_positive = (
             evidence_type is EvidenceType.POSITIVE
             and mask_metrics["detector_precision"] < 0.25
+        )
+        false_positive_candidate = (
+            candidate_positive and mask_metrics["detector_precision"] < 0.25
         )
         missed_visible_target = (
             mask_metrics["oracle_target_pixels"] >= min_target_pixels
@@ -412,8 +510,12 @@ def _run_official_episode(
         )
         target_visible = mask_metrics["oracle_target_pixels"] >= min_target_pixels
         false_positive_positive_rows += int(false_positive_positive)
+        false_positive_candidate_rows += int(false_positive_candidate)
         missed_visible_target_rows += int(missed_visible_target)
         target_visible_rows += int(target_visible)
+        candidate_positive_rows += int(candidate_positive)
+        confirmed_positive_rows += int(confirmed_positive)
+        suppressed_positive_rows += int(suppressed_positive)
 
         rows.append(
             {
@@ -441,7 +543,25 @@ def _run_official_episode(
                 "edge_break_pixels": breaker.edge_break_pixels,
                 **mask_metrics,
                 "false_positive_positive": false_positive_positive,
+                "false_positive_candidate": false_positive_candidate,
                 "missed_visible_target": missed_visible_target,
+                "candidate_evidence_type": candidate_evidence_type.value,
+                "candidate_evidence_strength": round(candidate_evidence_strength, 6),
+                "candidate_evidence_quarantined": candidate_quarantined,
+                "candidate_evidence_reason": candidate_evidence_reason,
+                "positive_confirmation_candidate": candidate_positive,
+                "positive_confirmation_count": confirmation["pending_count"],
+                "positive_confirmation_translation": round(
+                    confirmation["translation"], 6
+                ),
+                "positive_confirmation_rotation_deg": round(
+                    confirmation["rotation_deg"], 6
+                ),
+                "positive_confirmation_mask_iou": round(
+                    confirmation["mask_iou"], 6
+                ),
+                "positive_confirmation_confirmed": confirmation["confirmed"],
+                "positive_confirmation_suppressed": suppressed_positive,
                 "evidence_type": evidence_type.value,
                 "evidence_strength": round(evidence_strength, 6),
                 "evidence_quarantined": quarantined,
@@ -471,11 +591,155 @@ def _run_official_episode(
         "trace_rows": len(rows),
         "target_visible_rows": target_visible_rows,
         "collision_steps": collision_steps,
+        "candidate_positive_rows": candidate_positive_rows,
+        "confirmed_positive_rows": confirmed_positive_rows,
+        "suppressed_positive_rows": suppressed_positive_rows,
         "false_positive_positive_rows": false_positive_positive_rows,
+        "false_positive_candidate_rows": false_positive_candidate_rows,
         "missed_visible_target_rows": missed_visible_target_rows,
         "final_belief": _belief_dict(belief),
         "final_p_valid": round(belief.p_valid, 6),
     }
+
+
+def _apply_positive_confirmation(
+    *,
+    evidence_type: EvidenceType,
+    evidence_strength: float,
+    quarantined: bool,
+    evidence_reason: str,
+    state: PositiveConfirmationState,
+    pose: tuple[tuple[float, float, float], tuple[float, float, float, float]],
+    detector_mask: np.ndarray,
+    config: PositiveConfirmationConfig,
+) -> dict[str, Any]:
+    if evidence_type is not EvidenceType.POSITIVE:
+        state.reset()
+        return {
+            "evidence_type": evidence_type,
+            "evidence_strength": evidence_strength,
+            "quarantined": quarantined,
+            "evidence_reason": evidence_reason,
+            "pending_count": 0,
+            "translation": 0.0,
+            "rotation_deg": 0.0,
+            "mask_iou": 0.0,
+            "confirmed": False,
+        }
+    if config.frames <= 1:
+        return {
+            "evidence_type": evidence_type,
+            "evidence_strength": evidence_strength,
+            "quarantined": quarantined,
+            "evidence_reason": evidence_reason,
+            "pending_count": 1,
+            "translation": 0.0,
+            "rotation_deg": 0.0,
+            "mask_iou": 1.0,
+            "confirmed": True,
+        }
+
+    pending_count, translation, rotation_deg, mask_iou = state.observe(
+        pose,
+        detector_mask,
+    )
+    temporal_confirmed = pending_count >= config.frames
+    view_confirmed = (
+        translation >= config.min_translation
+        or rotation_deg >= config.min_rotation_deg
+    )
+    mask_confirmed = mask_iou >= config.min_mask_iou
+    if temporal_confirmed and view_confirmed and mask_confirmed:
+        position, rotation = pose
+        state.pending_count = 1
+        state.origin_position = position
+        state.origin_rotation = rotation
+        state.origin_mask = np.asarray(detector_mask, dtype=bool).copy()
+        return {
+            "evidence_type": evidence_type,
+            "evidence_strength": evidence_strength,
+            "quarantined": quarantined,
+            "evidence_reason": f"confirmed_{evidence_reason}",
+            "pending_count": pending_count,
+            "translation": translation,
+            "rotation_deg": rotation_deg,
+            "mask_iou": mask_iou,
+            "confirmed": True,
+        }
+
+    if not temporal_confirmed:
+        reason = "pending_positive_confirmation"
+    elif not view_confirmed:
+        reason = "waiting_for_multiview_positive_confirmation"
+    else:
+        reason = "waiting_for_mask_consistency_confirmation"
+    return {
+        "evidence_type": EvidenceType.UNKNOWN,
+        "evidence_strength": 0.35,
+        "quarantined": True,
+        "evidence_reason": reason,
+        "pending_count": pending_count,
+        "translation": translation,
+        "rotation_deg": rotation_deg,
+        "mask_iou": mask_iou,
+        "confirmed": False,
+    }
+
+
+def _agent_pose(
+    agent: Any,
+) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
+    state = agent.get_state()
+    return _tuple3(state.position), _tuple4(_rotation_xyzw(state.rotation))
+
+
+def _rotation_xyzw(rotation: Any) -> tuple[float, float, float, float]:
+    if hasattr(rotation, "vector") and hasattr(rotation, "scalar"):
+        return (
+            float(rotation.vector.x),
+            float(rotation.vector.y),
+            float(rotation.vector.z),
+            float(rotation.scalar),
+        )
+    if all(hasattr(rotation, attr) for attr in ("x", "y", "z", "w")):
+        return float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w)
+    return _tuple4(rotation)
+
+
+def _translation_delta(
+    lhs: tuple[float, float, float],
+    rhs: tuple[float, float, float],
+) -> float:
+    return math.dist(lhs, rhs)
+
+
+def _quaternion_angle_degrees(
+    lhs: tuple[float, float, float, float],
+    rhs: tuple[float, float, float, float],
+) -> float:
+    lhs_norm = _normalize_quaternion(lhs)
+    rhs_norm = _normalize_quaternion(rhs)
+    dot = abs(sum(left * right for left, right in zip(lhs_norm, rhs_norm)))
+    dot = min(1.0, max(-1.0, dot))
+    return math.degrees(2.0 * math.acos(dot))
+
+
+def _mask_iou(lhs: np.ndarray, rhs: np.ndarray) -> float:
+    left = np.asarray(lhs, dtype=bool)
+    right = np.asarray(rhs, dtype=bool)
+    union = int((left | right).sum())
+    if union == 0:
+        return 0.0
+    return float((left & right).sum() / union)
+
+
+def _normalize_quaternion(
+    values: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    norm = math.sqrt(sum(value * value for value in values))
+    if norm == 0.0:
+        return (0.0, 0.0, 0.0, 1.0)
+    return tuple(value / norm for value in values)  # type: ignore[return-value]
 
 
 def _select_episode_start(
@@ -556,6 +820,7 @@ def _summarize(
     breaker_modes: Sequence[str],
     min_target_pixels: int,
     min_detector_pixels: int,
+    positive_confirmation: PositiveConfirmationConfig,
     scene_summaries: dict[str, dict[str, Any]],
     rows: Sequence[dict[str, Any]],
     episode_summaries: Sequence[dict[str, Any]],
@@ -590,13 +855,32 @@ def _summarize(
         "breaker_modes": list(breaker_modes),
         "min_target_pixels": min_target_pixels,
         "min_detector_pixels": min_detector_pixels,
+        "positive_confirmation": {
+            "frames": positive_confirmation.frames,
+            "min_translation": positive_confirmation.min_translation,
+            "min_rotation_deg": positive_confirmation.min_rotation_deg,
+            "min_mask_iou": positive_confirmation.min_mask_iou,
+        },
         "trace_rows": len(rows),
         "evidence_counts": _count_values(rows, "evidence_type"),
+        "candidate_evidence_counts": _count_values(rows, "candidate_evidence_type"),
         "decision_counts": _count_values(rows, "decision"),
         "target_visible_rows": sum(int(row["target_visible"]) for row in rows),
         "target_visible_episodes": target_visible_episodes,
+        "candidate_positive_rows": sum(
+            int(row["positive_confirmation_candidate"]) for row in rows
+        ),
+        "confirmed_positive_rows": sum(
+            int(row["positive_confirmation_confirmed"]) for row in rows
+        ),
+        "suppressed_positive_rows": sum(
+            int(row["positive_confirmation_suppressed"]) for row in rows
+        ),
         "false_positive_positive_rows": sum(
             int(row["false_positive_positive"]) for row in rows
+        ),
+        "false_positive_candidate_rows": sum(
+            int(row["false_positive_candidate"]) for row in rows
         ),
         "missed_visible_target_rows": sum(
             int(row["missed_visible_target"]) for row in rows
@@ -620,6 +904,7 @@ def _summarize(
             "Reports no official success, SPL, or navigation-policy benchmark score.",
             "Runs scripted actions after the selected episode or goal-viewpoint start pose.",
             "Uses Habitat semantic ids as oracle detector input before synthetic YOLO-breaker corruption.",
+            "Requires temporal, view-change, and mask-consistency confirmation before positive evidence updates memory.",
             "Does not run a learned YOLO model.",
         ],
     }
@@ -648,13 +933,26 @@ def _summary_block(
         "rows": len(rows),
         "episodes": len(episode_summaries),
         "evidence_counts": _count_values(rows, "evidence_type"),
+        "candidate_evidence_counts": _count_values(rows, "candidate_evidence_type"),
         "decision_counts": _count_values(rows, "decision"),
         "target_visible_rows": sum(int(row["target_visible"]) for row in rows),
         "target_visible_episodes": sum(
             int(episode["target_visible_rows"] > 0) for episode in episode_summaries
         ),
+        "candidate_positive_rows": sum(
+            int(row["positive_confirmation_candidate"]) for row in rows
+        ),
+        "confirmed_positive_rows": sum(
+            int(row["positive_confirmation_confirmed"]) for row in rows
+        ),
+        "suppressed_positive_rows": sum(
+            int(row["positive_confirmation_suppressed"]) for row in rows
+        ),
         "false_positive_positive_rows": sum(
             int(row["false_positive_positive"]) for row in rows
+        ),
+        "false_positive_candidate_rows": sum(
+            int(row["false_positive_candidate"]) for row in rows
         ),
         "missed_visible_target_rows": sum(
             int(row["missed_visible_target"]) for row in rows
@@ -703,12 +1001,12 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
   <p>Episodes: <code>{summary["episodes_completed"]}</code>; rows: <code>{summary["trace_rows"]}</code>; target-visible episodes: <code>{summary["target_visible_episodes"]}</code>; mean final p_valid: <code>{summary["mean_final_p_valid"]}</code>.</p>
   <h2>Breaker Modes</h2>
   <table>
-    <tr><th>Group</th><th>Episodes</th><th>Rows</th><th>Target Visible Rows</th><th>Mean Final p_valid</th><th>False Positive Positives</th><th>Missed Visible Targets</th></tr>
+    <tr><th>Group</th><th>Episodes</th><th>Rows</th><th>Target Visible Rows</th><th>Mean Final p_valid</th><th>Candidate Positives</th><th>Confirmed Positives</th><th>Suppressed Positives</th><th>False Positive Positives</th><th>Missed Visible Targets</th></tr>
     {mode_rows}
   </table>
   <h2>Categories</h2>
   <table>
-    <tr><th>Group</th><th>Episodes</th><th>Rows</th><th>Target Visible Rows</th><th>Mean Final p_valid</th><th>False Positive Positives</th><th>Missed Visible Targets</th></tr>
+    <tr><th>Group</th><th>Episodes</th><th>Rows</th><th>Target Visible Rows</th><th>Mean Final p_valid</th><th>Candidate Positives</th><th>Confirmed Positives</th><th>Suppressed Positives</th><th>False Positive Positives</th><th>Missed Visible Targets</th></tr>
     {category_rows}
   </table>
   <h2>Evidence Counts</h2>
@@ -731,6 +1029,9 @@ def _render_summary_row(label: str, payload: dict[str, Any]) -> str:
         f"<td>{payload['rows']}</td>"
         f"<td>{payload['target_visible_rows']}</td>"
         f"<td>{payload['mean_final_p_valid']}</td>"
+        f"<td>{payload['candidate_positive_rows']}</td>"
+        f"<td>{payload['confirmed_positive_rows']}</td>"
+        f"<td>{payload['suppressed_positive_rows']}</td>"
         f"<td>{payload['false_positive_positive_rows']}</td>"
         f"<td>{payload['missed_visible_target_rows']}</td>"
         "</tr>"

@@ -3,7 +3,10 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from objectnav_core.evaluation import habitat_objectnav_valmini_semantic_stress as stress
+from objectnav_core.memory.usability import EvidenceType
 
 
 def test_importing_valmini_stress_module_does_not_import_habitat() -> None:
@@ -151,3 +154,146 @@ def test_semantic_ids_for_target_category_handles_objectnav_aliases() -> None:
     assert stress._semantic_ids_for_target_category(mapping, "tv_monitor") == (10, 11)
     assert stress._semantic_ids_for_target_category(mapping, "sofa") == (12, 13)
     assert stress._semantic_ids_for_target_category(mapping, "chair") == (14,)
+
+
+def test_positive_confirmation_suppresses_single_frame_positive() -> None:
+    state = stress.PositiveConfirmationState()
+    mask = np.ones((4, 4), dtype=bool)
+
+    result = stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=stress.PositiveConfirmationConfig(
+            frames=2,
+            min_translation=0.05,
+            min_rotation_deg=5.0,
+            min_mask_iou=0.05,
+        ),
+    )
+
+    assert result["evidence_type"] is EvidenceType.UNKNOWN
+    assert result["quarantined"] is True
+    assert result["evidence_reason"] == "pending_positive_confirmation"
+    assert result["pending_count"] == 1
+    assert result["confirmed"] is False
+
+
+def test_positive_confirmation_accepts_repeated_positive_after_view_change() -> None:
+    state = stress.PositiveConfirmationState()
+    mask = np.zeros((4, 4), dtype=bool)
+    mask[1:3, 1:3] = True
+    config = stress.PositiveConfirmationConfig(
+        frames=2,
+        min_translation=0.05,
+        min_rotation_deg=5.0,
+        min_mask_iou=0.05,
+    )
+
+    stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+    result = stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.1, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+
+    assert result["evidence_type"] is EvidenceType.POSITIVE
+    assert result["evidence_reason"] == "confirmed_detector_positive_mask"
+    assert result["pending_count"] == 2
+    assert result["translation"] == 0.1
+    assert result["confirmed"] is True
+
+
+def test_positive_confirmation_waits_for_view_change() -> None:
+    state = stress.PositiveConfirmationState()
+    mask = np.ones((4, 4), dtype=bool)
+    config = stress.PositiveConfirmationConfig(
+        frames=2,
+        min_translation=0.05,
+        min_rotation_deg=5.0,
+        min_mask_iou=0.05,
+    )
+
+    stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+    result = stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.01, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+
+    assert result["evidence_type"] is EvidenceType.UNKNOWN
+    assert result["evidence_reason"] == "waiting_for_multiview_positive_confirmation"
+    assert result["pending_count"] == 2
+    assert result["confirmed"] is False
+
+
+def test_positive_confirmation_waits_for_mask_consistency() -> None:
+    state = stress.PositiveConfirmationState()
+    first_mask = np.zeros((6, 6), dtype=bool)
+    first_mask[0:2, 0:2] = True
+    second_mask = np.zeros((6, 6), dtype=bool)
+    second_mask[4:6, 4:6] = True
+    config = stress.PositiveConfirmationConfig(
+        frames=2,
+        min_translation=0.05,
+        min_rotation_deg=5.0,
+        min_mask_iou=0.05,
+    )
+
+    stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=first_mask,
+        config=config,
+    )
+    result = stress._apply_positive_confirmation(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        state=state,
+        pose=((0.1, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=second_mask,
+        config=config,
+    )
+
+    assert result["evidence_type"] is EvidenceType.UNKNOWN
+    assert result["evidence_reason"] == "waiting_for_mask_consistency_confirmation"
+    assert result["mask_iou"] == 0.0
+    assert result["confirmed"] is False
