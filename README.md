@@ -119,7 +119,91 @@ The next simulation protocol is documented as a Chinese HTML operation guide:
 docs/simulation/2026-05-26-habitat-sim-usability-memory.zh.html
 ```
 
-It describes the staged Habitat-Sim route, trace schema, evidence extraction rules, baseline plan, metrics, and expected artifact layout before any Habitat-specific code is added.
+It describes the staged Habitat-Sim route, trace schema, evidence extraction rules, baseline plan, metrics, and expected artifact layout.
+
+The first executable Habitat slice is a synthetic Habitat-Lab ObjectNav smoke. It verifies scene loading, `ObjectNav-v1` reset/step, RGB-D observations, and trace export without claiming benchmark performance:
+
+```bash
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_objectnav_smoke \
+  --scene /home/badger/Desktop/habitat-sim-main/data/test_assets/scenes/simple_room.glb \
+  --output runs/habitat_usability/smoke \
+  --seed 23 \
+  --sensor-size 64
+```
+
+This writes:
+
+- `runs/habitat_usability/smoke/habitat_trace.csv`
+- `runs/habitat_usability/smoke/summary.json`
+- `runs/habitat_usability/smoke/report.html`
+
+The current smoke uses a synthetic one-episode ObjectNav dataset and a Habitat-Sim test asset with no semantic annotations. Official ObjectNav success/SPL and oracle semantic evidence still require real Habitat scene and episode datasets.
+
+After downloading the HM3D example assets, run the same smoke on a real HM3D scene with a navmesh-sampled start and target:
+
+```bash
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_objectnav_smoke \
+  --scene datasets/habitat/scene_datasets/hm3d/example/00861-GLAQ4DNUx5U/GLAQ4DNUx5U.basis.glb \
+  --scene-dataset-config datasets/habitat/scene_datasets/hm3d/example/hm3d_annotated_basis.scene_dataset_config.json \
+  --output runs/habitat_usability/hm3d_official_scene_smoke \
+  --seed 23 \
+  --sensor-size 128 \
+  --sample-navigable \
+  --actions move_forward,turn_left,move_forward,turn_right,move_forward
+```
+
+This is a real-scene integration smoke, but still not an official ObjectNav benchmark episode. Use the `val_mini` semantic stress runner below when the local HM3D scene assets and ObjectNav episode split are present.
+
+For a multi-episode algorithm replay on the downloaded HM3D example scenes, run:
+
+```bash
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_usability_replay \
+  --scene datasets/habitat/scene_datasets/hm3d/example/00337-CFVBbU9Rsyb/CFVBbU9Rsyb.basis.glb \
+  --scene datasets/habitat/scene_datasets/hm3d/example/00770-NBg5UqG3di3/NBg5UqG3di3.basis.glb \
+  --scene datasets/habitat/scene_datasets/hm3d/example/00861-GLAQ4DNUx5U/GLAQ4DNUx5U.basis.glb \
+  --scene-dataset-config datasets/habitat/scene_datasets/hm3d/example/hm3d_annotated_basis.scene_dataset_config.json \
+  --output runs/habitat_usability/hm3d_usability_replay_30ep \
+  --episodes 30 \
+  --seed 101 \
+  --sensor-size 96
+```
+
+This writes aggregate Habitat traces plus `usability_replay.csv`, `summary.json`, and `report.html`. It uses real Habitat RGB-D observations, navmesh sampling, and collisions, then replays deterministic evidence proxies through `UsabilityUpdater` and `UsabilityDecisionPolicy`. It is useful for algorithm plumbing and decision behavior, but it is not a Habitat ObjectNav benchmark result.
+
+To stress the memory system with actual Habitat semantic masks and synthetic detector failures, run:
+
+```bash
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_semantic_yolo_stress \
+  --scene datasets/habitat/scene_datasets/hm3d/example/00861-GLAQ4DNUx5U/GLAQ4DNUx5U.basis.glb \
+  --scene-dataset-config datasets/habitat/scene_datasets/hm3d/example/hm3d_annotated_basis.scene_dataset_config.json \
+  --output runs/habitat_usability/hm3d_semantic_yolo_stress_30ep \
+  --episodes 30 \
+  --seed 211 \
+  --sensor-size 96
+```
+
+This uses Habitat-Sim RGB-D-semantic sensors, selects visible semantic ids as oracle targets, corrupts target masks with miss/fly-point/edge-break breaker modes, and feeds the resulting evidence through the usability memory policy.
+
+To run the same semantic stress path from official HM3D ObjectNav `val_mini` episode metadata, use:
+
+```bash
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_usability/hm3d_valmini_semantic_stress_30ep \
+  --max-episodes 30 \
+  --start-source goal_viewpoint \
+  --seed 313 \
+  --sensor-size 96
+```
+
+This runner maps official `hm3d/val/...` scene ids to the local `hm3d/habitat/...` asset layout, generates a run-local scene dataset config, extracts target-category semantic masks, applies the same YOLO-breaker modes, and exports `objectnav_valmini_semantic_trace.csv`, `summary.json`, and `report.html`. It uses official episode metadata but still does not report ObjectNav success/SPL because no navigation policy is evaluated.
 
 ## ROS 2 Boundary
 

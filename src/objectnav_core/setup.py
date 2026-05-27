@@ -27,6 +27,10 @@ setup(
             "objectnav_usability_stress = objectnav_core.cli.run_usability_stress:main",
             "objectnav_grid_trace_experiment = objectnav_core.cli.run_grid_trace_experiment:main",
             "objectnav_localization_bag_audit = objectnav_core.cli.run_localization_bag_audit:main",
+            "objectnav_habitat_objectnav_smoke = objectnav_core.cli.run_habitat_objectnav_smoke:main",
+            "objectnav_habitat_usability_replay = objectnav_core.cli.run_habitat_usability_replay:main",
+            "objectnav_habitat_semantic_yolo_stress = objectnav_core.cli.run_habitat_semantic_yolo_stress:main",
+            "objectnav_habitat_objectnav_valmini_semantic_stress = objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress:main",
         ]
     },
 )

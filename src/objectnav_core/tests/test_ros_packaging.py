@@ -32,3 +32,14 @@ def test_objectnav_core_is_ament_python_package_without_ros_runtime_imports() ->
     assert "objectnav_core.cli.run_grid_trace_experiment:main" in setup_text
     assert "objectnav_localization_bag_audit" in setup_text
     assert "objectnav_core.cli.run_localization_bag_audit:main" in setup_text
+    assert "objectnav_habitat_objectnav_smoke" in setup_text
+    assert "objectnav_core.cli.run_habitat_objectnav_smoke:main" in setup_text
+    assert "objectnav_habitat_usability_replay" in setup_text
+    assert "objectnav_core.cli.run_habitat_usability_replay:main" in setup_text
+    assert "objectnav_habitat_semantic_yolo_stress" in setup_text
+    assert "objectnav_core.cli.run_habitat_semantic_yolo_stress:main" in setup_text
+    assert "objectnav_habitat_objectnav_valmini_semantic_stress" in setup_text
+    assert (
+        "objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress:main"
+        in setup_text
+    )

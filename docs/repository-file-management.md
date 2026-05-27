@@ -31,7 +31,10 @@ This repository is a research workspace, so files should make the project easier
 | Usability-centered memory | `docs/design/2026-05-26-usability-centered-lifelong-object-memory.md` | `src/objectnav_core/objectnav_core/memory/usability.py` |
 | 2D grid trace stress test | `docs/design/2026-05-26-2d-grid-trace-generator.md` | `src/objectnav_core/objectnav_core/evaluation/grid_trace_experiment.py` |
 | Localization-only bag audit | `docs/design/2026-05-26-localization-only-bag-audit.md` | `src/objectnav_core/objectnav_core/evaluation/localization_bag_audit.py` |
-| Habitat-Sim next step | `docs/simulation/2026-05-26-habitat-sim-usability-memory.zh.html` | Not implemented yet |
+| Habitat-Sim synthetic ObjectNav smoke | `docs/design/2026-05-26-habitat-sim-usability-replay.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_smoke.py` |
+| Habitat-Sim usability replay | `docs/experiments/2026-05-27-habitat-usability-replay.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_usability_replay.py` |
+| Habitat semantic YOLO-breaker stress | `docs/experiments/2026-05-27-habitat-semantic-yolo-stress.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_semantic_yolo_stress.py` |
+| Habitat ObjectNav val_mini semantic stress | `docs/experiments/2026-05-27-habitat-objectnav-valmini-semantic-stress.md` | `src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_valmini_semantic_stress.py` |
 
 ## Artifact Policy
 
@@ -83,4 +86,3 @@ find . -name '.DS_Store' -delete
 find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 rm -rf .pytest_cache
 ```
-
