@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YOLO-World ObjectNav 仿真调试与当前状态报告</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5a6678;
+      --line: #d8e1ec;
+      --panel: #f7f9fc;
+      --panel-2: #eef4f8;
+      --accent: #146b73;
+      --good: #17613a;
+      --warn: #8a5600;
+      --bad: #8a2634;
+      --code: #101826;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.62;
+    }
+    header {
+      padding: 42px 7vw 30px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f6fbfc 0%, #ffffff 100%);
+    }
+    main {
+      max-width: 1220px;
+      padding: 28px 7vw 64px;
+    }
+    h1, h2, h3 {
+      line-height: 1.22;
+      margin: 0 0 14px;
+    }
+    h1 { font-size: 34px; }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 {
+      margin-top: 22px;
+      font-size: 18px;
+    }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-2);
+      text-align: left;
+    }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #edf3fb;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .meta, .note { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    .box h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 2px 8px;
+      margin-right: 6px;
+    }
+    .good { color: var(--good); font-weight: 650; }
+    .warn { color: var(--warn); font-weight: 650; }
+    .bad { color: var(--bad); font-weight: 650; }
+    .flow {
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #f8fafc;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-27 · 本地 HTML 状态报告</p>
+    <h1>YOLO-World ObjectNav 仿真调试与当前状态报告</h1>
+    <p>
+      本报告汇总今天围绕 Habitat + YOLO-World + RGB/depth-noise ObjectNav memory harness 做过的工作、
+      已完成实验、当前算法结论、剩余风险和下一步。报告基于已经完成的 Linux Habitat 运行结果；
+      用户可以休眠 Linux 机器，后续文档整理和代码提交在 macOS 本地完成。
+    </p>
+    <p>
+      <span class="tag">branch: main</span>
+      <span class="tag">latest commit: 0845c2b</span>
+      <span class="tag">remote run host: badger@100.88.131.52</span>
+      <span class="tag">local report path: docs/experiments/2026-05-27-yolo-world-objectnav-status-report.zh.html</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 一句话结论</h2>
+      <div class="grid">
+        <div class="box">
+          <h3 class="good">算法链路已经跑通</h3>
+          <p>
+            在 <code>sensor_size=320</code>、<code>yolo_prompt_mode=target</code>、
+            <code>stop_on_trust=true</code> 下，YOLO-World 能确认可见 toilet，
+            memory policy 能在可见目标上进入 <code>TRUST</code>，并触发 ObjectNav 风格 STOP。
+          </p>
+        </div>
+        <div class="box">
+          <h3 class="warn">还不是完整论文级结果</h3>
+          <p>
+            当前只是 clean smoke 与 6-episode 小 sweep。完整
+            <code>clean/mild/heavy × memory on/off</code> 矩阵还没有跑，
+            plant 类在 YOLO-World 下仍然失败。
+          </p>
+        </div>
+        <div class="box">
+          <h3 class="bad">主要瓶颈在 perception/category</h3>
+          <p>
+            toilet 已经可用；plant 在多个 prompt 下置信度仍远低于 0.25。
+            这不是 memory updater 的失败，而是 detector/category/domain gap 需要单独处理。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 今天具体做了什么</h2>
+      <ol>
+        <li>
+          在 Linux <code>conda habitat</code> 环境安装并验证 YOLO-World 依赖：
+          <code>torch==2.8.0+cu128</code>、<code>torchvision==0.23.0+cu128</code>、
+          <code>ultralytics==8.4.56</code>、<code>clip==1.0</code>。
+        </li>
+        <li>
+          运行 oracle-bbox wiring smoke，确认 Habitat scene、RGB/depth noise、
+          semantic oracle、SQLite memory 和 policy 都能贯通。
+        </li>
+        <li>
+          运行 YOLO-World clean smoke，发现 <code>64/96/224</code> 分辨率下可见
+          toilet 仍然 0 检出；<code>320</code> 是第一个可用分辨率。
+        </li>
+        <li>
+          调试 YOLO-World 的 prompt 竞争问题：full 6 类 prompt 会把 visible toilet
+          区域高置信度标成 <code>bed</code>；改为 ObjectNav 目标条件 prompt。
+        </li>
+        <li>
+          修复 harness 语义：加入 <code>stop_on_trust</code>，一旦 policy 对可见目标
+          选择 <code>TRUST</code> 就停止 episode，避免继续走到边缘裁切视角后把 belief 人为打低。
+        </li>
+        <li>
+          加入 target view trace 指标：
+          <code>oracle_bbox</code>、<code>oracle_edge_sides</code>、
+          <code>oracle_touches_side_edge</code>、<code>oracle_edge_clearance_ratio</code>。
+        </li>
+        <li>
+          做 6-episode 小 sweep：toilet 成功，plant 失败；进一步做 plant raw prompt probe，
+          确认不是简单 alias prompt 能解决。
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>3. 代码与文档改动</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Commit</th>
+            <th>内容</th>
+            <th>意义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>28b01b9</code></td>
+            <td>YOLO-World prompt 改为 target-conditioned；默认 sensor size 改为 320；保留 all-category/alias debug mode。</td>
+            <td>解决 toilet 在 full prompt 下被 <code>bed</code> 竞争的问题。</td>
+          </tr>
+          <tr>
+            <td><code>967c7b0</code></td>
+            <td>记录 target-conditioned YOLO smoke 结果。</td>
+            <td>把实验证据写入项目文档。</td>
+          </tr>
+          <tr>
+            <td><code>326131d</code></td>
+            <td>加入 <code>stop_on_trust</code> 与 ObjectNav STOP 语义。</td>
+            <td>避免 episode 已成功后继续被坏视角拖低 final belief。</td>
+          </tr>
+          <tr>
+            <td><code>0845c2b</code></td>
+            <td>加入 oracle target edge side 指标。</td>
+            <td>区分正常 bottom contact 与 left/right side clipping。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>主要文件：</p>
+      <ul>
+        <li><code>src/objectnav_core/objectnav_core/evaluation/habitat_objectnav_rgb_noise_stress.py</code></li>
+        <li><code>src/objectnav_core/objectnav_core/cli/run_habitat_objectnav_rgb_noise_stress.py</code></li>
+        <li><code>src/objectnav_core/tests/test_habitat_objectnav_rgb_noise_stress.py</code></li>
+        <li><code>docs/experiments/2026-05-27-yolo-world-toilet-debug.md</code></li>
+        <li><code>docs/handoff/2026-05-27-rgb-noise-sim-to-real-validation.md</code></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. 实验结果总表</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>实验</th>
+            <th>配置</th>
+            <th>结果</th>
+            <th>结论</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Oracle bbox smoke</td>
+            <td><code>detector=oracle_bbox</code>, clean, 1 episode, memory on</td>
+            <td>
+              15 trace rows；<code>positive=14</code>、<code>unknown=1</code>；
+              <code>TRUST=12</code>；final <code>p_valid=0.999599</code>。
+            </td>
+            <td class="good">Habitat/noise/memory wiring 正常。</td>
+          </tr>
+          <tr>
+            <td>YOLO clean smoke 64/96</td>
+            <td><code>detector=yolo_world</code>, full 6 类 prompt, clean</td>
+            <td>
+              target-visible rows 都是 15，但 detector recall 为 0；
+              final <code>p_valid=0.011171</code>。
+            </td>
+            <td class="bad">分辨率过低，无法验证算法。</td>
+          </tr>
+          <tr>
+            <td>YOLO clean smoke 224</td>
+            <td>full 6 类 prompt, <code>sensor_size=224</code></td>
+            <td>
+              仍然 0 positive；mean oracle recall 0。
+            </td>
+            <td class="bad">224 仍不足以支撑 YOLO-World smoke。</td>
+          </tr>
+          <tr>
+            <td>YOLO clean smoke 320 all-category</td>
+            <td>full 6 类 prompt, <code>sensor_size=320</code></td>
+            <td>
+              <code>positive=2</code>；mean oracle recall <code>0.199976</code>；
+              final <code>p_valid=0.027629</code>。
+            </td>
+            <td class="warn">模型能看见，但 full prompt 有类别竞争。</td>
+          </tr>
+          <tr>
+            <td>YOLO target prompt 320，未 STOP</td>
+            <td><code>yolo_prompt_mode=target</code>, <code>sensor_size=320</code></td>
+            <td>
+              <code>positive=4</code>；mean oracle recall <code>0.333309</code>；
+              有 1 行 oracle-stop success，但继续走后 final <code>p_valid=0.067795</code>。
+            </td>
+            <td class="warn">detector 已可用，但 runner 继续走坏视角会污染 final belief。</td>
+          </tr>
+          <tr>
+            <td>YOLO target prompt 320，STOP on TRUST</td>
+            <td><code>stop_on_trust=true</code>, clean, 1 episode</td>
+            <td>
+              6 trace rows；<code>positive=4</code>、<code>non_confirmation=1</code>、
+              <code>unknown=1</code>；<code>TRUST=1</code>；
+              mean oracle recall <code>0.833272</code>；
+              final <code>p_valid=0.921945</code>。
+            </td>
+            <td class="good">ObjectNav-style smoke 成功。</td>
+          </tr>
+          <tr>
+            <td>6-episode category sweep</td>
+            <td>clean, target prompt, memory on, STOP enabled</td>
+            <td>
+              6 episodes；toilet 3/3 oracle-stop success；
+              plant 0/3 success；overall final mean <code>p_valid=0.46364</code>。
+            </td>
+            <td class="warn">toilet 类可用，plant 类失败。</td>
+          </tr>
+          <tr>
+            <td>6-episode alias sweep</td>
+            <td><code>yolo_prompt_mode=target_aliases</code></td>
+            <td>
+              <code>TRUST=0</code>；oracle-stop success 0；
+              alias prompt 对 plant 无帮助，对 toilet 反而降低 step 5 置信度。
+            </td>
+            <td class="bad">alias prompt 不应作为默认策略。</td>
+          </tr>
+          <tr>
+            <td>Plant raw prompt probe</td>
+            <td><code>plant</code>, <code>potted plant</code>, <code>houseplant</code>, <code>indoor plant</code>, <code>decorative plant</code></td>
+            <td>
+              多数 top confidence 只有 <code>0.001-0.09</code>；
+              无 prompt 在 overlap target 区域达到 <code>0.25</code>。
+            </td>
+            <td class="bad">plant 是 detector/category/domain gap，不是简单 prompt alias 问题。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>5. 关键 trace 解读</h2>
+      <h3>5.1 成功的 toilet STOP smoke</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Action</th>
+            <th>Target bbox edge</th>
+            <th>Detector conf</th>
+            <th>Oracle recall</th>
+            <th>Evidence</th>
+            <th>Decision</th>
+            <th>p_valid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>0</td><td>reset</td><td>bottom</td><td>0.737497</td><td>0.999633</td><td>unknown</td><td>verify</td><td>0.647654</td></tr>
+          <tr><td>1</td><td>move_forward</td><td>bottom</td><td>0.684210</td><td>1.0</td><td>positive</td><td>verify</td><td>0.809823</td></tr>
+          <tr><td>2</td><td>turn_left</td><td>bottom</td><td>0.721821</td><td>1.0</td><td>positive</td><td>verify</td><td>0.896816</td></tr>
+          <tr><td>3</td><td>move_forward</td><td>right|bottom</td><td>0.0</td><td>0.0</td><td>non_confirmation</td><td>verify</td><td>0.671055</td></tr>
+          <tr><td>4</td><td>turn_right</td><td>bottom</td><td>0.523669</td><td>1.0</td><td>positive</td><td>verify</td><td>0.840494</td></tr>
+          <tr><td>5</td><td>move_forward</td><td>bottom</td><td>0.349874</td><td>1.0</td><td>positive</td><td><span class="good">trust / stop</span></td><td><span class="good">0.921945</span></td></tr>
+        </tbody>
+      </table>
+      <p>
+        Step 3 是一个很有用的诊断点：target bbox 同时碰到 right 和 bottom，属于侧边裁切；
+        这类帧不应该和完整目标视角混在一起评价 detector。STOP semantics 修复后，runner 不再继续走到大量
+        edge-clipped 后半段帧。
+      </p>
+
+      <h3>5.2 Plant 失败不是 memory 失败</h3>
+      <p>
+        Plant episode 中 oracle target pixels 很多，例如 reset 有 <code>9148</code> pixels，
+        但 YOLO-World 在 <code>plant</code> / <code>potted plant</code> /
+        <code>indoor plant</code> 等 prompt 下最高置信度仍远低于 0.25。
+        因此 memory policy 收到的是连续 non-confirmation，它下降 belief 是合理行为。
+      </p>
+    </section>
+
+    <section>
+      <h2>6. 算法结果如何</h2>
+      <div class="grid">
+        <div class="box">
+          <h3>Usability / Dual-Anchor Memory</h3>
+          <p class="good">
+            当前证据支持：当 detector 给出稳定正证据时，memory updater 能把
+            <code>p_valid</code> 推高，并触发 <code>TRUST</code>。
+          </p>
+          <p>
+            在 toilet STOP smoke 中，final <code>p_valid=0.921945</code>，
+            说明算法本身没有被 YOLO 接入破坏。
+          </p>
+        </div>
+        <div class="box">
+          <h3>YOLO-World Perception</h3>
+          <p class="warn">
+            当前证据支持：YOLO-World 在 Habitat clean RGB 上可用于 toilet，
+            但不是所有 ObjectNav 类别都可靠。
+          </p>
+          <p>
+            Plant 连续失败，需要 detector/category 层面的补救，而不是继续调 memory。
+          </p>
+        </div>
+        <div class="box">
+          <h3>Experiment Harness</h3>
+          <p class="good">
+            当前 harness 已经从“能跑”提升到“能解释为什么跑成这样”：
+            它记录 prompt、view edge、STOP、belief 和 detector overlap。
+          </p>
+          <p>
+            完整矩阵仍需等 perception 先过 category qualification。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. 当前状态</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th>Git 状态</th>
+            <td><code>main</code> 已推到 GitHub，最新远端提交 <code>0845c2b</code>。本 HTML 报告将随本次文档更新提交。</td>
+          </tr>
+          <tr>
+            <th>Linux 状态</th>
+            <td>Linux 仓库已经 pull 到 <code>0845c2b</code> 并完成最新 smoke；现在可以休眠 Linux 机器。</td>
+          </tr>
+          <tr>
+            <th>重要 artifacts</th>
+            <td>
+              <code>runs/habitat_usability/rgb_noise_yolo_world_clean_smoke_stop_on_trust_v2</code><br>
+              <code>runs/habitat_usability/rgb_noise_yolo_world_clean_category_sweep6_stop</code><br>
+              <code>runs/habitat_usability/rgb_noise_yolo_world_clean_category_sweep6_aliases_stop</code>
+            </td>
+          </tr>
+          <tr>
+            <th>不能声称的事</th>
+            <td>
+              还不能声称算法在完整 ObjectNav val_mini 上有效；还不能声称噪声鲁棒；
+              还不能声称 plant / chair / bed / sofa / tv_monitor 都可用。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>8. 下一步建议</h2>
+      <ol>
+        <li>
+          <strong>先做 detector category qualification。</strong>
+          对每个 ObjectNav 类别跑 clean、target prompt、<code>sensor_size=320</code>，
+          每类至少 3-5 个 episode，输出 per-category success / recall。
+        </li>
+        <li>
+          <strong>单独解决 plant。</strong>
+          可尝试更大 YOLO-World 权重、GroundingDINO / OWL-ViT 对照、
+          GT crop prompt probe，或者把 plant 从第一轮 paper claim 的主结果里标为 detector limitation。
+        </li>
+        <li>
+          <strong>加入正式 debug PNG export。</strong>
+          现在 plant/toilet contact sheet 是临时脚本生成；应该把 missed-visible rows 的
+          RGB、oracle mask、detector boxes 作为 runner artifact。
+        </li>
+        <li>
+          <strong>改进 revisit sampling。</strong>
+          当前 out-and-back 是 deterministic action helper，
+          可以先加入 view-quality filter：侧边裁切过多的帧不计入 detector failure；
+          后续再做 navmesh-aware viewpoint sampling。
+        </li>
+        <li>
+          <strong>最后再跑完整矩阵。</strong>
+          等 clean detector qualification 过关后，再跑
+          <code>clean/mild/heavy × memory on/off</code>，否则矩阵只会测 detector failure。
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>9. 之后恢复 Linux 时的命令</h2>
+      <p>如果下次恢复 Linux，建议先确认仓库和环境：</p>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; git pull --ff-only &amp;&amp; git rev-parse --short HEAD'
+
+ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core pytest -q src/objectnav_core/tests/test_habitat_objectnav_rgb_noise_stress.py src/objectnav_core/tests/test_yolo_world_adapter.py'</code></pre>
+
+      <p>重跑当前最可靠 smoke：</p>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/rgb_noise_yolo_world_clean_smoke_stop_on_trust_v2 --noise-levels clean --detector yolo_world --memory-ablation on --max-episodes 1 --seed 313'</code></pre>
+    </section>
+
+    <section>
+      <h2>10. 最终判断</h2>
+      <p>
+        当前最重要的判断是：<strong>算法验证已经从“无法开始”推进到“可以在合格类别上验证”。</strong>
+        YOLO-World 不再是完全检测不到 visible toilet；正确配置下，它能提供足够的正证据让 memory policy 做出
+        STOP/Trust 决策。现在真正的研究风险转移到了 detector category coverage，尤其是 plant。
+      </p>
+      <p>
+        因此，下一阶段不要急着跑全矩阵。应该先把 clean detector category qualification 做清楚，
+        再决定哪些类别进入主实验、哪些作为 detector limitation 报告。
+      </p>
+    </section>
+  </main>
+</body>
+</html>

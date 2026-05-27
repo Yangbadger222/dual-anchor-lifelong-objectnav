@@ -31,6 +31,7 @@ This directory stores the project memory. Keep it useful enough that a new human
 | RGB-noise oracle-bbox smoke result | [`experiments/2026-05-27-rgb-noise-oracle-bbox-smoke.md`](experiments/2026-05-27-rgb-noise-oracle-bbox-smoke.md) |
 | YOLO-World clean Habitat smoke result | [`experiments/2026-05-27-yolo-world-clean-smoke.md`](experiments/2026-05-27-yolo-world-clean-smoke.md) |
 | YOLO-World toilet miss debug | [`experiments/2026-05-27-yolo-world-toilet-debug.md`](experiments/2026-05-27-yolo-world-toilet-debug.md) |
+| YOLO-World ObjectNav status HTML report | [`experiments/2026-05-27-yolo-world-objectnav-status-report.zh.html`](experiments/2026-05-27-yolo-world-objectnav-status-report.zh.html) |
 | Publication target decision | [`decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md`](decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md) |
 | RGB-noise validation handoff | [`handoff/2026-05-27-rgb-noise-sim-to-real-validation.md`](handoff/2026-05-27-rgb-noise-sim-to-real-validation.md) |
 | Usability memory algorithm | [`design/2026-05-26-usability-centered-lifelong-object-memory.md`](design/2026-05-26-usability-centered-lifelong-object-memory.md) |
