@@ -578,11 +578,21 @@ def _target_view_metrics(oracle_mask: np.ndarray) -> dict[str, Any]:
             "oracle_bbox_area": 0,
             "oracle_bbox_fill_ratio": 0.0,
             "oracle_touches_edge": False,
+            "oracle_touches_side_edge": False,
+            "oracle_edge_sides": "",
             "oracle_edge_clearance_ratio": 0.0,
         }
     x1, y1, x2, y2 = bbox
     bbox_area = (x2 - x1) * (y2 - y1)
     edge_clearance = min(x1, y1, width - x2, height - y2)
+    edge_sides = _edge_sides(
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        width=width,
+        height=height,
+    )
     return {
         "oracle_bbox": f"{x1},{y1},{x2},{y2}",
         "oracle_bbox_area": bbox_area,
@@ -591,11 +601,34 @@ def _target_view_metrics(oracle_mask: np.ndarray) -> dict[str, Any]:
             6,
         ),
         "oracle_touches_edge": edge_clearance == 0,
+        "oracle_touches_side_edge": bool({"left", "right"} & set(edge_sides)),
+        "oracle_edge_sides": "|".join(edge_sides),
         "oracle_edge_clearance_ratio": round(
             float(edge_clearance) / max(1, min(height, width)),
             6,
         ),
     }
+
+
+def _edge_sides(
+    *,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    width: int,
+    height: int,
+) -> tuple[str, ...]:
+    sides: list[str] = []
+    if x1 == 0:
+        sides.append("left")
+    if x2 == width:
+        sides.append("right")
+    if y1 == 0:
+        sides.append("top")
+    if y2 == height:
+        sides.append("bottom")
+    return tuple(sides)
 
 
 def _should_stop_episode(

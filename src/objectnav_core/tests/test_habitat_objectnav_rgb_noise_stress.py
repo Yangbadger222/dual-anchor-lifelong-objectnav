@@ -67,12 +67,19 @@ def test_default_yolo_prompting_is_target_conditioned() -> None:
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
     centered = stress._target_view_metrics(_mask_with_box((10, 12, 30, 36), (48, 48)))
     clipped = stress._target_view_metrics(_mask_with_box((31, 40, 48, 48), (48, 48)))
+    floor_clipped = stress._target_view_metrics(_mask_with_box((10, 20, 30, 48), (48, 48)))
 
     assert centered["oracle_bbox"] == "10,12,30,36"
     assert centered["oracle_touches_edge"] is False
+    assert centered["oracle_edge_sides"] == ""
+    assert centered["oracle_touches_side_edge"] is False
     assert centered["oracle_bbox_fill_ratio"] == 1.0
     assert clipped["oracle_touches_edge"] is True
+    assert clipped["oracle_edge_sides"] == "right|bottom"
+    assert clipped["oracle_touches_side_edge"] is True
     assert clipped["oracle_edge_clearance_ratio"] == 0.0
+    assert floor_clipped["oracle_edge_sides"] == "bottom"
+    assert floor_clipped["oracle_touches_side_edge"] is False
 
 
 def test_stop_on_trust_uses_objectnav_stop_semantics() -> None:

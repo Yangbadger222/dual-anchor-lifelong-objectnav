@@ -404,7 +404,7 @@ for episode in val_mini:
 |---|---|---|
 | Noise pipeline too aggressive: detector recall ~0 at every level | Per-level detection recall vs clean recall in summary | Calibrate noise parameters per level against an external real-camera reference set; expose noise knobs in YAML |
 | Detector category mismatch (no class for `tv_monitor`, `plant`) | Pre-flight check: detect on each category's GT crop, log P/R | Use open-vocab prompts; fall back to per-category prompt list in config |
-| Edge-clipped target views look oracle-visible but are poor detector evidence | Trace `oracle_bbox`, `oracle_touches_edge`, and `oracle_edge_clearance_ratio` | Stop on valid `TRUST`; improve revisit sampling before treating later edge-clipped misses as detector failures |
+| Edge-clipped target views look oracle-visible but are poor detector evidence | Trace `oracle_bbox`, `oracle_edge_sides`, `oracle_touches_side_edge`, and `oracle_edge_clearance_ratio` | Stop on valid `TRUST`; improve revisit sampling before treating later edge-clipped misses as detector failures |
 | Revisit controller cannot reach the target (navmesh blocked) | Episode flagged `unreachable` in summary | Skip the episode from memory metrics; keep for perception metrics |
 | Lifelong memory leaks identity across scenes | Memory key collision check at load | Key by `(scene_id, episode_dataset_version)` only; never share across scenes |
 | Memory ablation `off` is not actually memoryless (e.g. uses prior) | Unit test: feed two identical episodes with `off`, expect identical decisions | Implement `off` as fresh `UsabilityUpdater` per step |
