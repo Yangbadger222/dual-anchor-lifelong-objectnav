@@ -1,0 +1,18 @@
+provenance: published_model
+target_camera: Intel RealSense D435
+references:
+  - Nguyen 2012 3DIMPVT
+  - Intel D400 series datasheet
+levels:
+  clean:
+    axial: {alpha: 0.0}
+    lateral: {beta: 0.0}
+    holes: {zmin: 0.1, zmax: 10.0, p_drop: 0.000}
+  mild:
+    axial: {alpha: 0.0025}
+    lateral: {beta: 0.001}
+    holes: {zmin: 0.2, zmax: 4.0, p_drop: 0.005}
+  heavy:
+    axial: {alpha: 0.0080}
+    lateral: {beta: 0.004}
+    holes: {zmin: 0.3, zmax: 3.0, p_drop: 0.030}

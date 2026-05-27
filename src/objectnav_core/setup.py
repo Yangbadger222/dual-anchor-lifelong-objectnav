@@ -31,6 +31,7 @@ setup(
             "objectnav_habitat_usability_replay = objectnav_core.cli.run_habitat_usability_replay:main",
             "objectnav_habitat_semantic_yolo_stress = objectnav_core.cli.run_habitat_semantic_yolo_stress:main",
             "objectnav_habitat_objectnav_valmini_semantic_stress = objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress:main",
+            "objectnav_habitat_objectnav_rgb_noise_stress = objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress:main",
         ]
     },
 )

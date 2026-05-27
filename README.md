@@ -228,6 +228,33 @@ conda run -n habitat env PYTHONPATH=src/objectnav_core \
   --positive-confirmation-min-mask-iou 0.05
 ```
 
+The current sim-to-real validation direction is documented in `docs/design/2026-05-27-rgb-noise-sim-to-real-objectnav-memory-validation.md`. It moves the headline experiment away from oracle-mask corruption and toward RGB/depth noise, YOLO-World detections, an out-and-back revisit sequence, and a memory on/off ablation:
+
+```bash
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
+  --output runs/habitat_usability/rgb_noise_preflight \
+  --preflight-only
+```
+
+For a small Habitat chain smoke without loading YOLO-World, use the oracle-bbox backend:
+
+```bash
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+conda run -n habitat env PYTHONPATH=src/objectnav_core \
+  python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_usability/rgb_noise_oracle_bbox_smoke \
+  --noise-levels clean \
+  --detector oracle_bbox \
+  --memory-ablation on \
+  --max-episodes 1 \
+  --seed 313 \
+  --sensor-size 64
+```
+
+`oracle_bbox` is only a wiring smoke for Habitat + noise + memory persistence. The publication-facing run should switch `--detector yolo_world` after `ultralytics` and YOLO-World weights are available in the `habitat` environment.
+
 ## ROS 2 Boundary
 
 This repository is intended to become a ROS 2 workspace, but this computer does not need ROS installed to develop Phase 1A. The current `src/objectnav_core` package includes ROS 2 `ament_python` metadata (`package.xml`, `setup.py`, and `resource/objectnav_core`) so it can later be built with `colcon` on a ROS 2 machine.

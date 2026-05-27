@@ -1,0 +1,17 @@
+provenance: published_model
+references:
+  - Foi 2008 IEEE TIP
+  - Brooks 2019 CVPR
+levels:
+  clean:
+    pg: {a: 0.0, b: 0.0}
+    blur: {t_exp_ms: 0}
+    jpeg: {q: 100}
+  mild:
+    pg: {a: 0.005, b: 0.0005}
+    blur: {t_exp_ms: 15}
+    jpeg: {q: 80}
+  heavy:
+    pg: {a: 0.020, b: 0.0050}
+    blur: {t_exp_ms: 40}
+    jpeg: {q: 50}

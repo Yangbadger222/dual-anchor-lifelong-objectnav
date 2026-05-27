@@ -43,3 +43,5 @@ def test_objectnav_core_is_ament_python_package_without_ros_runtime_imports() ->
         "objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress:main"
         in setup_text
     )
+    assert "objectnav_habitat_objectnav_rgb_noise_stress" in setup_text
+    assert "objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress:main" in setup_text
