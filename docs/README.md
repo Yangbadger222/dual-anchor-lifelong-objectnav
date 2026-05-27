@@ -29,6 +29,7 @@ This directory stores the project memory. Keep it useful enough that a new human
 | Habitat ObjectNav val_mini semantic stress design | [`design/2026-05-27-habitat-val-mini-semantic-stress.md`](design/2026-05-27-habitat-val-mini-semantic-stress.md) |
 | RGB-noise sim-to-real validation design | [`design/2026-05-27-rgb-noise-sim-to-real-objectnav-memory-validation.md`](design/2026-05-27-rgb-noise-sim-to-real-objectnav-memory-validation.md) |
 | RGB-noise oracle-bbox smoke result | [`experiments/2026-05-27-rgb-noise-oracle-bbox-smoke.md`](experiments/2026-05-27-rgb-noise-oracle-bbox-smoke.md) |
+| YOLO-World clean Habitat smoke result | [`experiments/2026-05-27-yolo-world-clean-smoke.md`](experiments/2026-05-27-yolo-world-clean-smoke.md) |
 | Publication target decision | [`decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md`](decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md) |
 | RGB-noise validation handoff | [`handoff/2026-05-27-rgb-noise-sim-to-real-validation.md`](handoff/2026-05-27-rgb-noise-sim-to-real-validation.md) |
 | Usability memory algorithm | [`design/2026-05-26-usability-centered-lifelong-object-memory.md`](design/2026-05-26-usability-centered-lifelong-object-memory.md) |

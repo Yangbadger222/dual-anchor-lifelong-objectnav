@@ -2,7 +2,7 @@
 
 Date: 2026-05-27  
 Owner: Codex  
-Status: Ready for Next Detector Smoke
+Status: Ready for Detector Debug
 
 ## Current State
 
@@ -62,23 +62,31 @@ Passed on Linux after pulling commit `f608c63`:
 - Preflight CLI wrote `runs/habitat_usability/rgb_noise_preflight_linux/summary.json`.
 - Habitat `oracle_bbox` smoke wrote `runs/habitat_usability/rgb_noise_oracle_bbox_smoke/summary.json`, `rgb_noise_trace.csv`, `lifelong_memory.sqlite`, and scene config.
 
-Not run:
+After detector setup:
+
+- Installed `torch==2.8.0+cu128`, `torchvision==0.23.0+cu128`, `ultralytics==8.4.56`, `clip==1.0`, and transitive deps into `conda habitat`.
+- Verified `torch.cuda.is_available() == True` on NVIDIA GeForce RTX 4070 Laptop GPU.
+- Verified `pip check` reports no broken requirements.
+- Verified Habitat-Sim / Habitat-Lab still import at 0.3.3.
+- Initialized `YoloWorldDetector` with `yolov8s-worldv2.pt` and ran a dummy detection.
+- Ran clean YOLO-World Habitat smokes at sensor sizes 64 and 96. Both completed but produced zero detector recall on the visible `toilet` target.
+
+Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
-- YOLO-World real detector run, because `ultralytics` and `torch` are not installed in `conda habitat`.
 
 ## Known Risks
 
 - `oracle_bbox` is only a wiring smoke; it is not evidence for detector robustness.
-- YOLO-World may require installing `ultralytics` and downloading `yolov8s-worldv2.pt` in the Linux `habitat` environment.
+- YOLO-World currently misses the first visible `toilet` episode under bare prompt names at 64 and 96 px.
 - The out-and-back controller is a deterministic action retrace helper, not a navmesh-aware `ShortestPathFollower` integration yet.
 - The success metric is oracle-stop row count, not official Habitat SPL.
 
 ## Next Recommended Step
 
-1. Install or verify a compatible `ultralytics` / PyTorch stack in `conda habitat`.
-2. Run a 1-episode `--detector yolo_world --noise-levels clean` smoke.
-3. If clean YOLO recall is nonzero, run the 6-cell matrix from the design doc.
+1. Add debug PNG export for missed-visible rows.
+2. Try expanded prompts for `toilet` and higher sensor sizes (`224` or `320`).
+3. Run a category sweep before the full 6-cell matrix.
 
 ## Context for Next Contributor
 
