@@ -2,7 +2,7 @@
 
 Date: 2026-05-27  
 Owner: Codex  
-Status: In Progress
+Status: Ready for Next Detector Smoke
 
 ## Current State
 
@@ -56,11 +56,16 @@ Passed locally on macOS:
 - 4 CLI/packaging tests.
 - 15 combined tests covering the new RGB-noise validation base.
 
-Not yet run at handoff creation time:
+Passed on Linux after pulling commit `f608c63`:
 
-- Full test suite.
-- Linux `conda habitat` Habitat smoke.
-- YOLO-World real detector run.
+- Focused new tests: 15 passed in `conda habitat`.
+- Preflight CLI wrote `runs/habitat_usability/rgb_noise_preflight_linux/summary.json`.
+- Habitat `oracle_bbox` smoke wrote `runs/habitat_usability/rgb_noise_oracle_bbox_smoke/summary.json`, `rgb_noise_trace.csv`, `lifelong_memory.sqlite`, and scene config.
+
+Not run:
+
+- Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
+- YOLO-World real detector run, because `ultralytics` and `torch` are not installed in `conda habitat`.
 
 ## Known Risks
 
@@ -71,25 +76,9 @@ Not yet run at handoff creation time:
 
 ## Next Recommended Step
 
-1. On Linux, pull the pushed commit and run the focused tests in `conda habitat`.
-2. Run the oracle-bbox Habitat smoke:
-
-```bash
-HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
-conda run -n habitat env PYTHONPATH=src/objectnav_core \
-  python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
-  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
-  --scene-root datasets/habitat/scene_datasets/hm3d \
-  --output runs/habitat_usability/rgb_noise_oracle_bbox_smoke \
-  --noise-levels clean \
-  --detector oracle_bbox \
-  --memory-ablation on \
-  --max-episodes 1 \
-  --seed 313 \
-  --sensor-size 64
-```
-
-3. If that passes, install or verify `ultralytics` in `conda habitat` and run a 1-episode `--detector yolo_world` smoke.
+1. Install or verify a compatible `ultralytics` / PyTorch stack in `conda habitat`.
+2. Run a 1-episode `--detector yolo_world --noise-levels clean` smoke.
+3. If clean YOLO recall is nonzero, run the 6-cell matrix from the design doc.
 
 ## Context for Next Contributor
 
