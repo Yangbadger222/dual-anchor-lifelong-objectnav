@@ -4,6 +4,9 @@ import argparse
 import json
 
 from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+    DEFAULT_SENSOR_SIZE,
+    DEFAULT_YOLO_PROMPT_MODE,
+    SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
     run_rgb_noise_stress_preflight,
 )
@@ -52,6 +55,16 @@ def main() -> None:
     )
     parser.add_argument("--detector-conf", type=float, default=0.25)
     parser.add_argument(
+        "--yolo-prompt-mode",
+        default=DEFAULT_YOLO_PROMPT_MODE,
+        choices=SUPPORTED_YOLO_PROMPT_MODES,
+        help=(
+            "YOLO-World prompt policy. target conditions detection on the current "
+            "ObjectNav goal category; all_categories preserves the legacy shared "
+            "category set; target_aliases adds detector-specific synonyms."
+        ),
+    )
+    parser.add_argument(
         "--memory-ablation",
         default="on,off",
         help="Comma-separated memory ablations: on,off.",
@@ -63,7 +76,7 @@ def main() -> None:
         choices=("episode_start", "goal_viewpoint"),
         default="goal_viewpoint",
     )
-    parser.add_argument("--sensor-size", type=int, default=96)
+    parser.add_argument("--sensor-size", type=int, default=DEFAULT_SENSOR_SIZE)
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
     parser.add_argument(
@@ -84,6 +97,7 @@ def main() -> None:
             detector_conf=args.detector_conf,
             memory_ablation=_split_csv(args.memory_ablation),
             seed=args.seed,
+            yolo_prompt_mode=args.yolo_prompt_mode,
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -103,6 +117,7 @@ def main() -> None:
             sensor_size=args.sensor_size,
             min_target_pixels=args.min_target_pixels,
             min_detector_pixels=args.min_detector_pixels,
+            yolo_prompt_mode=args.yolo_prompt_mode,
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

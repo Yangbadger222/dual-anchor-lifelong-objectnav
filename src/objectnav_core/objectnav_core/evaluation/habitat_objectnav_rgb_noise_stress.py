@@ -56,12 +56,25 @@ TARGET_CATEGORIES: tuple[str, ...] = (
 )
 SUPPORTED_DETECTORS: tuple[str, ...] = ("yolo_world", "oracle_bbox")
 SUPPORTED_MEMORY_ABLATIONS: tuple[str, ...] = ("on", "off")
+SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
+    "target",
+    "all_categories",
+    "target_aliases",
+)
+DEFAULT_SENSOR_SIZE = 320
+DEFAULT_YOLO_PROMPT_MODE = "target"
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 INITIAL_BELIEF = MemoryBelief(
     p_existence=0.9,
     p_location_valid=0.85,
     p_usable=0.85,
 )
+YOLO_WORLD_PROMPT_ALIASES: dict[str, tuple[str, ...]] = {
+    "plant": ("plant", "potted plant", "houseplant"),
+    "sofa": ("sofa", "couch"),
+    "toilet": ("toilet", "bathroom toilet", "toilet bowl", "white toilet", "commode"),
+    "tv monitor": ("tv monitor", "tv", "television", "monitor"),
+}
 
 
 def run_habitat_objectnav_rgb_noise_stress(
@@ -79,9 +92,10 @@ def run_habitat_objectnav_rgb_noise_stress(
     max_episodes: int | None = None,
     start_source: str = "goal_viewpoint",
     seed: int = 313,
-    sensor_size: int = 96,
+    sensor_size: int = DEFAULT_SENSOR_SIZE,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
+    yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
@@ -106,22 +120,14 @@ def run_habitat_objectnav_rgb_noise_stress(
         detector_conf=detector_conf,
         memory_ablation=memory_ablation,
         seed=seed,
+        yolo_prompt_mode=yolo_prompt_mode,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
     rgb_noise = RgbNoisePipeline(rgb_profile, seed=seed)
     depth_noise = DepthNoisePipelineD435(depth_profile, seed=seed)
     controller = OutAndBackController()
-    detector_adapter = (
-        YoloWorldDetector(
-            weights=detector_weights,
-            categories=list(TARGET_CATEGORIES),
-            conf=detector_conf,
-            device="auto",
-        )
-        if detector == "yolo_world"
-        else None
-    )
+    detector_cache: dict[tuple[str, ...], YoloWorldDetector] = {}
 
     dataset_path = Path(dataset_dir).expanduser().resolve()
     scene_root_path = Path(scene_root).expanduser().resolve()
@@ -169,7 +175,22 @@ def run_habitat_objectnav_rgb_noise_stress(
                             rgb_noise=rgb_noise,
                             depth_noise=depth_noise,
                             detector=detector,
-                            detector_adapter=detector_adapter,
+                            detector_adapter=_yolo_detector_for_target(
+                                detector_cache=detector_cache,
+                                detector=detector,
+                                detector_weights=detector_weights,
+                                detector_conf=detector_conf,
+                                target_category=episode.object_category,
+                                yolo_prompt_mode=yolo_prompt_mode,
+                            ),
+                            accepted_detection_labels=_accepted_yolo_detection_labels(
+                                episode.object_category,
+                                yolo_prompt_mode,
+                            ),
+                            yolo_prompt_categories=_yolo_prompt_categories(
+                                episode.object_category,
+                                yolo_prompt_mode,
+                            ),
                             semantic_id_to_category=semantic_id_to_category,
                             memory=memory,
                             seed=seed,
@@ -209,6 +230,7 @@ def run_rgb_noise_stress_preflight(
     detector_conf: float,
     memory_ablation: Sequence[str],
     seed: int,
+    yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -219,6 +241,7 @@ def run_rgb_noise_stress_preflight(
     _validate_noise_levels(noise_levels, rgb_profile, depth_profile)
     _validate_detector(detector, detector_conf)
     _validate_memory_ablation(memory_ablation)
+    _validate_yolo_prompt_mode(yolo_prompt_mode)
     controller = OutAndBackController()
     actions = controller.actions_for_episode(
         start_pose=(0.0, 0.0, 0.0),
@@ -237,6 +260,7 @@ def run_rgb_noise_stress_preflight(
         "detector": detector,
         "detector_weights": detector_weights,
         "detector_conf": detector_conf,
+        "yolo_prompt_mode": yolo_prompt_mode,
         "target_categories": list(TARGET_CATEGORIES),
         "memory_ablation": list(memory_ablation),
         "revisit_strategy": "out_and_back",
@@ -265,6 +289,8 @@ def _run_rgb_noise_episode(
     depth_noise: DepthNoisePipelineD435,
     detector: str,
     detector_adapter: YoloWorldDetector | None,
+    accepted_detection_labels: set[str],
+    yolo_prompt_categories: Sequence[str],
     semantic_id_to_category: dict[int, str],
     memory: LifelongMemoryHarness,
     seed: int,
@@ -332,6 +358,7 @@ def _run_rgb_noise_episode(
             noisy_rgb=noisy_rgb,
             oracle_mask=oracle_mask,
             target_category=episode.object_category,
+            accepted_detection_labels=accepted_detection_labels,
         )
         metrics = _mask_metrics(oracle_mask=oracle_mask, detector_mask=detector_mask)
         depth_valid_ratio = _depth_valid_ratio(noisy_depth)
@@ -387,6 +414,7 @@ def _run_rgb_noise_episode(
                 "noise_level": level,
                 "memory_mode": memory_mode,
                 "detector": detector,
+                "detector_prompt_categories": "|".join(yolo_prompt_categories),
                 "start_source_requested": start_source,
                 "start_source_used": start.source_used,
                 "step_index": step_index,
@@ -444,6 +472,7 @@ def _detector_mask(
     noisy_rgb: np.ndarray,
     oracle_mask: np.ndarray,
     target_category: str,
+    accepted_detection_labels: set[str],
 ) -> tuple[np.ndarray, list[Detection]]:
     if detector == "oracle_bbox":
         bbox = _mask_bbox(oracle_mask)
@@ -462,16 +491,65 @@ def _detector_mask(
         ]
     if detector_adapter is None:
         raise RuntimeError("detector_adapter is required for yolo_world")
-    aliases = _target_aliases(target_category)
     detections = [
         detection
         for detection in detector_adapter.detect(noisy_rgb)
-        if detection.category.strip().lower().replace("_", " ") in aliases
+        if _normalize_yolo_label(detection.category) in accepted_detection_labels
     ]
     mask = np.zeros(noisy_rgb.shape[:2], dtype=bool)
     for detection in detections:
         mask |= detection.mask
     return mask, detections
+
+
+def _yolo_detector_for_target(
+    *,
+    detector_cache: dict[tuple[str, ...], YoloWorldDetector],
+    detector: str,
+    detector_weights: str,
+    detector_conf: float,
+    target_category: str,
+    yolo_prompt_mode: str,
+) -> YoloWorldDetector | None:
+    if detector != "yolo_world":
+        return None
+    prompt_categories = _yolo_prompt_categories(target_category, yolo_prompt_mode)
+    if prompt_categories not in detector_cache:
+        detector_cache[prompt_categories] = YoloWorldDetector(
+            weights=detector_weights,
+            categories=list(prompt_categories),
+            conf=detector_conf,
+            device="auto",
+        )
+    return detector_cache[prompt_categories]
+
+
+def _yolo_prompt_categories(target_category: str, yolo_prompt_mode: str) -> tuple[str, ...]:
+    _validate_yolo_prompt_mode(yolo_prompt_mode)
+    if yolo_prompt_mode == "all_categories":
+        return tuple(_normalize_yolo_label(category) for category in TARGET_CATEGORIES)
+    target_label = _normalize_yolo_label(target_category)
+    if yolo_prompt_mode == "target":
+        return (target_label,)
+    return YOLO_WORLD_PROMPT_ALIASES.get(target_label, (target_label,))
+
+
+def _accepted_yolo_detection_labels(
+    target_category: str,
+    yolo_prompt_mode: str,
+) -> set[str]:
+    _validate_yolo_prompt_mode(yolo_prompt_mode)
+    labels = set(_target_aliases(target_category))
+    if yolo_prompt_mode == "target_aliases":
+        labels.update(
+            _normalize_yolo_label(label)
+            for label in _yolo_prompt_categories(target_category, yolo_prompt_mode)
+        )
+    return labels
+
+
+def _normalize_yolo_label(category: str) -> str:
+    return category.strip().lower().replace("_", " ")
 
 
 def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
@@ -587,6 +665,14 @@ def _validate_memory_ablation(memory_ablation: Sequence[str]) -> None:
         raise ValueError(
             f"memory_ablation must use {', '.join(SUPPORTED_MEMORY_ABLATIONS)}; "
             f"got {', '.join(unknown)}"
+        )
+
+
+def _validate_yolo_prompt_mode(yolo_prompt_mode: str) -> None:
+    if yolo_prompt_mode not in SUPPORTED_YOLO_PROMPT_MODES:
+        raise ValueError(
+            "yolo_prompt_mode must be one of: "
+            f"{', '.join(SUPPORTED_YOLO_PROMPT_MODES)}"
         )
 
 

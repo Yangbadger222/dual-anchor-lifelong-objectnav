@@ -108,10 +108,15 @@ This design owns:
   for Intel RealSense D435, applied to Habitat depth observations.
 - A **detector adapter** wrapping **YOLO-World** (Ultralytics
   `YOLOWorld('yolov8s-worldv2.pt')` or equivalent) that produces per-frame
-  `(category, bbox, confidence, mask)` tuples for the 6 HM3D ObjectNav
-  categories: `bed, chair, plant, sofa, toilet, tv_monitor`. Masks are
-  derived from boxes (axis-aligned) for v1; instance masks via YOLO-World's
-  segmentation head are deferred to v2.
+  `(category, bbox, confidence, mask)` tuples. For the ObjectNav harness the
+  default prompt policy is target-conditioned: YOLO-World is prompted with the
+  current episode goal category rather than the full 6-category set. This
+  matches the ObjectNav interface, where the goal category is known, and avoids
+  open-vocabulary class competition such as visible `toilet` regions being
+  labeled `bed`. The legacy full category prompt set remains available as
+  `--yolo-prompt-mode all_categories` for ablations. Masks are derived from
+  boxes (axis-aligned) for v1; instance masks via YOLO-World's segmentation head
+  are deferred to v2.
 - A **revisit controller** (`out_and_back`) that produces an action
   sequence guaranteed to view the target from ≥2 distinct viewpoints with
   a non-target interval in between.
@@ -473,14 +478,10 @@ stack must match or beat.
 | Memory persistence | Use existing [sqlite_store.py](../../src/objectnav_core/objectnav_core/memory/sqlite_store.py), keyed by `(scene_id, episode_dataset_version)`. |
 | Revisit strategy for v1 | `out_and_back` only. Frontier-based multi-target revisit is deferred. |
 | ObjectNav success metric for v1 | Oracle stop (memory says `TRUST` while agent is within 1.0 m and target is in view). Acceptable under the robotics-systems venue decision. |
+| YOLO-World prompt strategy | Use target-conditioned prompts by default. The full 6-category prompt set is retained only as an ablation/debug mode because it caused class competition on the first visible `toilet` smoke. |
 
 ### Still open
 
-- YOLO-World prompt strategy: use the bare HM3D category names
-  (`bed/chair/plant/sofa/toilet/tv_monitor`) or expanded prompts
-  (`"a bed"`, `"a potted plant"`, `"a tv monitor or television"`)? To be
-  decided after the smoke run by comparing per-category recall on clean
-  HM3D images.
 - YOLO-World mask source: stay with bbox-derived rectangular masks for v1,
   or switch to YOLO-World seg variants if recall@IoU is too low. Decide
   after smoke.

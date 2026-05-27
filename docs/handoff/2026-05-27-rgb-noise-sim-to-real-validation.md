@@ -2,7 +2,7 @@
 
 Date: 2026-05-27  
 Owner: Codex  
-Status: Ready for Detector Debug
+Status: Detector Prompt Fix Ready For Linux Rerun
 
 ## Current State
 
@@ -17,6 +17,10 @@ Implemented v1 code:
 - SQLite-backed usability-belief persistence harness.
 - New `run_habitat_objectnav_rgb_noise_stress` CLI.
 - Full runner supports `detector=oracle_bbox` for Habitat wiring smoke and `detector=yolo_world` for real detector runs.
+- YOLO-World prompting now defaults to the current ObjectNav target category,
+  with `all_categories` and `target_aliases` available as explicit debug modes.
+- The RGB-noise ObjectNav harness now defaults to `sensor_size=320` for real
+  detector runs.
 
 ## Files Touched
 
@@ -38,6 +42,8 @@ Implemented v1 code:
 - `README.md`
 - `docs/README.md`
 - `docs/devlog/2026-05.md`
+- `docs/design/2026-05-27-rgb-noise-sim-to-real-objectnav-memory-validation.md`
+- `docs/experiments/2026-05-27-yolo-world-toilet-debug.md`
 
 ## Commands Run
 
@@ -70,6 +76,13 @@ After detector setup:
 - Verified Habitat-Sim / Habitat-Lab still import at 0.3.3.
 - Initialized `YoloWorldDetector` with `yolov8s-worldv2.pt` and ran a dummy detection.
 - Ran clean YOLO-World Habitat smokes at sensor sizes 64 and 96. Both completed but produced zero detector recall on the visible `toilet` target.
+- Debugged the first `toilet` miss:
+  - `sensor_size=224` still produced zero detector positives.
+  - `sensor_size=320` with the legacy all-category prompt produced 2 positive rows out of 15 visible rows.
+  - A raw 320 px reset-frame probe detected `toilet` at confidence `0.738678`.
+  - Low-threshold probes showed class competition: later visible target regions were often labeled `bed` or `sofa`.
+  - `toilet_only` prompting improved target positives from 2/15 to 5/15 on the same 320 px trajectory.
+- Added target-conditioned YOLO prompt mode and raised the default harness sensor size to 320.
 
 Still not run:
 
@@ -78,14 +91,18 @@ Still not run:
 ## Known Risks
 
 - `oracle_bbox` is only a wiring smoke; it is not evidence for detector robustness.
-- YOLO-World currently misses the first visible `toilet` episode under bare prompt names at 64 and 96 px.
+- YOLO-World misses the first visible `toilet` episode under 64/96/224 px
+  renders. At 320 px, target-conditioned prompting recovers early full-target
+  views but later out-and-back frames are edge-clipped and remain poor detector
+  evidence.
 - The out-and-back controller is a deterministic action retrace helper, not a navmesh-aware `ShortestPathFollower` integration yet.
 - The success metric is oracle-stop row count, not official Habitat SPL.
 
 ## Next Recommended Step
 
-1. Add debug PNG export for missed-visible rows.
-2. Try expanded prompts for `toilet` and higher sensor sizes (`224` or `320`).
+1. Pull the prompt-mode fix on `badger-linux`.
+2. Run the clean 1-episode YOLO-World smoke with the new defaults
+   (`sensor_size=320`, `yolo_prompt_mode=target`).
 3. Run a category sweep before the full 6-cell matrix.
 
 ## Context for Next Contributor
