@@ -177,6 +177,7 @@ python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
   --lifelong persistent_per_scene \
   --memory-ablation on,off \
   --max-episodes 30 \
+  --stop-on-trust \
   --seed 313
 ```
 
@@ -199,10 +200,10 @@ Python interfaces (new):
   - `detect(rgb: np.uint8[H,W,3]) -> list[Detection]`
   - `Detection = (category: str, bbox: tuple[int,int,int,int], confidence: float, mask: np.bool_[H,W])`
 - `simulation/revisit_controller.py`
-  - `class OutAndBackController(sim, target_pose)`
+  - `class OutAndBackController(forward_actions)`
   - `actions_for_episode(start_pose, target_pose) -> list[str]`
-  - Internally uses `habitat_sim.nav.ShortestPathFollower` to go start → target,
-    then reverses to return near the start.
+  - V1 uses deterministic Habitat actions to create a target revisit interval.
+    Navmesh-aware `ShortestPathFollower` revisit remains a later upgrade.
 - `evaluation/lifelong_memory_harness.py`
   - `class LifelongMemoryHarness(memory_store, scene_id, dataset_version)`
   - Loads / persists memory keyed by `(scene_id, dataset_version)`.
@@ -391,6 +392,8 @@ for episode in val_mini:
         evidence = build_evidence(detections, obs.depth, pose)
         memory.update(evidence)
         trace.write(pose, gt_visible, detections, memory.snapshot())
+        if stop_on_trust and memory.decision == TRUST and gt_visible:
+            break
 
     if lifelong: persist_memory(scene_id)
 ```
@@ -401,6 +404,7 @@ for episode in val_mini:
 |---|---|---|
 | Noise pipeline too aggressive: detector recall ~0 at every level | Per-level detection recall vs clean recall in summary | Calibrate noise parameters per level against an external real-camera reference set; expose noise knobs in YAML |
 | Detector category mismatch (no class for `tv_monitor`, `plant`) | Pre-flight check: detect on each category's GT crop, log P/R | Use open-vocab prompts; fall back to per-category prompt list in config |
+| Edge-clipped target views look oracle-visible but are poor detector evidence | Trace `oracle_bbox`, `oracle_touches_edge`, and `oracle_edge_clearance_ratio` | Stop on valid `TRUST`; improve revisit sampling before treating later edge-clipped misses as detector failures |
 | Revisit controller cannot reach the target (navmesh blocked) | Episode flagged `unreachable` in summary | Skip the episode from memory metrics; keep for perception metrics |
 | Lifelong memory leaks identity across scenes | Memory key collision check at load | Key by `(scene_id, episode_dataset_version)` only; never share across scenes |
 | Memory ablation `off` is not actually memoryless (e.g. uses prior) | Unit test: feed two identical episodes with `off`, expect identical decisions | Implement `off` as fresh `UsabilityUpdater` per step |
@@ -447,7 +451,7 @@ Report:
 | False-trust rate | Fraction of `TRUST` decisions whose memory location lies outside the GT instance |
 | Recall@revisit | Of episodes where target was confirmed on first visit, fraction still confirmed after the revisit interval |
 | Cross-episode recall | Per scene, fraction of `TRUST`s in episode 2..N that reuse memory from episode 1 |
-| ObjectNav success (oracle stop) | Memory says `TRUST` while agent is within `1.0 m` and target is in view |
+| ObjectNav success (oracle stop) | Memory says `TRUST` while the target is in view; the default runner stops the episode at this point |
 
 The result is acceptable when, at `mild` noise level:
 

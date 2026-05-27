@@ -63,6 +63,7 @@ SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
 )
 DEFAULT_SENSOR_SIZE = 320
 DEFAULT_YOLO_PROMPT_MODE = "target"
+DEFAULT_STOP_ON_TRUST = True
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 INITIAL_BELIEF = MemoryBelief(
     p_existence=0.9,
@@ -96,6 +97,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
+    stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
@@ -121,6 +123,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         memory_ablation=memory_ablation,
         seed=seed,
         yolo_prompt_mode=yolo_prompt_mode,
+        stop_on_trust=stop_on_trust,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
@@ -196,6 +199,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             seed=seed,
                             min_target_pixels=min_target_pixels,
                             min_detector_pixels=min_detector_pixels,
+                            stop_on_trust=stop_on_trust,
                         )
                         trace_rows.extend(rows)
                         episode_summaries.append(episode_summary)
@@ -231,6 +235,7 @@ def run_rgb_noise_stress_preflight(
     memory_ablation: Sequence[str],
     seed: int,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
+    stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -261,6 +266,7 @@ def run_rgb_noise_stress_preflight(
         "detector_weights": detector_weights,
         "detector_conf": detector_conf,
         "yolo_prompt_mode": yolo_prompt_mode,
+        "stop_on_trust": bool(stop_on_trust),
         "target_categories": list(TARGET_CATEGORIES),
         "memory_ablation": list(memory_ablation),
         "revisit_strategy": "out_and_back",
@@ -296,6 +302,7 @@ def _run_rgb_noise_episode(
     seed: int,
     min_target_pixels: int,
     min_detector_pixels: int,
+    stop_on_trust: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
@@ -361,6 +368,7 @@ def _run_rgb_noise_episode(
             accepted_detection_labels=accepted_detection_labels,
         )
         metrics = _mask_metrics(oracle_mask=oracle_mask, detector_mask=detector_mask)
+        view_metrics = _target_view_metrics(oracle_mask)
         depth_valid_ratio = _depth_valid_ratio(noisy_depth)
         collided = bool(getattr(sim, "previous_step_collided", False))
         evidence_type, evidence_strength, quarantined, evidence_reason = (
@@ -405,6 +413,11 @@ def _run_rgb_noise_episode(
             decision.decision is DecisionType.TRUST
             and target_visible
         )
+        stopped_on_trust = _should_stop_episode(
+            decision=decision.decision,
+            target_visible=target_visible,
+            stop_on_trust=stop_on_trust,
+        )
         rows.append(
             {
                 "episode_index": episode_index,
@@ -429,6 +442,7 @@ def _run_rgb_noise_episode(
                     6,
                 ),
                 **metrics,
+                **view_metrics,
                 "target_visible": target_visible,
                 "evidence_type": evidence_type.value,
                 "evidence_strength": round(evidence_strength, 6),
@@ -440,8 +454,11 @@ def _run_rgb_noise_episode(
                 "p_valid": round(decision.p_valid, 6),
                 "decision": decision.decision.value,
                 "oracle_stop_success": oracle_stop_success,
+                "stopped_on_trust": stopped_on_trust,
             }
         )
+        if stopped_on_trust:
+            break
     if memory_mode == "on":
         memory.save_belief(
             scene_id=episode.original_scene_id,
@@ -550,6 +567,44 @@ def _accepted_yolo_detection_labels(
 
 def _normalize_yolo_label(category: str) -> str:
     return category.strip().lower().replace("_", " ")
+
+
+def _target_view_metrics(oracle_mask: np.ndarray) -> dict[str, Any]:
+    bbox = _mask_bbox(oracle_mask)
+    height, width = oracle_mask.shape
+    if bbox is None:
+        return {
+            "oracle_bbox": "",
+            "oracle_bbox_area": 0,
+            "oracle_bbox_fill_ratio": 0.0,
+            "oracle_touches_edge": False,
+            "oracle_edge_clearance_ratio": 0.0,
+        }
+    x1, y1, x2, y2 = bbox
+    bbox_area = (x2 - x1) * (y2 - y1)
+    edge_clearance = min(x1, y1, width - x2, height - y2)
+    return {
+        "oracle_bbox": f"{x1},{y1},{x2},{y2}",
+        "oracle_bbox_area": bbox_area,
+        "oracle_bbox_fill_ratio": round(
+            float(np.asarray(oracle_mask).sum()) / bbox_area,
+            6,
+        ),
+        "oracle_touches_edge": edge_clearance == 0,
+        "oracle_edge_clearance_ratio": round(
+            float(edge_clearance) / max(1, min(height, width)),
+            6,
+        ),
+    }
+
+
+def _should_stop_episode(
+    *,
+    decision: DecisionType,
+    target_visible: bool,
+    stop_on_trust: bool,
+) -> bool:
+    return bool(stop_on_trust and target_visible and decision is DecisionType.TRUST)
 
 
 def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:

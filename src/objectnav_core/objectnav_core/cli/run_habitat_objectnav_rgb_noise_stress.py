@@ -5,6 +5,7 @@ import json
 
 from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_SENSOR_SIZE,
+    DEFAULT_STOP_ON_TRUST,
     DEFAULT_YOLO_PROMPT_MODE,
     SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
@@ -80,6 +81,15 @@ def main() -> None:
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
     parser.add_argument(
+        "--stop-on-trust",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_STOP_ON_TRUST,
+        help=(
+            "Stop an episode once the policy trusts a visible target, matching "
+            "ObjectNav STOP semantics."
+        ),
+    )
+    parser.add_argument(
         "--preflight-only",
         action="store_true",
         help="Validate config and write summary without loading Habitat or YOLO.",
@@ -98,6 +108,7 @@ def main() -> None:
             memory_ablation=_split_csv(args.memory_ablation),
             seed=args.seed,
             yolo_prompt_mode=args.yolo_prompt_mode,
+            stop_on_trust=args.stop_on_trust,
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -118,6 +129,7 @@ def main() -> None:
             min_target_pixels=args.min_target_pixels,
             min_detector_pixels=args.min_detector_pixels,
             yolo_prompt_mode=args.yolo_prompt_mode,
+            stop_on_trust=args.stop_on_trust,
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

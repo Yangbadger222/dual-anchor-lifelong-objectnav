@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from objectnav_core.evaluation import habitat_objectnav_rgb_noise_stress as stress
+from objectnav_core.memory.usability import DecisionType
 
 
 def test_importing_rgb_noise_stress_does_not_import_habitat_or_ultralytics() -> None:
@@ -27,6 +28,7 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
     assert summary["task"] == "habitat_objectnav_rgb_noise_stress_preflight"
     assert summary["detector"] == "yolo_world"
     assert summary["yolo_prompt_mode"] == "target"
+    assert summary["stop_on_trust"] is True
     assert summary["target_categories"] == [
         "bed",
         "chair",
@@ -45,6 +47,7 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
 def test_default_yolo_prompting_is_target_conditioned() -> None:
     assert stress.DEFAULT_SENSOR_SIZE == 320
     assert stress.DEFAULT_YOLO_PROMPT_MODE == "target"
+    assert stress.DEFAULT_STOP_ON_TRUST is True
     assert stress._yolo_prompt_categories("toilet", "target") == ("toilet",)
     assert stress._yolo_prompt_categories("tv_monitor", "target") == ("tv monitor",)
     assert stress._yolo_prompt_categories("toilet", "all_categories") == (
@@ -58,6 +61,52 @@ def test_default_yolo_prompting_is_target_conditioned() -> None:
     assert "white toilet" in stress._accepted_yolo_detection_labels(
         "toilet",
         "target_aliases",
+    )
+
+
+def test_target_view_metrics_marks_edge_clipped_views() -> None:
+    centered = stress._target_view_metrics(_mask_with_box((10, 12, 30, 36), (48, 48)))
+    clipped = stress._target_view_metrics(_mask_with_box((31, 40, 48, 48), (48, 48)))
+
+    assert centered["oracle_bbox"] == "10,12,30,36"
+    assert centered["oracle_touches_edge"] is False
+    assert centered["oracle_bbox_fill_ratio"] == 1.0
+    assert clipped["oracle_touches_edge"] is True
+    assert clipped["oracle_edge_clearance_ratio"] == 0.0
+
+
+def test_stop_on_trust_uses_objectnav_stop_semantics() -> None:
+    assert (
+        stress._should_stop_episode(
+            decision=DecisionType.TRUST,
+            target_visible=True,
+            stop_on_trust=True,
+        )
+        is True
+    )
+    assert (
+        stress._should_stop_episode(
+            decision=DecisionType.TRUST,
+            target_visible=False,
+            stop_on_trust=True,
+        )
+        is False
+    )
+    assert (
+        stress._should_stop_episode(
+            decision=DecisionType.VERIFY,
+            target_visible=True,
+            stop_on_trust=True,
+        )
+        is False
+    )
+    assert (
+        stress._should_stop_episode(
+            decision=DecisionType.TRUST,
+            target_visible=True,
+            stop_on_trust=False,
+        )
+        is False
     )
 
 
@@ -98,3 +147,15 @@ def test_preflight_rejects_noise_level_missing_from_profile(tmp_path: Path) -> N
         assert "extreme" in str(exc)
     else:
         raise AssertionError("unknown noise levels should fail preflight")
+
+
+def _mask_with_box(
+    bbox: tuple[int, int, int, int],
+    shape: tuple[int, int],
+) -> object:
+    import numpy as np
+
+    mask = np.zeros(shape, dtype=bool)
+    x1, y1, x2, y2 = bbox
+    mask[y1:y2, x1:x2] = True
+    return mask
