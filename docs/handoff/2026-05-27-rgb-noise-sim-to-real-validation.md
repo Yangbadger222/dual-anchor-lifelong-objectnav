@@ -301,6 +301,21 @@ After detector setup:
       rejections
   - conclusion: the phase labels are useful audit fields, but the current
     out-and-back path still does not create a true non-confirmation challenge.
+- Added local `visibility_challenge` replay protocol:
+  - CLI flag: `--replay-protocol visibility_challenge`
+  - default remains `out_and_back`
+  - chooses a measured target-visible Habitat goal view for `confirm/revisit`
+  - chooses a measured target-hidden turned-around view for
+    `depart/non_confirm`
+  - trace rows include `replay_protocol`, `replay_source`, and
+    `replay_source_target_pixels`
+  - the protocol emits 3 confirm frames, 2 depart frames, 4 non-confirm frames,
+    and 4 revisit frames
+  - detector inference, evidence classification, memory update logic,
+    positive-only `naive_count`, and the shared current-positive gate are
+    unchanged
+  - local focused tests passed: 29 tests in
+    `src/objectnav_core/tests/test_habitat_objectnav_rgb_noise_stress.py`
 
 Still not run:
 
@@ -309,10 +324,11 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Explicit Habitat action protocol that forces the synthetic structured
-  challenge conditions. The current phase labels audit the deterministic
-  out-and-back replay; they do not yet force target disappearance or
-  distractor observations.
+- Linux `oracle_bbox` smoke for `--replay-protocol visibility_challenge`.
+- Grounding-DINO memory comparison using `--replay-protocol visibility_challenge`.
+- Full planner-backed Habitat action protocol. The new visibility challenge
+  teleports between measured viewpoints; it is still a memory/evidence stress
+  test, not a navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -351,13 +367,16 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Add visibility-aware episode selection and reintroduce `chair`.
-4. Implement an action/viewpoint protocol that actually forces confirm,
-   depart, non-confirm, and revisit conditions when phase audit shows the
-   current out-and-back path is still too repetitive.
-5. Add a fallback selection mode so categories with zero structured candidates
+3. Pull the visibility-challenge commit on `badger-linux`.
+4. Run an `oracle_bbox` smoke with `--replay-protocol visibility_challenge` and
+   inspect phase evidence. The hidden interval should have zero target-visible
+   rows with oracle boxes.
+5. Run a small Grounding-DINO memory comparison with
+   `--replay-protocol visibility_challenge`.
+6. Add visibility-aware episode selection and reintroduce `chair`.
+7. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-6. Then connect the replay harness to a real navigation policy or Habitat
+8. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor

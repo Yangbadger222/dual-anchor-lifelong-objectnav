@@ -67,6 +67,10 @@ SUPPORTED_EPISODE_SELECTION_STRATEGIES: tuple[str, ...] = (
     "category_balanced",
     "structured_visibility",
 )
+SUPPORTED_REPLAY_PROTOCOLS: tuple[str, ...] = (
+    "out_and_back",
+    "visibility_challenge",
+)
 REPLAY_PHASES: tuple[str, ...] = (
     "confirm",
     "depart",
@@ -87,6 +91,7 @@ DEFAULT_DEBUG_EXPORT_CATEGORIES: tuple[str, ...] = ("plant", "tv_monitor")
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
+DEFAULT_REPLAY_PROTOCOL = "out_and_back"
 DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS = 2
 DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE = 2.0
 DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
@@ -110,6 +115,24 @@ YOLO_WORLD_PROMPT_ALIASES: dict[str, tuple[str, ...]] = {
 @dataclass(frozen=True)
 class NaiveCountState:
     positive_count: int = 0
+
+
+@dataclass(frozen=True)
+class ReplayViewCandidate:
+    source: str
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float, float]
+    target_pixels: int
+
+
+@dataclass(frozen=True)
+class ReplayStep:
+    phase: str
+    action: str
+    source: str = ""
+    position: tuple[float, float, float] | None = None
+    rotation: tuple[float, float, float, float] | None = None
+    target_pixels: int | None = None
 
 
 def run_habitat_objectnav_rgb_noise_stress(
@@ -143,6 +166,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -189,6 +213,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         debug_export_limit_per_category=debug_export_limit_per_category,
         max_detection_area_ratio=max_detection_area_ratio,
         episode_selection_strategy=episode_selection_strategy,
+        replay_protocol=replay_protocol,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
         structured_min_geodesic_distance=structured_min_geodesic_distance,
         structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
@@ -295,6 +320,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             debug_export_limit_per_category=debug_export_limit_per_category,
                             output_path=output_path,
                             max_detection_area_ratio=max_detection_area_ratio,
+                            replay_protocol=replay_protocol,
                         )
                         trace_rows.extend(rows)
                         episode_summaries.append(episode_summary)
@@ -316,6 +342,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         selected_episodes=selected_episodes,
         target_categories=target_categories,
         episode_selection_strategy=episode_selection_strategy,
+        replay_protocol=replay_protocol,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
         structured_min_geodesic_distance=structured_min_geodesic_distance,
         structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
@@ -353,6 +380,7 @@ def run_rgb_noise_stress_preflight(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -371,6 +399,7 @@ def run_rgb_noise_stress_preflight(
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     _validate_debug_export_limit(debug_export_limit_per_category)
     _validate_max_detection_area_ratio(max_detection_area_ratio)
+    _validate_replay_protocol(replay_protocol)
     _validate_episode_selection(
         episode_selection_strategy=episode_selection_strategy,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
@@ -426,7 +455,8 @@ def run_rgb_noise_stress_preflight(
         "debug_export_categories": sorted(_debug_category_filter(debug_export_categories)),
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "max_detection_area_ratio": max_detection_area_ratio,
-        "revisit_strategy": "out_and_back",
+        "replay_protocol": replay_protocol,
+        "revisit_strategy": replay_protocol,
         "replay_phases": list(REPLAY_PHASES),
         "out_and_back_actions": list(actions),
         "out_and_back_action_count": len(actions),
@@ -469,7 +499,9 @@ def _run_rgb_noise_episode(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     output_path: Path | None = None,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    _validate_replay_protocol(replay_protocol)
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
     state = agent.get_state()
@@ -485,6 +517,16 @@ def _run_rgb_noise_episode(
         start_pose=start.position,
         target_pose=_first_goal_position(episode),
     )
+    if replay_protocol == "visibility_challenge":
+        replay_steps = _build_visibility_challenge_replay_steps(
+            sim=sim,
+            agent=agent,
+            episode=episode,
+            target_semantic_ids=target_semantic_ids,
+            min_target_pixels=min_target_pixels,
+        )
+    else:
+        replay_steps = _out_and_back_replay_steps(actions)
     updater = UsabilityUpdater()
     policy = UsabilityDecisionPolicy()
     naive_count_state = NaiveCountState()
@@ -500,10 +542,17 @@ def _run_rgb_noise_episode(
     rows: list[dict[str, Any]] = []
     negative_streak = 0
     previous_pose = _agent_pose(agent)
-    total_steps = len(actions) + 1
-    for step_index, action in enumerate(("reset", *actions)):
-        replay_phase = _replay_phase(step_index, total_steps=total_steps)
-        if action != "reset":
+    total_steps = len(replay_steps)
+    for step_index, replay_step in enumerate(replay_steps):
+        action = replay_step.action
+        replay_phase = replay_step.phase
+        if replay_step.position is not None and replay_step.rotation is not None:
+            state = agent.get_state()
+            state.position = np.asarray(replay_step.position, dtype=float)
+            state.rotation = list(replay_step.rotation)
+            agent.set_state(state)
+            observations = sim.get_sensor_observations()
+        elif action != "reset":
             observations = sim.step(action)
         pose = _agent_pose(agent)
         motion = AgentMotion(
@@ -578,7 +627,7 @@ def _run_rgb_noise_episode(
             belief,
             _decision_context(
                 step_index=step_index,
-                total_steps=len(actions) + 1,
+                total_steps=total_steps,
                 negative_streak=negative_streak,
                 metrics=metrics,
             ),
@@ -677,8 +726,11 @@ def _run_rgb_noise_episode(
                 "memory_mode": memory_mode,
                 "detector": detector,
                 "detector_prompt_categories": "|".join(yolo_prompt_categories),
+                "replay_protocol": replay_protocol,
                 "start_source_requested": start_source,
                 "start_source_used": start.source_used,
+                "replay_source": replay_step.source,
+                "replay_source_target_pixels": replay_step.target_pixels,
                 "step_index": step_index,
                 "action": action,
                 "replay_phase": replay_phase,
@@ -728,6 +780,8 @@ def _run_rgb_noise_episode(
         "object_category": episode.object_category,
         "noise_level": level,
         "memory_mode": memory_mode,
+        "replay_protocol": replay_protocol,
+        "replay_phase_counts": _count_values(rows, "replay_phase"),
         "trace_rows": len(rows),
         "target_visible_rows": sum(int(row["target_visible"]) for row in rows),
         "oracle_stop_success_rows": sum(
@@ -1271,6 +1325,187 @@ def _sanitize_debug_token(value: str) -> str:
     return token.strip("-") or "unknown"
 
 
+def _out_and_back_replay_steps(actions: Sequence[str]) -> tuple[ReplayStep, ...]:
+    total_steps = len(actions) + 1
+    return tuple(
+        ReplayStep(
+            phase=_replay_phase(step_index, total_steps=total_steps),
+            action=action,
+        )
+        for step_index, action in enumerate(("reset", *actions))
+    )
+
+
+def _visibility_challenge_replay_steps(
+    candidates: Sequence[ReplayViewCandidate],
+    *,
+    min_target_pixels: int,
+) -> tuple[ReplayStep, ...]:
+    visible_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.target_pixels >= min_target_pixels
+    ]
+    hidden_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.target_pixels < min_target_pixels
+    ]
+    if not visible_candidates:
+        raise ValueError("visibility_challenge requires a target-visible view")
+    if not hidden_candidates:
+        raise ValueError("visibility_challenge requires a target-hidden view")
+    visible = max(visible_candidates, key=lambda candidate: candidate.target_pixels)
+    hidden = min(hidden_candidates, key=lambda candidate: candidate.target_pixels)
+    plan = (
+        ("confirm", visible, 3),
+        ("depart", hidden, 2),
+        ("non_confirm", hidden, 4),
+        ("revisit", visible, 4),
+    )
+    steps: list[ReplayStep] = []
+    for phase, candidate, count in plan:
+        for index in range(count):
+            steps.append(
+                ReplayStep(
+                    phase=phase,
+                    action="reset" if not steps else f"teleport_{phase}",
+                    source=candidate.source,
+                    position=candidate.position,
+                    rotation=candidate.rotation,
+                    target_pixels=candidate.target_pixels,
+                )
+            )
+    return tuple(steps)
+
+
+def _build_visibility_challenge_replay_steps(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    target_semantic_ids: Sequence[int],
+    min_target_pixels: int,
+) -> tuple[ReplayStep, ...]:
+    candidates = _sample_replay_view_candidates(
+        sim=sim,
+        agent=agent,
+        episode=episode,
+        target_semantic_ids=target_semantic_ids,
+    )
+    return _visibility_challenge_replay_steps(
+        candidates,
+        min_target_pixels=min_target_pixels,
+    )
+
+
+def _sample_replay_view_candidates(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    target_semantic_ids: Sequence[int],
+) -> tuple[ReplayViewCandidate, ...]:
+    candidates: list[ReplayViewCandidate] = []
+    for index, viewpoint in enumerate(getattr(episode, "goal_viewpoints", ()) or ()):
+        agent_state = viewpoint.get("agent_state", {})
+        position = _tuple3_from_any(agent_state.get("position"))
+        rotation = _tuple4_from_any(agent_state.get("rotation"))
+        if position is None or rotation is None:
+            continue
+        candidates.append(
+            _measure_replay_view_candidate(
+                sim=sim,
+                agent=agent,
+                source=f"goal_viewpoint:{index}",
+                position=position,
+                rotation=rotation,
+                target_semantic_ids=target_semantic_ids,
+            )
+        )
+        candidates.append(
+            _measure_replay_view_candidate(
+                sim=sim,
+                agent=agent,
+                source=f"goal_viewpoint:{index}_turn_around",
+                position=position,
+                rotation=_yaw_180_quaternion_xyzw(rotation),
+                target_semantic_ids=target_semantic_ids,
+            )
+        )
+    if not candidates:
+        start = _select_episode_start(episode, start_source="episode_start")
+        candidates.append(
+            _measure_replay_view_candidate(
+                sim=sim,
+                agent=agent,
+                source="episode_start",
+                position=start.position,
+                rotation=start.rotation,
+                target_semantic_ids=target_semantic_ids,
+            )
+        )
+    return tuple(candidates)
+
+
+def _measure_replay_view_candidate(
+    *,
+    sim: Any,
+    agent: Any,
+    source: str,
+    position: tuple[float, float, float],
+    rotation: tuple[float, float, float, float],
+    target_semantic_ids: Sequence[int],
+) -> ReplayViewCandidate:
+    state = agent.get_state()
+    state.position = np.asarray(position, dtype=float)
+    state.rotation = list(rotation)
+    agent.set_state(state)
+    observations = sim.get_sensor_observations()
+    semantic = np.asarray(observations["semantic"])
+    target_pixels = int(np.isin(semantic, list(target_semantic_ids)).sum())
+    return ReplayViewCandidate(
+        source=source,
+        position=position,
+        rotation=rotation,
+        target_pixels=target_pixels,
+    )
+
+
+def _tuple3_from_any(value: Any) -> tuple[float, float, float] | None:
+    if value is None:
+        return None
+    values = tuple(float(part) for part in value)
+    if len(values) != 3:
+        return None
+    return values
+
+
+def _tuple4_from_any(value: Any) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    values = tuple(float(part) for part in value)
+    if len(values) != 4:
+        return None
+    return values
+
+
+def _yaw_180_quaternion_xyzw(
+    rotation: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    x, y, z, w = rotation
+    return _normalize_quaternion_xyzw((z, w, -x, -y))
+
+
+def _normalize_quaternion_xyzw(
+    rotation: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    norm = float(np.sqrt(sum(value * value for value in rotation)))
+    if norm == 0.0:
+        return (0.0, 0.0, 0.0, 1.0)
+    return tuple(float(value / norm) for value in rotation)  # type: ignore[return-value]
+
+
 def _naive_count_belief(
     state: NaiveCountState,
     evidence_type: EvidenceType,
@@ -1589,6 +1824,7 @@ def _summarize_rgb_noise_run(
     selected_episodes: Sequence[Any] = (),
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -1619,6 +1855,8 @@ def _summarize_rgb_noise_run(
             "sensor_height": sensor_height,
             "sensor_resolution": f"{sensor_width}x{sensor_height}",
             "max_episodes": max_episodes,
+            "replay_protocol": replay_protocol,
+            "revisit_strategy": replay_protocol,
             "episode_selection": _episode_selection_summary(
                 all_episodes=all_episodes,
                 selected_episodes=selected_episodes,
@@ -1771,6 +2009,14 @@ def _validate_max_detection_area_ratio(max_detection_area_ratio: float | None) -
         return
     if not 0.0 < max_detection_area_ratio <= 1.0:
         raise ValueError("max_detection_area_ratio must be in (0, 1] or None")
+
+
+def _validate_replay_protocol(replay_protocol: str) -> None:
+    if replay_protocol not in SUPPORTED_REPLAY_PROTOCOLS:
+        raise ValueError(
+            "replay_protocol must be one of: "
+            f"{', '.join(SUPPORTED_REPLAY_PROTOCOLS)}"
+        )
 
 
 def _validate_episode_selection(

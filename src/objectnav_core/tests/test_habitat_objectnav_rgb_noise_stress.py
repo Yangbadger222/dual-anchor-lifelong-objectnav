@@ -124,6 +124,25 @@ def test_preflight_records_structured_episode_selection_config(tmp_path: Path) -
     assert summary["structured_min_path_complexity_ratio"] == 1.25
 
 
+def test_preflight_records_visibility_challenge_replay_protocol(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        replay_protocol="visibility_challenge",
+    )
+
+    assert "visibility_challenge" in stress.SUPPORTED_REPLAY_PROTOCOLS
+    assert summary["replay_protocol"] == "visibility_challenge"
+    assert summary["revisit_strategy"] == "visibility_challenge"
+
+
 def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
     categories = {"plant", "tv_monitor"}
 
@@ -508,6 +527,60 @@ def test_replay_phase_partitions_out_and_back_trace() -> None:
         + ["revisit"] * 4
     )
     assert stress._replay_phase(0, total_steps=1) == "confirm"
+
+
+def test_visibility_challenge_replay_steps_use_visible_and_hidden_views() -> None:
+    visible = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0",
+        position=(1.0, 0.0, 1.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=240,
+    )
+    hidden = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0_turn_around",
+        position=(1.0, 0.0, 1.0),
+        rotation=(0.0, 1.0, 0.0, 0.0),
+        target_pixels=0,
+    )
+
+    steps = stress._visibility_challenge_replay_steps(
+        (hidden, visible),
+        min_target_pixels=24,
+    )
+
+    assert [step.phase for step in steps] == (
+        ["confirm"] * 3
+        + ["depart"] * 2
+        + ["non_confirm"] * 4
+        + ["revisit"] * 4
+    )
+    assert all(step.target_pixels >= 24 for step in steps if step.phase in {"confirm", "revisit"})
+    assert all(step.target_pixels < 24 for step in steps if step.phase in {"depart", "non_confirm"})
+    assert {step.source for step in steps if step.phase == "confirm"} == {
+        "goal_viewpoint:0"
+    }
+    assert {step.source for step in steps if step.phase == "non_confirm"} == {
+        "goal_viewpoint:0_turn_around"
+    }
+
+
+def test_visibility_challenge_replay_steps_require_hidden_view() -> None:
+    visible = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0",
+        position=(1.0, 0.0, 1.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=240,
+    )
+
+    try:
+        stress._visibility_challenge_replay_steps(
+            (visible,),
+            min_target_pixels=24,
+        )
+    except ValueError as exc:
+        assert "target-hidden" in str(exc)
+    else:
+        raise AssertionError("visibility_challenge should require a target-hidden view")
 
 
 def test_target_view_metrics_marks_edge_clipped_views() -> None:

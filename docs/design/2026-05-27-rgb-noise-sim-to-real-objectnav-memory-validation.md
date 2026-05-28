@@ -176,6 +176,33 @@ the shared current-positive gate. The next Linux replay should first inspect
 whether `non_confirm` and `revisit` actually contain the evidence mix needed to
 stress memory before treating aggregate memory-vs-baseline metrics as a claim.
 
+## Update: Visibility-Challenge Replay Protocol (2026-05-28)
+
+The phase-audit replay showed that index-based phase labels are insufficient:
+the nominal `non_confirm` interval still contained many target-visible and
+detector-positive rows. The harness therefore adds an explicit
+`replay_protocol=visibility_challenge` mode.
+
+This protocol:
+
+- measures target pixels at each Habitat goal viewpoint and at a 180-degree
+  turned-around view from that same position;
+- selects the strongest target-visible view as `confirm` / `revisit`;
+- selects the lowest-target-pixel hidden view as `depart` / `non_confirm`;
+- emits three `confirm` frames so both memory `on` and positive-only
+  `naive_count` can accumulate initial positive evidence before the hidden
+  interval;
+- emits two `depart`, four `non_confirm`, and four `revisit` frames;
+- records `replay_protocol`, `replay_source`, and
+  `replay_source_target_pixels` in the trace.
+
+The default remains `out_and_back` for backward compatibility. The new
+protocol changes only the replay viewpoint sequence. It does not change
+detector inference, evidence classification, memory updates, `naive_count`, or
+the shared current-positive gate. Because it teleports between measured
+viewpoints rather than using a planner, its result is still a memory/evidence
+stress test, not an official navigation metric.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so
