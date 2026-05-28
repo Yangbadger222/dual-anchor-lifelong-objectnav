@@ -64,6 +64,27 @@ class _FakeProcessor:
         ]
 
 
+class _FakeNewProcessor(_FakeProcessor):
+    def post_process_grounded_object_detection(
+        self,
+        outputs: object,
+        input_ids: object,
+        threshold: float,
+        text_threshold: float,
+        target_sizes: list[tuple[int, int]],
+    ) -> list[dict[str, object]]:
+        assert threshold == 0.25
+        assert text_threshold == 0.2
+        assert target_sizes == [(8, 8)]
+        return [
+            {
+                "boxes": _FakeTensor([[1.2, 2.0, 4.8, 5.1]]),
+                "scores": _FakeTensor([0.91]),
+                "labels": ["chair"],
+            }
+        ]
+
+
 class _FakeModel:
     def __init__(self) -> None:
         self.device: str | None = None
@@ -115,3 +136,26 @@ def test_grounding_dino_adapter_forwards_fake_backend_detections() -> None:
     assert detections[0].mask.shape == (8, 8)
     assert detections[0].mask[2:6, 1:5].all()
     assert detections[0].mask.sum() == 16
+
+
+def test_grounding_dino_adapter_supports_new_transformers_threshold_name() -> None:
+    detector = GroundingDinoDetector(
+        model_id="unused",
+        categories=["chair"],
+        conf=0.25,
+        text_threshold=0.2,
+        device="cpu",
+        processor=_FakeNewProcessor(),
+        model=_FakeModel(),
+    )
+
+    detections = detector.detect(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert detections == [
+        Detection(
+            category="chair",
+            bbox=(1, 2, 5, 6),
+            confidence=0.91,
+            mask=detections[0].mask,
+        )
+    ]

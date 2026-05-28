@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import numpy as np
@@ -62,10 +63,11 @@ class GroundingDinoDetector:
             inputs = inputs.to(self.device)
         outputs = self.model(**inputs)
         input_ids = inputs.get("input_ids") if isinstance(inputs, dict) else None
-        results = self.processor.post_process_grounded_object_detection(
-            outputs,
+        results = _post_process_grounded_object_detection(
+            processor=self.processor,
+            outputs=outputs,
             input_ids=input_ids,
-            box_threshold=self.conf,
+            conf=self.conf,
             text_threshold=self.text_threshold,
             target_sizes=[image.shape[:2]],
         )
@@ -133,3 +135,28 @@ def _detections_from_grounding_result(
             )
         )
     return detections
+
+
+def _post_process_grounded_object_detection(
+    *,
+    processor: Any,
+    outputs: Any,
+    input_ids: Any,
+    conf: float,
+    text_threshold: float,
+    target_sizes: list[tuple[int, int]],
+) -> list[dict[str, Any]]:
+    method = processor.post_process_grounded_object_detection
+    parameters = inspect.signature(method).parameters
+    threshold_kwargs: dict[str, Any]
+    if "box_threshold" in parameters:
+        threshold_kwargs = {"box_threshold": conf}
+    else:
+        threshold_kwargs = {"threshold": conf}
+    return method(
+        outputs,
+        input_ids=input_ids,
+        **threshold_kwargs,
+        text_threshold=text_threshold,
+        target_sizes=target_sizes,
+    )
