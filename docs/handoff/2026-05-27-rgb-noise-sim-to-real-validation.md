@@ -199,11 +199,25 @@ After detector setup:
   - each PNG shows clean/noisy RGB, Grounding-DINO boxes, Habitat GT mask,
     detector mask, overlap, gate reason, detector confidence, oracle pixels,
     detector pixels, precision, and recall
+- Ran the plant/tv-monitor diagnostic export:
+  - output:
+    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384`
+  - completed 24 replay-runs and 360 trace rows
+  - exported 177 debug PNGs: `plant=23`, `tv_monitor=154`
+  - no PNGs were skipped by the per-category cap
+  - local quick-review samples:
+    `/tmp/dual_anchor_gate_debug_samples/contact_sheet.png`
+  - diagnostic report:
+    `docs/experiments/2026-05-28-gate-rejection-debug-pngs.md`
+  - current read: `tv_monitor` is mostly Grounding-DINO false-positive /
+    over-broad-box behavior; `plant` is mixed between detector false positives
+    and strict/clipped Habitat GT masks
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
-- A Linux replay with the new gate-rejection PNG export.
+- Manual review of all 177 exported PNGs; only representative samples and a
+  contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
 - A task designed to separate Dual-Anchor / Lifelong memory from naive positive
@@ -240,9 +254,10 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Pull the debug-PNG commit on `badger-linux`.
-2. Run the `plant,tv_monitor` replay subset with
-   `--debug-export-gate-rejections` and inspect the exported PNGs.
+1. Manually review the full
+   `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
+   directory before making a paper claim about detector-vs-GT responsibility.
+2. Add detector-side sanity checks for `tv_monitor` broad/full-frame boxes.
 3. Add a task where naive count should fail: cross-episode persistence,
    scene-change handling, negative evidence, or geometry consistency.
 4. Add visibility-aware episode selection and reintroduce `chair`.
