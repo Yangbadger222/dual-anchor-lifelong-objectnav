@@ -1,8 +1,8 @@
 # Handoff: RGB-Noise Sim-to-Real Validation
 
-Date: 2026-05-27  
+Date: 2026-05-28
 Owner: Codex  
-Status: Ready For Visibility-Aware Qualification And Detector Fixes
+Status: Ready For Memory Ablation Refinement And Stop-Gate Fixes
 
 ## Current State
 
@@ -145,13 +145,33 @@ After detector setup:
     by first-N episode visibility
 - Recorded this in
   `docs/experiments/2026-05-28-grounding-dino-category-qualification-1280x720.md`.
+- Ran the first memory-only / replay-style matrix without a navigation system:
+  - output:
+    `runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384`
+  - config: fixed `out_and_back` replay, Grounding-DINO
+    `IDEA-Research/grounding-dino-tiny`, `grounding_dino_max_image_side=384`,
+    `sensor_resolution=1280x720`, `noise_levels=clean,mild,heavy`,
+    `memory_ablation=on,off`, `--no-stop-on-trust`
+  - categories: `bed`, `sofa`, `toilet`, `plant`, `tv_monitor`
+  - completed 60 replay-runs and 900 trace rows
+  - memory `on`: 372 trust rows and 268 oracle-stop success rows
+  - memory `off`: 0 trust rows and 0 oracle-stop success rows
+  - strongest categories: `bed`, `sofa`, `toilet`
+  - risk categories: `plant`, `tv_monitor`, because many trust decisions occur
+    when the oracle target is not currently visible
+- Recorded this in
+  `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.md`
+  and
+  `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html`.
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Full `clean/mild/heavy x memory on/off` matrix.
+- `episode_local` memory ablation that accumulates inside one replay but does
+  not persist across episodes.
+- Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
 
@@ -170,14 +190,23 @@ Still not run:
   Use `--grounding-dino-max-image-side 384` unless running on a larger GPU.
 - The out-and-back controller is a deterministic action retrace helper, not a navmesh-aware `ShortestPathFollower` integration yet.
 - The success metric is oracle-stop row count, not official Habitat SPL.
+- The current memory `off` baseline is intentionally harsh: it applies each
+  frame's evidence to `INITIAL_BELIEF` and discards belief before the next row.
+  It is a single-frame baseline, not an episode-local accumulating baseline.
+- Memory `on` can over-trust sparse categories after detector positives even
+  when the target is not currently oracle-visible. This especially affects
+  `tv_monitor` and `plant`.
 
 ## Next Recommended Step
 
-1. Add visibility-aware episode selection for detector qualification.
-2. Re-run Grounding-DINO qualification with visible samples per category.
-3. Generate debug PNGs for `tv_monitor` and sparse `chair` views.
-4. Then run the first full matrix on visibility-qualified Grounding-DINO
-   categories.
+1. Add an `episode_local` ablation mode so results can separate within-episode
+   evidence accumulation from cross-episode lifelong memory.
+2. Add a current-view or geometry confirmation gate before treating `TRUST` as
+   a stop decision.
+3. Generate debug PNGs for `plant` and `tv_monitor` false-trust rows.
+4. Add visibility-aware episode selection and reintroduce `chair`.
+5. Then connect the replay harness to a real navigation policy or Habitat
+   follower and report navigation metrics.
 
 ## Context for Next Contributor
 

@@ -40,6 +40,30 @@ The comparison must preserve the existing evaluation boundary:
 This makes the outcome directly comparable with the YOLO-World qualification
 report and keeps detector failures separate from memory-algorithm behavior.
 
+## Update: Memory-Only Replay Stage Without Navigation (2026-05-28)
+
+Because the navigation stack is not yet integrated, the first memory-system
+validation matrix uses a fixed replay protocol rather than a planner:
+
+- The action policy is the deterministic `out_and_back` controller.
+- Habitat RGB/depth observations still run through the same noise pipelines and
+  real detector adapter.
+- `memory=on` persists and accumulates belief through the replay using the
+  existing `LifelongMemoryHarness`.
+- `memory=off` is interpreted as a strict single-frame baseline: each
+  observation updates `INITIAL_BELIEF` and then discards that belief before the
+  next row.
+- The main metric is `oracle_stop_success` (`TRUST` while the oracle target is
+  visible in the current frame), plus false-trust rows where `TRUST` occurs
+  without current oracle visibility.
+- This stage may support a memory-update / evidence-accumulation claim, but it
+  must not be reported as official Habitat ObjectNav success or SPL.
+
+The next ablation needed before a stronger lifelong-memory claim is an
+`episode_local` mode: accumulate evidence within one replay but reset between
+episodes. That will separate short-horizon evidence accumulation from
+cross-episode persistence.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

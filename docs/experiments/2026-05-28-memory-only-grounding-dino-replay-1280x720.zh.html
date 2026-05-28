@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory-Only / Replay Grounding-DINO 仿真报告</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5e6a78;
+      --line: #d9e1ea;
+      --panel: #f6f8fb;
+      --panel-strong: #edf3f7;
+      --accent: #126a73;
+      --good: #17613a;
+      --warn: #8a5600;
+      --bad: #8a2634;
+      --code: #101826;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
+      line-height: 1.62;
+    }
+    header {
+      padding: 42px 7vw 30px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f6fbfc 0%, #ffffff 100%);
+    }
+    main {
+      max-width: 1240px;
+      padding: 28px 7vw 68px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      line-height: 1.22;
+    }
+    h1 {
+      max-width: 980px;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: 0;
+    }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 {
+      margin-top: 18px;
+      font-size: 18px;
+    }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-strong);
+      text-align: left;
+    }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #edf3fb;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .meta, .note { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    .box h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 2px 8px;
+      margin: 4px 6px 0 0;
+    }
+    .good { color: var(--good); font-weight: 650; }
+    .warn { color: var(--warn); font-weight: 650; }
+    .bad { color: var(--bad); font-weight: 650; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f4f8fa;
+      padding: 12px 16px;
+      margin: 16px 0;
+    }
+    .wide { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-28 · 本地 HTML 实验报告</p>
+    <h1>Memory-Only / Replay Grounding-DINO 仿真报告</h1>
+    <p>
+      这次按“没有导航系统也先验证记忆系统”的边界来跑：固定 out-and-back 轨迹，
+      Grounding-DINO 检测器，RGB/depth noise，memory <code>on/off</code> 对照。
+    </p>
+    <p>
+      <span class="tag">code: 7ae7de8</span>
+      <span class="tag">host: badger@100.88.131.52</span>
+      <span class="tag">conda env: habitat</span>
+      <span class="tag">dataset: HM3D ObjectNav val_mini</span>
+      <span class="tag">resolution: 1280x720</span>
+      <span class="tag">detector cap: 384</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 一句话结论</h2>
+      <div class="callout">
+        <strong>跑完了。</strong>
+        在固定 replay 轨迹上，memory <code>on</code> 能把重复检测证据累积成
+        <code>TRUST</code>，产生 268 个 oracle-stop success row；
+        memory <code>off</code> 是单帧基线，永远停在 <code>VERIFY</code>，
+        success row 为 0。
+      </div>
+      <p>
+        这说明当前记忆更新和决策链路在 Habitat replay 里是通的，而且对
+        <code>bed</code>、<code>sofa</code>、<code>toilet</code> 很明显有用。
+        但它还不是完整导航结果，也不能直接写成 SPL 或 ObjectNav success。
+      </p>
+    </section>
+
+    <section>
+      <h2>2. 这次到底跑了什么</h2>
+      <div class="grid">
+        <div class="box">
+          <h3>轨迹</h3>
+          <p>
+            固定 <code>out_and_back</code>：reset + 14 个 Habitat action，
+            每个 replay 产生 15 行 trace。使用 <code>--no-stop-on-trust</code>，
+            即使已经 trust 也继续走完轨迹。
+          </p>
+        </div>
+        <div class="box">
+          <h3>检测器</h3>
+          <p>
+            Grounding-DINO <code>IDEA-Research/grounding-dino-tiny</code>，
+            Habitat render 是 <code>1280x720</code>，检测器侧 resize cap 是
+            <code>384</code>，这是 RTX 4070 Laptop GPU 上当前能稳定跑的配置。
+          </p>
+        </div>
+        <div class="box">
+          <h3>矩阵</h3>
+          <p>
+            5 类别 x 2 episode x 3 noise level x 2 memory mode =
+            60 个 replay-run，900 行 trace。
+          </p>
+        </div>
+      </div>
+      <p>
+        本轮类别是 <code>bed</code>、<code>sofa</code>、<code>toilet</code>、
+        <code>plant</code>、<code>tv_monitor</code>。<code>chair</code>
+        暂时没放进主矩阵，因为前一轮 qualification 显示 first-N chair episode
+        主要卡在目标不可见，不适合拿来评价 memory。
+      </p>
+    </section>
+
+    <section>
+      <h2>3. 总体结果</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>指标</th>
+              <th>数值</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Replay-runs</td><td>60</td><td>5 类别 x 2 episode x 3 noise x 2 memory</td></tr>
+            <tr><td>Trace rows</td><td>900</td><td>每个 replay 15 行</td></tr>
+            <tr><td>Target-visible rows</td><td>636</td><td>memory on/off 各 318 行</td></tr>
+            <tr><td>Positive evidence rows</td><td>696</td><td>memory on/off 共享同一检测器观测</td></tr>
+            <tr><td>Trust decisions</td><td>372</td><td>全部来自 memory on</td></tr>
+            <tr><td>Oracle-stop success rows</td><td>268</td><td>全部来自 memory on</td></tr>
+            <tr><td>Mean detector precision</td><td>0.315586</td><td>trace-row 平均</td></tr>
+            <tr><td>Mean oracle recall</td><td>0.637678</td><td>trace-row 平均</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Memory On/Off 对照</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Memory</th>
+              <th>Rows</th>
+              <th>Visible</th>
+              <th>Positive</th>
+              <th>Trust</th>
+              <th>Success rows</th>
+              <th>False-trust rows</th>
+              <th>Mean row p_valid</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>off</code></td><td>450</td><td>318</td><td>348</td><td>0</td><td>0</td><td>0</td><td>0.765035</td></tr>
+            <tr><td><code>on</code></td><td>450</td><td>318</td><td>348</td><td>372</td><td>268</td><td>104</td><td>0.924046</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        这里要特别注意：memory <code>off</code> 不是“同一个 episode 内还可以累积，
+        只是跨 episode 不保存”的基线。当前实现是每一帧都从
+        <code>INITIAL_BELIEF</code> 开始，只吃当前帧证据，所以它是严格单帧基线。
+        单帧 positive evidence 会让 <code>p_valid</code> 到约 0.76，但策略仍选择
+        <code>VERIFY</code>，不会到 <code>TRUST</code>。
+      </p>
+      <p>
+        因此这个结果能说明：重复证据累积对 replay 里的 trust 决策有明显作用。
+        它还不能单独说明：跨 episode lifelong memory 比 episode-local memory 强多少。
+      </p>
+    </section>
+
+    <section>
+      <h2>5. Noise Breakdown</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Noise</th>
+              <th>Memory</th>
+              <th>Replay-runs</th>
+              <th>Visible rows</th>
+              <th>Positive rows</th>
+              <th>Trust rows</th>
+              <th>Success rows</th>
+              <th>Success replay-runs</th>
+              <th>Mean final p_valid</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>clean</code></td><td><code>off</code></td><td>10</td><td>106</td><td>120</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
+            <tr><td><code>clean</code></td><td><code>on</code></td><td>10</td><td>106</td><td>120</td><td>107</td><td>80</td><td>9</td><td>0.988713</td></tr>
+            <tr><td><code>mild</code></td><td><code>off</code></td><td>10</td><td>106</td><td>114</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
+            <tr><td><code>mild</code></td><td><code>on</code></td><td>10</td><td>106</td><td>114</td><td>137</td><td>95</td><td>10</td><td>0.969093</td></tr>
+            <tr><td><code>heavy</code></td><td><code>off</code></td><td>10</td><td>106</td><td>114</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
+            <tr><td><code>heavy</code></td><td><code>on</code></td><td>10</td><td>106</td><td>114</td><td>128</td><td>93</td><td>9</td><td>0.942898</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        mild/heavy 在这个小矩阵里没有把结果打崩。主要原因不是噪声完全没影响，
+        而是类别和视角组成更主导：Grounding-DINO 对大目标类别仍然很稳，
+        对 sparse 类别则容易在目标不可见时继续给出过强记忆信心。
+      </p>
+    </section>
+
+    <section>
+      <h2>6. Category Breakdown</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Memory</th>
+              <th>Visible</th>
+              <th>Positive</th>
+              <th>Trust</th>
+              <th>Success</th>
+              <th>False-trust</th>
+              <th>判断</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>bed</code></td><td><code>on</code></td><td>90</td><td>84</td><td>87</td><td>87</td><td>0</td><td class="good">强</td></tr>
+            <tr><td><code>sofa</code></td><td><code>on</code></td><td>90</td><td>84</td><td>84</td><td>84</td><td>0</td><td class="good">强</td></tr>
+            <tr><td><code>toilet</code></td><td><code>on</code></td><td>84</td><td>84</td><td>87</td><td>81</td><td>6</td><td class="good">强，但有少量 out-of-view trust</td></tr>
+            <tr><td><code>plant</code></td><td><code>on</code></td><td>42</td><td>16</td><td>27</td><td>6</td><td>21</td><td class="warn">弱，需要门控</td></tr>
+            <tr><td><code>tv_monitor</code></td><td><code>on</code></td><td>12</td><td>80</td><td>87</td><td>10</td><td>77</td><td class="bad">不能当成功类别 claim</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        所以当前最可信的主结论只应该落在 <code>bed</code>、<code>sofa</code>、
+        <code>toilet</code>。<code>plant</code> 和 <code>tv_monitor</code>
+        现在更像是在暴露下一步算法问题：记忆置信度需要和当前视角确认、
+        几何一致性或 stop gate 绑定起来。
+      </p>
+    </section>
+
+    <section>
+      <h2>7. Revisit Proxy</h2>
+      <p>
+        用 <code>step_index &gt;= 8</code> 粗略代表轨迹后半段 revisit：
+      </p>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Noise</th>
+              <th>Memory</th>
+              <th>Late rows</th>
+              <th>Late visible</th>
+              <th>Late positive</th>
+              <th>Late trust</th>
+              <th>Late success</th>
+              <th>Late false-trust</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>clean</code></td><td><code>off</code></td><td>70</td><td>52</td><td>64</td><td>0</td><td>0</td><td>0</td></tr>
+            <tr><td><code>clean</code></td><td><code>on</code></td><td>70</td><td>52</td><td>64</td><td>58</td><td>42</td><td>16</td></tr>
+            <tr><td><code>mild</code></td><td><code>off</code></td><td>70</td><td>52</td><td>58</td><td>0</td><td>0</td><td>0</td></tr>
+            <tr><td><code>mild</code></td><td><code>on</code></td><td>70</td><td>52</td><td>58</td><td>57</td><td>41</td><td>16</td></tr>
+            <tr><td><code>heavy</code></td><td><code>off</code></td><td>70</td><td>52</td><td>58</td><td>0</td><td>0</td><td>0</td></tr>
+            <tr><td><code>heavy</code></td><td><code>on</code></td><td>70</td><td>52</td><td>58</td><td>56</td><td>40</td><td>16</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        这支持 replay 级别的 memory claim：回访阶段 memory <code>on</code>
+        能保留足够 belief 并产生 trust；memory <code>off</code> 不能。
+        但 false-trust 也说明 stop 不能只看 memory confidence。
+      </p>
+    </section>
+
+    <section>
+      <h2>8. 当前状态</h2>
+      <div class="grid">
+        <div class="box">
+          <h3 class="good">已完成</h3>
+          <ul>
+            <li>Linux Habitat 主实验完成。</li>
+            <li>生成 <code>summary.json</code>、<code>rgb_noise_trace.csv</code>、<code>lifelong_memory.sqlite</code>。</li>
+            <li>本地已聚合 memory/noise/category/revisit proxy 指标。</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h3 class="warn">还不能 claim</h3>
+          <ul>
+            <li>不能 claim 完整导航性能。</li>
+            <li>不能 claim all six category ready。</li>
+            <li>不能 claim lifelong cross-episode 优于 episode-local，因为还没有 episode-local ablation。</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h3 class="bad">主要风险</h3>
+          <ul>
+            <li><code>tv_monitor</code> false-trust 很高。</li>
+            <li><code>plant</code> 成功行少，受视角和 detector mask 质量影响。</li>
+            <li>当前 stop proxy 需要 current-view confirmation gate。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>9. 下一步建议</h2>
+      <ol>
+        <li>
+          加一个 <code>episode_local</code> ablation：episode 内累积、episode 间不持久。
+          这样才能拆开“短期证据累积”和“lifelong 跨 episode memory”。
+        </li>
+        <li>
+          给 stop/trust 加 current-view confirmation gate，尤其约束
+          <code>tv_monitor</code> 和 <code>plant</code>。
+        </li>
+        <li>
+          做 visibility-aware episode selection，再把 <code>chair</code> 加回矩阵。
+        </li>
+        <li>
+          导出 false-trust debug PNG，把错误分成 detector false positive、
+          oracle sparse visibility、几何/遮挡三类。
+        </li>
+        <li>
+          最后再接 Habitat follower 或真实导航系统，报告真正的 navigation metric。
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>10. 复现实验命令</h2>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384 --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,off --episodes-per-category 2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
+    </section>
+  </main>
+</body>
+</html>
