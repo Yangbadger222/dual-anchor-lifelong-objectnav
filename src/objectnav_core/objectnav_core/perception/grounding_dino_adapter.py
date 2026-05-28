@@ -30,6 +30,7 @@ class GroundingDinoDetector:
         device: str = "auto",
         processor: Any | None = None,
         model: Any | None = None,
+        torch_backend: Any | None = None,
     ) -> None:
         if not categories:
             raise ValueError("categories must not be empty")
@@ -45,6 +46,11 @@ class GroundingDinoDetector:
         self.text_threshold = float(text_threshold)
         self.max_image_side = max_image_side
         self.device = _resolve_device(device)
+        self._torch = (
+            torch_backend
+            if torch_backend is not None
+            else _load_torch_or_noop(require_torch=processor is None or model is None)
+        )
         if processor is None or model is None:
             loaded_processor, loaded_model = self._load_backend(model_id)
             processor = loaded_processor if processor is None else processor
@@ -69,7 +75,8 @@ class GroundingDinoDetector:
         )
         if hasattr(inputs, "to"):
             inputs = inputs.to(self.device)
-        outputs = self.model(**inputs)
+        with self._torch.no_grad():
+            outputs = self.model(**inputs)
         input_ids = inputs.get("input_ids") if isinstance(inputs, dict) else None
         results = _post_process_grounded_object_detection(
             processor=self.processor,
@@ -107,10 +114,37 @@ def _resolve_device(device: str) -> str:
     if device != "auto":
         return device
     try:
-        import torch
+        torch = _load_torch()
     except ModuleNotFoundError:
         return "cpu"
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _load_torch() -> Any:
+    import torch
+
+    return torch
+
+
+def _load_torch_or_noop(*, require_torch: bool) -> Any:
+    try:
+        return _load_torch()
+    except ModuleNotFoundError:
+        if require_torch:
+            raise
+        return _NoopTorch()
+
+
+class _NoopTorch:
+    class _NoGrad:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def no_grad(self) -> "_NoGrad":
+        return self._NoGrad()
 
 
 def _prompt_text(categories: list[str]) -> str:

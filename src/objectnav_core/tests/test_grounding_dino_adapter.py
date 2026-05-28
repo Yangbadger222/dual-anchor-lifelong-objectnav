@@ -106,6 +106,24 @@ class _FakeModel:
         return object()
 
 
+class _FakeTorch:
+    def __init__(self) -> None:
+        self.entered = False
+
+    class _NoGrad:
+        def __init__(self, owner: "_FakeTorch") -> None:
+            self.owner = owner
+
+        def __enter__(self) -> None:
+            self.owner.entered = True
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def no_grad(self) -> "_NoGrad":
+        return self._NoGrad(self)
+
+
 def test_importing_grounding_dino_adapter_does_not_import_transformers() -> None:
     assert "transformers" not in sys.modules
 
@@ -190,3 +208,21 @@ def test_grounding_dino_adapter_rescales_boxes_from_detector_image() -> None:
     ]
     assert detections[0].mask.shape == (8, 8)
     assert detections[0].mask[4:8, 2:8].all()
+
+
+def test_grounding_dino_adapter_runs_model_under_no_grad() -> None:
+    fake_torch = _FakeTorch()
+    detector = GroundingDinoDetector(
+        model_id="unused",
+        categories=["chair"],
+        conf=0.25,
+        text_threshold=0.2,
+        device="cpu",
+        processor=_FakeProcessor(),
+        model=_FakeModel(),
+        torch_backend=fake_torch,
+    )
+
+    detector.detect(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert fake_torch.entered is True
