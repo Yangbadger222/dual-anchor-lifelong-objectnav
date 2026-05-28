@@ -148,6 +148,34 @@ or single-view episodes before the expensive Grounding-DINO replay. The summary
 records candidate counts, selected episode IDs, and dropped counts so the run
 can be audited before interpreting memory results.
 
+## Update: Replay Phase and Category Selection Audit (2026-05-28)
+
+The first structured-visibility replay showed that metadata filtering alone is
+not enough to prove the memory system is being challenged. It selected useful
+episodes for `bed`, `toilet`, and `plant`, but `sofa` and `tv_monitor` were
+silently excluded by the current path-complexity threshold. The replay trace
+also made it hard to tell whether a row belonged to first confirmation,
+departure, a non-confirmation interval, or revisit.
+
+The RGB-noise harness therefore records two new audit surfaces:
+
+- `summary.json["episode_selection"]["category_audit"]` reports, per requested
+  category, raw category candidates, structured candidates, selected IDs,
+  dropped-by-filter counts, and selection status.
+- `summary.json["episode_selection"]["zero_structured_candidate_categories"]`
+  explicitly names requested categories that have no structured candidates
+  under the current thresholds.
+- Each trace row records `replay_phase`, partitioning the deterministic
+  out-and-back sequence into `confirm`, `depart`, `non_confirm`, and `revisit`.
+- The run summary reports phase-level evidence, gated decision, and raw
+  decision counts.
+
+This is audit instrumentation only. It does not alter Habitat actions,
+detector outputs, evidence classification, memory updates, `naive_count`, or
+the shared current-positive gate. The next Linux replay should first inspect
+whether `non_confirm` and `revisit` actually contain the evidence mix needed to
+stress memory before treating aggregate memory-vs-baseline metrics as a claim.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

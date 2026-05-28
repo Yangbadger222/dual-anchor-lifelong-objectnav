@@ -265,6 +265,20 @@ After detector setup:
     competitive. Do not use this run as a memory-beats-baseline claim.
   - report:
     `docs/experiments/2026-05-28-structured-visibility-grounding-dino-replay.md`
+- Added local audit instrumentation for the next replay:
+  - trace rows now include `replay_phase` with `confirm`, `depart`,
+    `non_confirm`, and `revisit`
+  - summaries now include `replay_phase_counts`,
+    `replay_phase_evidence_counts`, `replay_phase_decision_counts`, and
+    `replay_phase_raw_decision_counts`
+  - `summary.json["episode_selection"]["category_audit"]` reports per-category
+    raw candidates, structured candidates, selected IDs, dropped counts, and
+    selection status
+  - `summary.json["episode_selection"]["zero_structured_candidate_categories"]`
+    explicitly names categories such as `sofa` or `tv_monitor` when the current
+    thresholds exclude them
+  - focused local tests passed: 26 tests in
+    `src/objectnav_core/tests/test_habitat_objectnav_rgb_noise_stress.py`
 
 Still not run:
 
@@ -273,9 +287,13 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Explicit Habitat execution of the synthetic structured challenge phases
-  (`confirm`, `depart`, `non_confirm`, `revisit`). Metadata-based
-  `structured_visibility` alone is not sufficient.
+- Linux rerun of the structured-visibility replay after adding phase/category
+  audit fields. The current code labels phases, but the next run still needs to
+  inspect whether `non_confirm` and `revisit` contain meaningful evidence.
+- Explicit Habitat action protocol that forces the synthetic structured
+  challenge conditions. The current phase labels audit the deterministic
+  out-and-back replay; they do not yet force target disappearance or
+  distractor observations.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -314,12 +332,16 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Add fallback/audit reporting for categories with zero structured candidates
-   so `sofa` and `tv_monitor` are not silently excluded.
-4. Implement explicit Habitat replay phases that match the synthetic challenge:
-   confirm, depart, non-confirm, revisit.
+3. Pull the phase/category-audit commit on `badger-linux` and rerun the
+   structured-visibility Grounding-DINO replay.
+4. Inspect `summary.json["episode_selection"]["category_audit"]`,
+   `summary.json["episode_selection"]["zero_structured_candidate_categories"]`,
+   and the `replay_phase_*` summaries before interpreting memory metrics.
 5. Add visibility-aware episode selection and reintroduce `chair`.
-6. Then connect the replay harness to a real navigation policy or Habitat
+6. Implement an action/viewpoint protocol that actually forces confirm,
+   depart, non-confirm, and revisit conditions when phase audit shows the
+   current out-and-back path is still too repetitive.
+7. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor

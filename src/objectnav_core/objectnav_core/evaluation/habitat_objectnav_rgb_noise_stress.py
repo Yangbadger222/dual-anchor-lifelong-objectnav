@@ -67,6 +67,12 @@ SUPPORTED_EPISODE_SELECTION_STRATEGIES: tuple[str, ...] = (
     "category_balanced",
     "structured_visibility",
 )
+REPLAY_PHASES: tuple[str, ...] = (
+    "confirm",
+    "depart",
+    "non_confirm",
+    "revisit",
+)
 SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
     "target",
     "all_categories",
@@ -421,6 +427,7 @@ def run_rgb_noise_stress_preflight(
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "max_detection_area_ratio": max_detection_area_ratio,
         "revisit_strategy": "out_and_back",
+        "replay_phases": list(REPLAY_PHASES),
         "out_and_back_actions": list(actions),
         "out_and_back_action_count": len(actions),
         "artifact_files": {"summary": "summary.json"},
@@ -493,7 +500,9 @@ def _run_rgb_noise_episode(
     rows: list[dict[str, Any]] = []
     negative_streak = 0
     previous_pose = _agent_pose(agent)
+    total_steps = len(actions) + 1
     for step_index, action in enumerate(("reset", *actions)):
+        replay_phase = _replay_phase(step_index, total_steps=total_steps)
         if action != "reset":
             observations = sim.step(action)
         pose = _agent_pose(agent)
@@ -629,6 +638,7 @@ def _run_rgb_noise_episode(
                         "detector": detector,
                         "step_index": step_index,
                         "action": action,
+                        "replay_phase": replay_phase,
                         "target_visible": target_visible,
                         "evidence_type": evidence_type.value,
                         "evidence_reason": evidence_reason,
@@ -671,6 +681,7 @@ def _run_rgb_noise_episode(
                 "start_source_used": start.source_used,
                 "step_index": step_index,
                 "action": action,
+                "replay_phase": replay_phase,
                 "translation_m": round(motion.translation_m, 6),
                 "rotation_rad": round(float(motion.rotation_rad), 6),
                 "depth_valid_ratio": depth_valid_ratio,
@@ -1426,6 +1437,21 @@ def _episode_path_complexity_ratio(episode: Any) -> float:
     return float(geodesic_distance) / euclidean
 
 
+def _replay_phase(step_index: int, *, total_steps: int) -> str:
+    if total_steps <= 1:
+        return "confirm"
+    confirm_end = max(1, total_steps // 5)
+    depart_end = max(confirm_end + 1, total_steps // 2)
+    non_confirm_end = max(depart_end + 1, (total_steps * 3) // 4)
+    if step_index < confirm_end:
+        return "confirm"
+    if step_index < depart_end:
+        return "depart"
+    if step_index < non_confirm_end:
+        return "non_confirm"
+    return "revisit"
+
+
 def _episode_selection_summary(
     *,
     all_episodes: Sequence[Any],
@@ -1436,7 +1462,11 @@ def _episode_selection_summary(
     structured_min_geodesic_distance: float,
     structured_min_path_complexity_ratio: float,
 ) -> dict[str, Any]:
-    category_filter = {_normalize_yolo_label(category) for category in target_categories}
+    category_order = [
+        (str(category), _normalize_yolo_label(category))
+        for category in target_categories
+    ]
+    category_filter = {normalized for _, normalized in category_order}
     category_candidates = [
         episode
         for episode in all_episodes
@@ -1457,6 +1487,57 @@ def _episode_selection_summary(
         if episode_selection_strategy == "structured_visibility"
         else len(category_candidates)
     )
+    category_audit: dict[str, Any] = {}
+    zero_structured_categories: list[str] = []
+    for category_key, category in category_order:
+        category_all = [
+            episode
+            for episode in category_candidates
+            if _normalize_yolo_label(episode.object_category) == category
+        ]
+        category_structured = [
+            episode
+            for episode in structured_candidates
+            if _normalize_yolo_label(episode.object_category) == category
+        ]
+        category_selected = [
+            episode
+            for episode in selected_episodes
+            if _normalize_yolo_label(episode.object_category) == category
+        ]
+        if episode_selection_strategy == "structured_visibility":
+            category_candidate_count = len(category_structured)
+            dropped_count = max(0, len(category_all) - len(category_structured))
+            if not category_all:
+                selection_status = "no_category_candidates"
+                zero_structured_categories.append(category_key)
+            elif not category_structured:
+                selection_status = "no_structured_candidates"
+                zero_structured_categories.append(category_key)
+            elif category_selected:
+                selection_status = "selected"
+            else:
+                selection_status = "structured_candidates_not_selected"
+        else:
+            category_candidate_count = len(category_all)
+            dropped_count = 0
+            if not category_all:
+                selection_status = "no_category_candidates"
+            elif category_selected:
+                selection_status = "selected"
+            else:
+                selection_status = "category_candidates_not_selected"
+        category_audit[category_key] = {
+            "category_candidate_episode_count": len(category_all),
+            "structured_candidate_episode_count": len(category_structured),
+            "candidate_episode_count": category_candidate_count,
+            "selected_episode_count": len(category_selected),
+            "selected_episode_ids": [
+                str(getattr(episode, "episode_id")) for episode in category_selected
+            ],
+            "dropped_by_structured_filter_count": dropped_count,
+            "selection_status": selection_status,
+        }
     return {
         "episode_selection_strategy": episode_selection_strategy,
         "category_candidate_episode_count": len(category_candidates),
@@ -1477,6 +1558,8 @@ def _episode_selection_summary(
             str(getattr(episode, "episode_id")) for episode in selected_episodes
         ],
         "selected_category_counts": _category_counts(selected_episodes),
+        "zero_structured_candidate_categories": zero_structured_categories,
+        "category_audit": category_audit,
     }
 
 
@@ -1555,6 +1638,22 @@ def _summarize_rgb_noise_run(
                 rows,
                 "decision_gate_reason",
             ),
+            "replay_phase_counts": _count_values(rows, "replay_phase"),
+            "replay_phase_evidence_counts": _nested_count_values(
+                rows,
+                "replay_phase",
+                "evidence_type",
+            ),
+            "replay_phase_decision_counts": _nested_count_values(
+                rows,
+                "replay_phase",
+                "decision",
+            ),
+            "replay_phase_raw_decision_counts": _nested_count_values(
+                rows,
+                "replay_phase",
+                "raw_decision",
+            ),
             "oracle_stop_success_rows": sum(
                 int(row["oracle_stop_success"]) for row in rows
             ),
@@ -1579,6 +1678,28 @@ def _summarize_rgb_noise_run(
         }
     )
     return summary
+
+
+def _nested_count_values(
+    rows: Sequence[dict[str, Any]],
+    outer_key: str,
+    inner_key: str,
+) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        outer_value = row.get(outer_key)
+        inner_value = row.get(inner_key)
+        if outer_value is None or inner_value is None:
+            continue
+        outer = str(outer_value)
+        inner = str(inner_value)
+        if outer not in counts:
+            counts[outer] = {}
+        counts[outer][inner] = counts[outer].get(inner, 0) + 1
+    return {
+        outer: dict(sorted(inner_counts.items()))
+        for outer, inner_counts in sorted(counts.items())
+    }
 
 
 def _mean(rows: Sequence[dict[str, Any]], key: str) -> float | None:

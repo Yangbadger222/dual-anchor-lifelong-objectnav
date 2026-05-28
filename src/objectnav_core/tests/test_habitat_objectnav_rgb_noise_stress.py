@@ -454,6 +454,62 @@ def test_structured_episode_selection_prefers_multiview_complex_paths() -> None:
     assert report["selected_episode_ids"] == ["t-structured", "p-structured"]
 
 
+def test_episode_selection_summary_reports_zero_structured_categories() -> None:
+    episodes = [
+        _Episode(
+            "sofa-flat",
+            "sofa",
+            goal_viewpoints=2,
+            geodesic_distance=2.0,
+            euclidean_distance=2.0,
+        ),
+        _Episode(
+            "plant-structured",
+            "plant",
+            goal_viewpoints=3,
+            geodesic_distance=5.0,
+            euclidean_distance=2.0,
+        ),
+    ]
+
+    report = stress._episode_selection_summary(
+        all_episodes=episodes,
+        selected_episodes=[episodes[1]],
+        target_categories=("sofa", "plant", "tv_monitor"),
+        episode_selection_strategy="structured_visibility",
+        structured_min_goal_viewpoints=2,
+        structured_min_geodesic_distance=2.0,
+        structured_min_path_complexity_ratio=1.2,
+    )
+
+    assert report["zero_structured_candidate_categories"] == ["sofa", "tv_monitor"]
+    assert report["category_audit"]["sofa"] == {
+        "category_candidate_episode_count": 1,
+        "structured_candidate_episode_count": 0,
+        "candidate_episode_count": 0,
+        "selected_episode_count": 0,
+        "selected_episode_ids": [],
+        "dropped_by_structured_filter_count": 1,
+        "selection_status": "no_structured_candidates",
+    }
+    assert report["category_audit"]["plant"]["selection_status"] == "selected"
+    assert report["category_audit"]["tv_monitor"]["selection_status"] == (
+        "no_category_candidates"
+    )
+
+
+def test_replay_phase_partitions_out_and_back_trace() -> None:
+    phases = [stress._replay_phase(step_index, total_steps=15) for step_index in range(15)]
+
+    assert phases == (
+        ["confirm"] * 3
+        + ["depart"] * 4
+        + ["non_confirm"] * 4
+        + ["revisit"] * 4
+    )
+    assert stress._replay_phase(0, total_steps=1) == "confirm"
+
+
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
     centered = stress._target_view_metrics(_mask_with_box((10, 12, 30, 36), (48, 48)))
     clipped = stress._target_view_metrics(_mask_with_box((31, 40, 48, 48), (48, 48)))
@@ -560,6 +616,7 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision": "trust",
                 "raw_decision": "trust",
                 "decision_gate_reason": "current_positive_confirmation",
+                "replay_phase": "confirm",
                 "oracle_stop_success": True,
                 "detector_precision": 1.0,
                 "oracle_recall": 1.0,
@@ -569,6 +626,7 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision": "verify",
                 "raw_decision": "trust",
                 "decision_gate_reason": "target_not_currently_visible",
+                "replay_phase": "non_confirm",
                 "oracle_stop_success": False,
                 "detector_precision": 0.0,
                 "oracle_recall": 0.0,
@@ -589,6 +647,19 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
     assert summary["decision_gate_reason_counts"] == {
         "current_positive_confirmation": 1,
         "target_not_currently_visible": 1,
+    }
+    assert summary["replay_phase_counts"] == {"confirm": 1, "non_confirm": 1}
+    assert summary["replay_phase_evidence_counts"] == {
+        "confirm": {"positive": 1},
+        "non_confirm": {"positive": 1},
+    }
+    assert summary["replay_phase_decision_counts"] == {
+        "confirm": {"trust": 1},
+        "non_confirm": {"verify": 1},
+    }
+    assert summary["replay_phase_raw_decision_counts"] == {
+        "confirm": {"trust": 1},
+        "non_confirm": {"trust": 1},
     }
 
 
