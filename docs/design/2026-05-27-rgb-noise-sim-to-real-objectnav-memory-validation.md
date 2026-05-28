@@ -446,6 +446,14 @@ This keeps the bed false-positive protection in the expected-empty interval
 without letting the first long-range approach detection permanently poison the
 anchor.
 
+The phase-scoped rerun showed that the memory path recovered most episodes but
+remained overly conservative when current positive evidence returned after
+expected-empty checks. The decision policy therefore uses a
+current-positive-only recovery threshold of `p_valid >= 0.84`. This does not
+allow cached memory to stop by itself: the shared decision gate still requires
+current target visibility and positive detector evidence before any raw
+`TRUST` becomes a stop/success row.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

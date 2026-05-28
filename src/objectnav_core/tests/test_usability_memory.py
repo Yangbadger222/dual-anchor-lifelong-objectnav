@@ -209,3 +209,61 @@ def test_decision_policy_trusts_current_positive_high_validity_memory() -> None:
         ).decision
         is DecisionType.TRUST
     )
+
+
+def test_decision_policy_trusts_current_positive_moderate_recovery_memory() -> None:
+    policy = UsabilityDecisionPolicy()
+    belief = MemoryBelief(
+        p_existence=0.95,
+        p_location_valid=0.95,
+        p_usable=0.95,
+    )
+    context = DecisionContext(
+        d_nav=2.0,
+        d_verify=1.5,
+        c_fail=14.0,
+        c_search=18.0,
+        b_remaining=10.0,
+    )
+
+    assert 0.84 <= belief.p_valid < 0.88
+    assert policy.choose(belief, context).decision is DecisionType.VERIFY
+    assert (
+        policy.choose(
+            belief,
+            DecisionContext(
+                d_nav=2.0,
+                d_verify=1.5,
+                c_fail=14.0,
+                c_search=18.0,
+                b_remaining=10.0,
+                current_positive_evidence=True,
+            ),
+        ).decision
+        is DecisionType.TRUST
+    )
+
+
+def test_decision_policy_rejects_current_positive_below_recovery_threshold() -> None:
+    policy = UsabilityDecisionPolicy()
+    belief = MemoryBelief(
+        p_existence=0.94,
+        p_location_valid=0.94,
+        p_usable=0.94,
+    )
+
+    assert belief.p_valid < 0.84
+    assert (
+        policy.choose(
+            belief,
+            DecisionContext(
+                d_nav=2.0,
+                d_verify=1.5,
+                c_fail=14.0,
+                c_search=18.0,
+                b_remaining=10.0,
+                current_positive_evidence=True,
+            ),
+        ).decision
+        is DecisionType.VERIFY
+    )

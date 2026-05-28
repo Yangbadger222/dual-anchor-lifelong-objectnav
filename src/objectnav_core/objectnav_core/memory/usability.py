@@ -147,7 +147,7 @@ class UsabilityDecisionPolicy:
     def __init__(
         self,
         retire_threshold: float = 0.2,
-        current_positive_trust_threshold: float = 0.88,
+        current_positive_trust_threshold: float = 0.84,
     ) -> None:
         if not 0.0 <= retire_threshold <= 1.0:
             raise ValueError("retire_threshold must be in [0, 1]")
