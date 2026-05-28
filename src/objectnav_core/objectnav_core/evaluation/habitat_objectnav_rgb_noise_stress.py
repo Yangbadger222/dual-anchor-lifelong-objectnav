@@ -70,8 +70,10 @@ SUPPORTED_EPISODE_SELECTION_STRATEGIES: tuple[str, ...] = (
 SUPPORTED_REPLAY_PROTOCOLS: tuple[str, ...] = (
     "out_and_back",
     "visibility_challenge",
+    "geodesic_path",
 )
 REPLAY_PHASES: tuple[str, ...] = (
+    "approach",
     "confirm",
     "depart",
     "non_confirm",
@@ -94,6 +96,8 @@ DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
 DEFAULT_REPLAY_PROTOCOL = "out_and_back"
+DEFAULT_GEODESIC_PATH_MAX_STEPS = 24
+GEODESIC_PATH_CONFIRM_FRAMES = 3
 DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS = 2
 DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE = 2.0
 DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
@@ -171,6 +175,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
+    geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -220,6 +225,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         max_detection_area_ratio=max_detection_area_ratio,
         episode_selection_strategy=episode_selection_strategy,
         replay_protocol=replay_protocol,
+        geodesic_path_max_steps=geodesic_path_max_steps,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
         structured_min_geodesic_distance=structured_min_geodesic_distance,
         structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
@@ -334,6 +340,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             output_path=output_path,
                             max_detection_area_ratio=max_detection_area_ratio,
                             replay_protocol=replay_protocol,
+                            geodesic_path_max_steps=geodesic_path_max_steps,
                         )
                         trace_rows.extend(rows)
                         episode_summaries.append(episode_summary)
@@ -356,6 +363,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         target_categories=target_categories,
         episode_selection_strategy=episode_selection_strategy,
         replay_protocol=replay_protocol,
+        geodesic_path_max_steps=geodesic_path_max_steps,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
         structured_min_geodesic_distance=structured_min_geodesic_distance,
         structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
@@ -397,6 +405,7 @@ def run_rgb_noise_stress_preflight(
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
+    geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -418,6 +427,7 @@ def run_rgb_noise_stress_preflight(
     _validate_debug_export_evidence_types(debug_export_evidence_types)
     _validate_max_detection_area_ratio(max_detection_area_ratio)
     _validate_replay_protocol(replay_protocol)
+    _validate_geodesic_path_max_steps(geodesic_path_max_steps)
     _validate_episode_selection(
         episode_selection_strategy=episode_selection_strategy,
         structured_min_goal_viewpoints=structured_min_goal_viewpoints,
@@ -488,6 +498,7 @@ def run_rgb_noise_stress_preflight(
         "max_detection_area_ratio": max_detection_area_ratio,
         "replay_protocol": replay_protocol,
         "revisit_strategy": replay_protocol,
+        "geodesic_path_max_steps": int(geodesic_path_max_steps),
         "replay_phases": list(REPLAY_PHASES),
         "out_and_back_actions": list(actions),
         "out_and_back_action_count": len(actions),
@@ -533,8 +544,10 @@ def _run_rgb_noise_episode(
     output_path: Path | None = None,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
+    geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     _validate_replay_protocol(replay_protocol)
+    _validate_geodesic_path_max_steps(geodesic_path_max_steps)
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
     state = agent.get_state()
@@ -557,6 +570,15 @@ def _run_rgb_noise_episode(
             episode=episode,
             target_semantic_ids=target_semantic_ids,
             min_target_pixels=min_target_pixels,
+        )
+    elif replay_protocol == "geodesic_path":
+        replay_steps = _build_geodesic_path_replay_steps(
+            sim=sim,
+            agent=agent,
+            episode=episode,
+            start=start,
+            target_semantic_ids=target_semantic_ids,
+            max_steps=geodesic_path_max_steps,
         )
     else:
         replay_steps = _out_and_back_replay_steps(actions)
@@ -820,6 +842,12 @@ def _run_rgb_noise_episode(
         "replay_protocol": replay_protocol,
         "replay_phase_counts": _count_values(rows, "replay_phase"),
         "trace_rows": len(rows),
+        "path_translation_m": round(
+            sum(float(row["translation_m"]) for row in rows),
+            6,
+        ),
+        "episode_geodesic_distance": getattr(episode, "geodesic_distance", None),
+        "episode_euclidean_distance": getattr(episode, "euclidean_distance", None),
         "target_visible_rows": sum(int(row["target_visible"]) for row in rows),
         "oracle_stop_success_rows": sum(
             int(row["oracle_stop_success"]) for row in rows
@@ -1521,6 +1549,98 @@ def _visibility_challenge_replay_steps(
     return tuple(steps)
 
 
+def _geodesic_path_replay_steps(
+    *,
+    waypoints: Sequence[ReplayViewCandidate],
+    goal: ReplayViewCandidate,
+    confirm_frames: int = GEODESIC_PATH_CONFIRM_FRAMES,
+) -> tuple[ReplayStep, ...]:
+    steps: list[ReplayStep] = []
+    for waypoint in waypoints:
+        steps.append(
+            ReplayStep(
+                phase="approach",
+                action="reset" if not steps else "teleport_approach",
+                source=waypoint.source,
+                position=waypoint.position,
+                rotation=waypoint.rotation,
+                target_pixels=waypoint.target_pixels,
+            )
+        )
+    for _ in range(confirm_frames):
+        steps.append(
+            ReplayStep(
+                phase="confirm",
+                action="reset" if not steps else "teleport_confirm",
+                source=goal.source,
+                position=goal.position,
+                rotation=goal.rotation,
+                target_pixels=goal.target_pixels,
+            )
+        )
+    return tuple(steps)
+
+
+def _resample_path_positions(
+    points: Sequence[tuple[float, float, float]],
+    *,
+    max_points: int,
+) -> tuple[tuple[float, float, float], ...]:
+    if max_points <= 0:
+        raise ValueError("max_points must be positive")
+    if len(points) <= max_points:
+        return tuple(points)
+    if max_points == 1:
+        return (tuple(points[-1]),)
+    indices = np.linspace(0, len(points) - 1, num=max_points)
+    return tuple(tuple(points[int(round(index))]) for index in indices)
+
+
+def _build_geodesic_path_replay_steps(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    start: Any,
+    target_semantic_ids: Sequence[int],
+    max_steps: int,
+) -> tuple[ReplayStep, ...]:
+    goal = _first_goal_view_candidate(
+        sim=sim,
+        agent=agent,
+        episode=episode,
+        target_semantic_ids=target_semantic_ids,
+    )
+    path_points = _shortest_path_points(
+        sim=sim,
+        start=start.position,
+        end=goal.position,
+    )
+    sampled_points = _resample_path_positions(
+        path_points[:-1] if len(path_points) > 1 else path_points,
+        max_points=max(1, max_steps),
+    )
+    waypoints: list[ReplayViewCandidate] = []
+    for index, position in enumerate(sampled_points):
+        next_position = (
+            sampled_points[index + 1]
+            if index + 1 < len(sampled_points)
+            else goal.position
+        )
+        rotation = _look_at_quaternion_xyzw(position, next_position)
+        waypoints.append(
+            _measure_replay_view_candidate(
+                sim=sim,
+                agent=agent,
+                source=f"geodesic_path:waypoint:{index}",
+                position=position,
+                rotation=rotation,
+                target_semantic_ids=target_semantic_ids,
+            )
+        )
+    return _geodesic_path_replay_steps(waypoints=waypoints, goal=goal)
+
+
 def _build_visibility_challenge_replay_steps(
     *,
     sim: Any,
@@ -1590,6 +1710,65 @@ def _sample_replay_view_candidates(
     return tuple(candidates)
 
 
+def _first_goal_view_candidate(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    target_semantic_ids: Sequence[int],
+) -> ReplayViewCandidate:
+    for index, viewpoint in enumerate(getattr(episode, "goal_viewpoints", ()) or ()):
+        agent_state = viewpoint.get("agent_state", {})
+        position = _tuple3_from_any(agent_state.get("position"))
+        rotation = _tuple4_from_any(agent_state.get("rotation"))
+        if position is None or rotation is None:
+            continue
+        return _measure_replay_view_candidate(
+            sim=sim,
+            agent=agent,
+            source=f"goal_viewpoint:{index}",
+            position=position,
+            rotation=rotation,
+            target_semantic_ids=target_semantic_ids,
+        )
+    goal_position = _first_goal_position(episode)
+    if goal_position is None:
+        raise ValueError("geodesic_path requires an episode goal viewpoint")
+    return _measure_replay_view_candidate(
+        sim=sim,
+        agent=agent,
+        source="goal_position",
+        position=goal_position,
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_semantic_ids=target_semantic_ids,
+    )
+
+
+def _shortest_path_points(
+    *,
+    sim: Any,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], ...]:
+    if not sim.pathfinder.is_loaded:
+        raise RuntimeError("geodesic_path requires a loaded Habitat navmesh")
+    try:
+        import habitat_sim
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Habitat-Sim is required for geodesic_path replay") from exc
+    path = habitat_sim.ShortestPath()
+    path.requested_start = np.asarray(start, dtype=float)
+    path.requested_end = np.asarray(end, dtype=float)
+    found_path = bool(sim.pathfinder.find_path(path))
+    points = getattr(path, "points", None)
+    if not found_path or points is None or len(points) == 0:
+        raise ValueError("geodesic_path could not find a navmesh path to the goal")
+    return tuple(
+        _tuple3_from_any(point) or tuple(float(value) for value in point)
+        for point in points
+    )
+
+
 def _measure_replay_view_candidate(
     *,
     sim: Any,
@@ -1637,6 +1816,21 @@ def _yaw_180_quaternion_xyzw(
 ) -> tuple[float, float, float, float]:
     x, y, z, w = rotation
     return _normalize_quaternion_xyzw((z, w, -x, -y))
+
+
+def _look_at_quaternion_xyzw(
+    position: tuple[float, float, float],
+    target: tuple[float, float, float],
+) -> tuple[float, float, float, float]:
+    dx = float(target[0] - position[0])
+    dz = float(target[2] - position[2])
+    if abs(dx) + abs(dz) < 1e-6:
+        return (0.0, 0.0, 0.0, 1.0)
+    yaw = float(np.arctan2(-dx, -dz))
+    half_yaw = yaw / 2.0
+    return _normalize_quaternion_xyzw(
+        (0.0, float(np.sin(half_yaw)), 0.0, float(np.cos(half_yaw)))
+    )
 
 
 def _normalize_quaternion_xyzw(
@@ -1967,6 +2161,7 @@ def _summarize_rgb_noise_run(
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
+    geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -2184,6 +2379,11 @@ def _validate_replay_protocol(replay_protocol: str) -> None:
             "replay_protocol must be one of: "
             f"{', '.join(SUPPORTED_REPLAY_PROTOCOLS)}"
         )
+
+
+def _validate_geodesic_path_max_steps(max_steps: int) -> None:
+    if max_steps <= 0:
+        raise ValueError("geodesic_path_max_steps must be positive")
 
 
 def _validate_episode_selection(

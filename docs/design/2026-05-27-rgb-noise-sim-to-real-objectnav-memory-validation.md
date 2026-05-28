@@ -228,6 +228,30 @@ the shared current-positive gate. Because it teleports between measured
 viewpoints rather than using a planner, its result is still a memory/evidence
 stress test, not an official navigation metric.
 
+## Update: Long-Range Geodesic Replay Bridge (2026-05-28)
+
+The next validation step must move beyond goal-viewpoint teleport tests without
+claiming a full learned ObjectNav policy. The runner therefore adds a
+`replay_protocol=geodesic_path` bridge:
+
+- start from the official ObjectNav episode start, or the configured
+  `start_source`;
+- query Habitat-Sim's navmesh shortest path from that start to the episode
+  goal viewpoint;
+- downsample the path to a bounded number of replay waypoints;
+- teleport the agent through those waypoints while orienting it along the path;
+- finish with repeated goal-viewpoint confirmation frames using the Habitat
+  goal-viewpoint rotation;
+- record `approach` and `confirm` replay phases plus the usual RGB/depth noise,
+  detector, memory, gate, and trace fields.
+
+This is a long-range replay, not closed-loop navigation. It is intended to
+answer whether the perception/memory stack behaves plausibly over official
+ObjectNav start-to-goal distances before we invest in an action-level follower.
+It must not be reported as official Habitat success/SPL. The next step after a
+successful geodesic replay is an action-level Habitat follower or policy that
+executes navigational actions and reports path-efficiency metrics.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

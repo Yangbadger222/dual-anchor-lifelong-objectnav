@@ -14,6 +14,7 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
     DEFAULT_EPISODE_SELECTION_STRATEGY,
+    DEFAULT_GEODESIC_PATH_MAX_STEPS,
     DEFAULT_REPLAY_PROTOCOL,
     DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -122,8 +123,15 @@ def main() -> None:
         help=(
             "Replay protocol. out_and_back preserves the original fixed action "
             "trace; visibility_challenge teleports between measured visible and "
-            "target-hidden viewpoints to create confirm/non-confirm/revisit phases."
+            "target-hidden viewpoints; geodesic_path replays navmesh shortest-path "
+            "waypoints from start to goal before final confirmation."
         ),
+    )
+    parser.add_argument(
+        "--geodesic-path-max-steps",
+        type=int,
+        default=DEFAULT_GEODESIC_PATH_MAX_STEPS,
+        help="Maximum sampled approach waypoints for replay_protocol=geodesic_path.",
     )
     parser.add_argument(
         "--structured-min-goal-viewpoints",
@@ -259,6 +267,7 @@ def main() -> None:
             ),
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,
+            geodesic_path_max_steps=args.geodesic_path_max_steps,
             structured_min_goal_viewpoints=args.structured_min_goal_viewpoints,
             structured_min_geodesic_distance=args.structured_min_geodesic_distance,
             structured_min_path_complexity_ratio=args.structured_min_path_complexity_ratio,
@@ -299,6 +308,7 @@ def main() -> None:
             ),
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,
+            geodesic_path_max_steps=args.geodesic_path_max_steps,
             structured_min_goal_viewpoints=args.structured_min_goal_viewpoints,
             structured_min_geodesic_distance=args.structured_min_geodesic_distance,
             structured_min_path_complexity_ratio=args.structured_min_path_complexity_ratio,

@@ -396,6 +396,20 @@ After detector setup:
     around a visible bed.
   - Chinese HTML status report updated:
     `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html`
+- Added local `geodesic_path` long-range replay protocol:
+  - CLI flag: `--replay-protocol geodesic_path`
+  - CLI parameter: `--geodesic-path-max-steps`
+  - queries Habitat-Sim's navmesh shortest path from configured start to goal
+    viewpoint
+  - downsamples approach waypoints and finishes with repeated goal-viewpoint
+    confirmation frames
+  - trace rows use replay phase `approach` for path waypoints and `confirm`
+    for final goal-viewpoint frames
+  - episode summaries include `path_translation_m`,
+    `episode_geodesic_distance`, and `episode_euclidean_distance`
+  - local focused tests passed: `38` tests
+  - CLI preflight recorded `replay_protocol=geodesic_path`,
+    `geodesic_path_max_steps=12`, and replay phase `approach`
 
 Still not run:
 
@@ -407,9 +421,9 @@ Still not run:
 - Trace-filtered hidden-positive export across all selected categories. The
   focused `bed` diagnostic is complete, but a broader category sweep has not
   been run.
-- Full planner-backed Habitat action protocol. The new visibility challenge
-  teleports between measured viewpoints; it is still a memory/evidence stress
-  test, not a navigation metric.
+- Full action-level Habitat follower. The new `geodesic_path` protocol replays
+  navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
+  not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -456,8 +470,10 @@ Still not run:
 5. Add visibility-aware episode selection and reintroduce `chair`.
 6. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-7. Then connect the replay harness to a real navigation policy or Habitat
-   follower and report navigation metrics.
+7. Pull the `geodesic_path` commit on `badger-linux`, run oracle and
+   Grounding-DINO long-range smokes from `episode_start`, then connect the
+   replay harness to a real action-level Habitat follower and report
+   navigation metrics.
 
 ## Context for Next Contributor
 

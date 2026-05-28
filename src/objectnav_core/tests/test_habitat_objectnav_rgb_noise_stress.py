@@ -163,6 +163,27 @@ def test_preflight_records_visibility_challenge_replay_protocol(tmp_path: Path) 
     assert summary["revisit_strategy"] == "visibility_challenge"
 
 
+def test_preflight_records_geodesic_path_replay_protocol(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        replay_protocol="geodesic_path",
+        geodesic_path_max_steps=12,
+    )
+
+    assert "geodesic_path" in stress.SUPPORTED_REPLAY_PROTOCOLS
+    assert summary["replay_protocol"] == "geodesic_path"
+    assert summary["geodesic_path_max_steps"] == 12
+    assert "approach" in summary["replay_phases"]
+
+
 def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
     categories = {"plant", "tv_monitor"}
 
@@ -666,6 +687,51 @@ def test_visibility_challenge_replay_steps_require_hidden_view() -> None:
         assert "target-hidden" in str(exc)
     else:
         raise AssertionError("visibility_challenge should require a target-hidden view")
+
+
+def test_resample_path_positions_keeps_endpoints_and_respects_limit() -> None:
+    points = tuple((float(index), 0.0, 0.0) for index in range(10))
+
+    sampled = stress._resample_path_positions(points, max_points=4)
+
+    assert sampled[0] == points[0]
+    assert sampled[-1] == points[-1]
+    assert len(sampled) == 4
+
+
+def test_geodesic_path_replay_steps_use_approach_then_goal_confirm() -> None:
+    waypoints = (
+        stress.ReplayViewCandidate(
+            source="geodesic_path:waypoint:0",
+            position=(0.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+            target_pixels=0,
+        ),
+        stress.ReplayViewCandidate(
+            source="geodesic_path:waypoint:1",
+            position=(1.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+            target_pixels=0,
+        ),
+    )
+    goal = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0",
+        position=(2.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=240,
+    )
+
+    steps = stress._geodesic_path_replay_steps(
+        waypoints=waypoints,
+        goal=goal,
+        confirm_frames=3,
+    )
+
+    assert [step.phase for step in steps] == ["approach", "approach", "confirm", "confirm", "confirm"]
+    assert [step.source for step in steps[-3:]] == ["goal_viewpoint:0"] * 3
+    assert steps[0].action == "reset"
+    assert steps[1].action == "teleport_approach"
+    assert steps[-1].target_pixels == 240
 
 
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
