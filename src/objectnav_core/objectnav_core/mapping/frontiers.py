@@ -38,7 +38,7 @@ def extract_frontier_clusters(grid: OccupancyGrid) -> list[FrontierCluster]:
                     frontier_cells.remove(neighbor)
                     queue.append(neighbor)
                     cells.append(neighbor)
-        xs, ys = zip(*(grid.cell_center(col, row) for col, row in cells), strict=True)
+        xs, ys = zip(*(grid.cell_center(col, row) for col, row in cells))
         clusters.append(
             FrontierCluster(
                 cells=tuple(sorted(cells)),
@@ -47,4 +47,3 @@ def extract_frontier_clusters(grid: OccupancyGrid) -> list[FrontierCluster]:
         )
     clusters.sort(key=lambda cluster: (cluster.centroid.x, cluster.centroid.y))
     return clusters
-

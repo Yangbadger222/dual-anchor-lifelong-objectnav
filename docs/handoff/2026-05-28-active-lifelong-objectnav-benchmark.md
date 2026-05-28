@@ -31,6 +31,8 @@ should not be presented as a paper claim without the next Habitat validation.
 - `docs/devlog/2026-05.md`
 - `src/objectnav_core/objectnav_core/models/__init__.py`
 - `src/objectnav_core/objectnav_core/mapping/fixtures.py`
+- `src/objectnav_core/objectnav_core/mapping/frontiers.py`
+- `src/objectnav_core/objectnav_core/planning/frontier_policies.py`
 - `src/objectnav_core/objectnav_core/planning/memory_guided.py`
 - `src/objectnav_core/objectnav_core/evaluation/lifelong_objectnav_benchmark.py`
 - `src/objectnav_core/objectnav_core/cli/run_lifelong_objectnav_benchmark.py`

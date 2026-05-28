@@ -88,7 +88,7 @@ def estimate_astar_path_cost_m(
     if navigator.status is NavigationStatus.SUCCEEDED:
         return start_pose.distance_to(goal_pose)
     path = [start_pose, *navigator.planned_path[1:]]
-    return sum(first.distance_to(second) for first, second in zip(path, path[1:], strict=False))
+    return sum(first.distance_to(second) for first, second in zip(path, path[1:]))
 
 
 def _evaluate_frontier(
