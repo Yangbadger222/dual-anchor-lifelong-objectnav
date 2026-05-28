@@ -265,3 +265,39 @@ def make_default_corridor_scene() -> SceneConfig:
             require_line_of_sight=True,
         ),
     )
+
+
+def make_default_multiroom_lifelong_scene() -> SceneConfig:
+    return SceneConfig(
+        scene_id="multiroom_corridor_lifelong_plant_unknown",
+        anchor=AnchorConfig(
+            anchor_id="indoor_map_multiroom_a",
+            anchor_type=AnchorType.INDOOR_MAP,
+            frame_id="map",
+        ),
+        map=MapConfig(
+            width_m=14.0,
+            height_m=10.0,
+            resolution_m=0.25,
+            known_at_start=Bounds2D(x_min=0.5, x_max=3.6, y_min=4.0, y_max=6.0),
+        ),
+        objects=[
+            ObjectConfig(
+                object_id="plant_001",
+                class_name="plant",
+                pose_map=Pose2D(x=12.0, y=8.2, yaw=-1.5708),
+                preferred_standoff_m=1.2,
+            )
+        ],
+        reveal_model=RevealModelConfig(
+            max_range_m=3.2,
+            horizontal_fov_deg=82.0,
+            raycast_step_m=0.05,
+        ),
+        fake_detector=FakeDetectorConfig(
+            min_range_m=0.2,
+            max_range_m=3.5,
+            horizontal_fov_deg=76.0,
+            require_line_of_sight=True,
+        ),
+    )

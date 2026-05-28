@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from objectnav_core.cli.run_phase1a import run_phase1a
+from objectnav_core.cli.run_lifelong_objectnav_benchmark import main as lifelong_main
 
 
 def test_phase1a_cli_runner_writes_experiment_artifacts(tmp_path: Path) -> None:
@@ -85,6 +86,22 @@ def test_phase1a_cli_runner_writes_experiment_artifacts(tmp_path: Path) -> None:
         if href.startswith("#") and href[1:] not in parser.ids
     }
     assert missing_anchors == set()
+
+
+def test_lifelong_objectnav_benchmark_cli_writes_summary_and_report(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "lifelong"
+
+    assert lifelong_main(["--output", str(output_dir)]) == 0
+
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["task"] == "lifelong_objectnav_active_benchmark"
+    assert summary["policy_summaries"]["memory_guided"]["aggregate"]["success_episodes"] == 3
+    assert summary["comparison"]["memory_guided_path_reduction_ratio"] > 0.2
+    assert (output_dir / "report.html").exists()
+    assert (output_dir / "memory_guided" / "memory.sqlite").exists()
+    assert (output_dir / "frontier_only" / "events.csv").exists()
 
 
 class AnchorParser(HTMLParser):
