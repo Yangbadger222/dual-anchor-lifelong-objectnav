@@ -5,6 +5,10 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from objectnav_core.cli.run_phase1a import run_phase1a
+from objectnav_core.cli import run_habitat_memory_lifecycle_objectnav as habitat_lifecycle_cli
+from objectnav_core.cli.run_habitat_memory_lifecycle_objectnav import (
+    main as habitat_lifecycle_main,
+)
 from objectnav_core.cli.run_lifelong_objectnav_benchmark import main as lifelong_main
 
 
@@ -104,6 +108,79 @@ def test_lifelong_objectnav_benchmark_cli_writes_summary_and_report(
     assert (output_dir / "report.html").exists()
     assert (output_dir / "memory_guided" / "memory.sqlite").exists()
     assert (output_dir / "frontier_only" / "events.csv").exists()
+
+
+def test_habitat_memory_lifecycle_cli_preflight_writes_summary(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "habitat_lifecycle"
+
+    assert habitat_lifecycle_main(
+        [
+            "--output",
+            str(output_dir),
+            "--preflight-only",
+            "--detector",
+            "grounding_dino",
+            "--detector-weights",
+            "IDEA-Research/grounding-dino-tiny",
+            "--noise-levels",
+            "clean",
+            "--modes",
+            "memory_guided,no_memory",
+            "--target-categories",
+            "bed,toilet",
+        ]
+    ) == 0
+
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["task"] == "habitat_memory_lifecycle_objectnav_preflight"
+    assert summary["full_habitat_run"] is False
+    assert summary["detector"] == "grounding_dino"
+    assert summary["modes"] == ["memory_guided", "no_memory"]
+    assert summary["target_categories"] == ["bed", "toilet"]
+
+
+def test_habitat_memory_lifecycle_cli_full_run_calls_runner(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_dir = tmp_path / "habitat_lifecycle_full"
+
+    def fake_run(output, **kwargs):
+        assert output == str(output_dir)
+        assert kwargs["detector"] == "oracle_bbox"
+        payload = {
+            "task": "habitat_memory_lifecycle_objectnav",
+            "full_habitat_run": True,
+        }
+        output_dir.mkdir(parents=True)
+        (output_dir / "summary.json").write_text(json.dumps(payload), encoding="utf-8")
+        return payload
+
+    monkeypatch.setattr(
+        habitat_lifecycle_cli,
+        "run_habitat_memory_lifecycle_objectnav",
+        fake_run,
+    )
+
+    assert habitat_lifecycle_main(
+        [
+            "--output",
+            str(output_dir),
+            "--detector",
+            "oracle_bbox",
+            "--noise-levels",
+            "clean",
+            "--modes",
+            "memory_guided,no_memory",
+            "--target-categories",
+            "bed",
+        ]
+    ) == 0
+
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["task"] == "habitat_memory_lifecycle_objectnav"
 
 
 class AnchorParser(HTMLParser):

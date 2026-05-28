@@ -38,6 +38,7 @@ setup(
             "objectnav_habitat_semantic_yolo_stress = objectnav_core.cli.run_habitat_semantic_yolo_stress:main",
             "objectnav_habitat_objectnav_valmini_semantic_stress = objectnav_core.cli.run_habitat_objectnav_valmini_semantic_stress:main",
             "objectnav_habitat_objectnav_rgb_noise_stress = objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress:main",
+            "objectnav_habitat_memory_lifecycle_objectnav = objectnav_core.cli.run_habitat_memory_lifecycle_objectnav:main",
             "objectnav_lifelong_objectnav_benchmark = objectnav_core.cli.run_lifelong_objectnav_benchmark:main",
         ]
     },
