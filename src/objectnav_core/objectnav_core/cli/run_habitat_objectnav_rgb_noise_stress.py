@@ -128,7 +128,8 @@ def main() -> None:
             "target-hidden viewpoints; expected_empty_challenge marks the hidden "
             "verification interval as expected empty; geodesic_path replays "
             "navmesh shortest-path waypoints from start to goal before final "
-            "confirmation."
+            "confirmation; geodesic_expected_empty_challenge adds an "
+            "expected-empty verification interval after the long-range approach."
         ),
     )
     parser.add_argument(

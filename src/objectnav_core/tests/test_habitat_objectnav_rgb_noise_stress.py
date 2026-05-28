@@ -203,6 +203,28 @@ def test_preflight_records_expected_empty_challenge_replay_protocol(tmp_path: Pa
     assert "expected_empty" in summary["replay_phases"]
 
 
+def test_preflight_records_geodesic_expected_empty_replay_protocol(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        replay_protocol="geodesic_expected_empty_challenge",
+        geodesic_path_max_steps=12,
+    )
+
+    assert "geodesic_expected_empty_challenge" in stress.SUPPORTED_REPLAY_PROTOCOLS
+    assert summary["replay_protocol"] == "geodesic_expected_empty_challenge"
+    assert summary["geodesic_path_max_steps"] == 12
+    assert "approach" in summary["replay_phases"]
+    assert "expected_empty" in summary["replay_phases"]
+
+
 def test_preflight_records_memory_geometry_gate_radius(tmp_path: Path) -> None:
     summary = stress.run_rgb_noise_stress_preflight(
         output_dir=tmp_path,
@@ -1021,6 +1043,72 @@ def test_geodesic_path_replay_steps_use_approach_then_goal_confirm() -> None:
     assert steps[0].action == "reset"
     assert steps[1].action == "teleport_approach"
     assert steps[-1].target_pixels == 240
+
+
+def test_geodesic_expected_empty_replay_steps_add_hidden_then_revisit() -> None:
+    waypoints = (
+        stress.ReplayViewCandidate(
+            source="geodesic_path:waypoint:0",
+            position=(0.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+            target_pixels=0,
+        ),
+        stress.ReplayViewCandidate(
+            source="geodesic_path:waypoint:1",
+            position=(1.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+            target_pixels=12,
+        ),
+    )
+    goal = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0",
+        position=(2.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=240,
+    )
+    hidden = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0_turn_around",
+        position=(2.0, 0.0, 0.0),
+        rotation=(0.0, 1.0, 0.0, 0.0),
+        target_pixels=0,
+    )
+
+    steps = stress._geodesic_expected_empty_challenge_replay_steps(
+        waypoints=waypoints,
+        goal=goal,
+        hidden=hidden,
+        confirm_frames=3,
+        expected_empty_frames=4,
+        revisit_frames=4,
+    )
+
+    assert [step.phase for step in steps] == (
+        ["approach"] * 2
+        + ["confirm"] * 3
+        + ["expected_empty"] * 4
+        + ["revisit"] * 4
+    )
+    assert steps[0].action == "reset"
+    assert all(
+        step.source == "goal_viewpoint:0"
+        for step in steps
+        if step.phase in {"confirm", "revisit"}
+    )
+    assert all(
+        step.source == "goal_viewpoint:0_turn_around"
+        for step in steps
+        if step.phase == "expected_empty"
+    )
+    assert all(
+        step.expected_target_absent
+        for step in steps
+        if step.phase == "expected_empty"
+    )
+    assert not any(
+        step.expected_target_absent
+        for step in steps
+        if step.phase != "expected_empty"
+    )
 
 
 def test_initial_replay_pose_uses_first_teleport_step() -> None:

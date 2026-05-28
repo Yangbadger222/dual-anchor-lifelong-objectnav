@@ -368,6 +368,30 @@ non-confirmation. The goal is to expose the algorithm's negative-evidence and
 retirement behavior in Habitat before scaling to a larger noise/category
 matrix.
 
+## Update: Long-Range Expected-Empty Replay Challenge (2026-05-28)
+
+The short `expected_empty_challenge` isolates stale-memory handling, while the
+`geodesic_path` replay isolates official start-to-goal distance. Neither alone
+is a strong proxy for long-range lifelong ObjectNav. The harness therefore adds
+`replay_protocol=geodesic_expected_empty_challenge`:
+
+- start from the configured episode start, normally the official ObjectNav
+  episode start;
+- replay bounded Habitat navmesh shortest-path waypoints as `approach`;
+- repeat the measured goal viewpoint as `confirm` so both memory `on` and
+  `naive_count` can accumulate initial positive evidence;
+- jump to a measured target-hidden expected-empty viewpoint and mark only that
+  interval with `expected_target_absent=True`;
+- return to the goal viewpoint for `revisit`.
+
+This protocol composes existing mechanisms instead of adding a new metric. It
+does not change Grounding-DINO inference, detector filtering, evidence
+classification outside the expected-empty interval, memory updates, the
+positive-only `naive_count` baseline, or the shared decision gate. Its intended
+claim boundary is still replay-style validation: it can support a stronger
+memory/evidence claim over long official ObjectNav distances, but it is not
+official Habitat SPL and not closed-loop navigation.
+
 ## Update: Memory Geometry Gate Prototype (2026-05-28)
 
 The expected-empty Grounding-DINO matrix exposed a detector/memory boundary

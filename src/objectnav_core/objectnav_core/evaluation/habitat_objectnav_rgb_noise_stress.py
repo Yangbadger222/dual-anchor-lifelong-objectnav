@@ -72,6 +72,7 @@ SUPPORTED_REPLAY_PROTOCOLS: tuple[str, ...] = (
     "visibility_challenge",
     "geodesic_path",
     "expected_empty_challenge",
+    "geodesic_expected_empty_challenge",
 )
 REPLAY_PHASES: tuple[str, ...] = (
     "approach",
@@ -610,6 +611,16 @@ def _run_rgb_noise_episode(
             episode=episode,
             start=start,
             target_semantic_ids=target_semantic_ids,
+            max_steps=geodesic_path_max_steps,
+        )
+    elif replay_protocol == "geodesic_expected_empty_challenge":
+        replay_steps = _build_geodesic_expected_empty_challenge_replay_steps(
+            sim=sim,
+            agent=agent,
+            episode=episode,
+            start=start,
+            target_semantic_ids=target_semantic_ids,
+            min_target_pixels=min_target_pixels,
             max_steps=geodesic_path_max_steps,
         )
     else:
@@ -1753,6 +1764,64 @@ def _geodesic_path_replay_steps(
     return tuple(steps)
 
 
+def _geodesic_expected_empty_challenge_replay_steps(
+    *,
+    waypoints: Sequence[ReplayViewCandidate],
+    goal: ReplayViewCandidate,
+    hidden: ReplayViewCandidate,
+    confirm_frames: int = GEODESIC_PATH_CONFIRM_FRAMES,
+    expected_empty_frames: int = 4,
+    revisit_frames: int = 4,
+) -> tuple[ReplayStep, ...]:
+    steps: list[ReplayStep] = []
+    for waypoint in waypoints:
+        steps.append(
+            ReplayStep(
+                phase="approach",
+                action="reset" if not steps else "teleport_approach",
+                source=waypoint.source,
+                position=waypoint.position,
+                rotation=waypoint.rotation,
+                target_pixels=waypoint.target_pixels,
+            )
+        )
+    for _ in range(confirm_frames):
+        steps.append(
+            ReplayStep(
+                phase="confirm",
+                action="reset" if not steps else "teleport_confirm",
+                source=goal.source,
+                position=goal.position,
+                rotation=goal.rotation,
+                target_pixels=goal.target_pixels,
+            )
+        )
+    for _ in range(expected_empty_frames):
+        steps.append(
+            ReplayStep(
+                phase="expected_empty",
+                action="reset" if not steps else "teleport_expected_empty",
+                source=hidden.source,
+                position=hidden.position,
+                rotation=hidden.rotation,
+                target_pixels=hidden.target_pixels,
+                expected_target_absent=True,
+            )
+        )
+    for _ in range(revisit_frames):
+        steps.append(
+            ReplayStep(
+                phase="revisit",
+                action="reset" if not steps else "teleport_revisit",
+                source=goal.source,
+                position=goal.position,
+                rotation=goal.rotation,
+                target_pixels=goal.target_pixels,
+            )
+        )
+    return tuple(steps)
+
+
 def _resample_path_positions(
     points: Sequence[tuple[float, float, float]],
     *,
@@ -1811,6 +1880,72 @@ def _build_geodesic_path_replay_steps(
             )
         )
     return _geodesic_path_replay_steps(waypoints=waypoints, goal=goal)
+
+
+def _build_geodesic_expected_empty_challenge_replay_steps(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    start: Any,
+    target_semantic_ids: Sequence[int],
+    min_target_pixels: int,
+    max_steps: int,
+) -> tuple[ReplayStep, ...]:
+    goal = _first_goal_view_candidate(
+        sim=sim,
+        agent=agent,
+        episode=episode,
+        target_semantic_ids=target_semantic_ids,
+    )
+    candidates = _sample_replay_view_candidates(
+        sim=sim,
+        agent=agent,
+        episode=episode,
+        target_semantic_ids=target_semantic_ids,
+    )
+    hidden_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.target_pixels < min_target_pixels
+    ]
+    if not hidden_candidates:
+        raise ValueError(
+            "geodesic_expected_empty_challenge requires a target-hidden view"
+        )
+    hidden = min(hidden_candidates, key=lambda candidate: candidate.target_pixels)
+    path_points = _shortest_path_points(
+        sim=sim,
+        start=start.position,
+        end=goal.position,
+    )
+    sampled_points = _resample_path_positions(
+        path_points[:-1] if len(path_points) > 1 else path_points,
+        max_points=max(1, max_steps),
+    )
+    waypoints: list[ReplayViewCandidate] = []
+    for index, position in enumerate(sampled_points):
+        next_position = (
+            sampled_points[index + 1]
+            if index + 1 < len(sampled_points)
+            else goal.position
+        )
+        rotation = _look_at_quaternion_xyzw(position, next_position)
+        waypoints.append(
+            _measure_replay_view_candidate(
+                sim=sim,
+                agent=agent,
+                source=f"geodesic_path:waypoint:{index}",
+                position=position,
+                rotation=rotation,
+                target_semantic_ids=target_semantic_ids,
+            )
+        )
+    return _geodesic_expected_empty_challenge_replay_steps(
+        waypoints=waypoints,
+        goal=goal,
+        hidden=hidden,
+    )
 
 
 def _build_visibility_challenge_replay_steps(
