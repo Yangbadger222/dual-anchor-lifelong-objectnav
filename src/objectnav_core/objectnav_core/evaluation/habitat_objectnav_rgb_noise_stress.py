@@ -75,6 +75,7 @@ DEFAULT_YOLO_PROMPT_MODE = "target"
 DEFAULT_STOP_ON_TRUST = True
 DEFAULT_DEBUG_EXPORT_CATEGORIES: tuple[str, ...] = ("plant", "tv_monitor")
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
+DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEBUG_PANEL_MAX_WIDTH = 640
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 INITIAL_BELIEF = MemoryBelief(
@@ -126,6 +127,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     debug_export_gate_rejections: bool = False,
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
@@ -167,6 +169,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         debug_export_gate_rejections=debug_export_gate_rejections,
         debug_export_categories=debug_export_categories,
         debug_export_limit_per_category=debug_export_limit_per_category,
+        max_detection_area_ratio=max_detection_area_ratio,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
@@ -265,6 +268,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             debug_export_skipped_counts=debug_png_skipped_counts,
                             debug_export_limit_per_category=debug_export_limit_per_category,
                             output_path=output_path,
+                            max_detection_area_ratio=max_detection_area_ratio,
                         )
                         trace_rows.extend(rows)
                         episode_summaries.append(episode_summary)
@@ -314,6 +318,7 @@ def run_rgb_noise_stress_preflight(
     debug_export_gate_rejections: bool = False,
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -328,6 +333,7 @@ def run_rgb_noise_stress_preflight(
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     _validate_debug_export_limit(debug_export_limit_per_category)
+    _validate_max_detection_area_ratio(max_detection_area_ratio)
     sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
         sensor_size=sensor_size,
         sensor_width=sensor_width,
@@ -370,6 +376,7 @@ def run_rgb_noise_stress_preflight(
         "debug_export_gate_rejections": bool(debug_export_gate_rejections),
         "debug_export_categories": sorted(_debug_category_filter(debug_export_categories)),
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
+        "max_detection_area_ratio": max_detection_area_ratio,
         "revisit_strategy": "out_and_back",
         "out_and_back_actions": list(actions),
         "out_and_back_action_count": len(actions),
@@ -411,6 +418,7 @@ def _run_rgb_noise_episode(
     debug_export_skipped_counts: dict[str, int] | None = None,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     output_path: Path | None = None,
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
@@ -468,13 +476,14 @@ def _run_rgb_noise_episode(
             frame_index=episode_index * 1000 + step_index,
         )
         oracle_mask = np.isin(semantic, list(target_semantic_ids))
-        detector_mask, detections = _detector_mask(
+        detector_mask, detections, detection_filtered_count = _detector_mask(
             detector=detector,
             detector_adapter=detector_adapter,
             noisy_rgb=noisy_rgb,
             oracle_mask=oracle_mask,
             target_category=episode.object_category,
             accepted_detection_labels=accepted_detection_labels,
+            max_detection_area_ratio=max_detection_area_ratio,
         )
         metrics = _mask_metrics(oracle_mask=oracle_mask, detector_mask=detector_mask)
         view_metrics = _target_view_metrics(oracle_mask)
@@ -586,6 +595,7 @@ def _run_rgb_noise_episode(
                         "naive_positive_count": naive_count_state.positive_count,
                         "p_valid": round(decision.p_valid, 6),
                         "detection_count": len(detections),
+                        "detection_filtered_count": detection_filtered_count,
                         "detection_conf_max": round(
                             max((d.confidence for d in detections), default=0.0),
                             6,
@@ -623,6 +633,7 @@ def _run_rgb_noise_episode(
                 "depth_valid_ratio": depth_valid_ratio,
                 "previous_step_collided": collided,
                 "detection_count": len(detections),
+                "detection_filtered_count": detection_filtered_count,
                 "detection_conf_max": round(
                     max((d.confidence for d in detections), default=0.0),
                     6,
@@ -680,33 +691,65 @@ def _detector_mask(
     oracle_mask: np.ndarray,
     target_category: str,
     accepted_detection_labels: set[str],
-) -> tuple[np.ndarray, list[Detection]]:
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+) -> tuple[np.ndarray, list[Detection], int]:
     if detector == "oracle_bbox":
         bbox = _mask_bbox(oracle_mask)
         if bbox is None:
-            return np.zeros(oracle_mask.shape, dtype=bool), []
+            return np.zeros(oracle_mask.shape, dtype=bool), [], 0
         mask = np.zeros(oracle_mask.shape, dtype=bool)
         x1, y1, x2, y2 = bbox
         mask[y1:y2, x1:x2] = True
-        return mask, [
-            Detection(
-                category=target_category,
-                bbox=bbox,
-                confidence=1.0,
-                mask=mask,
-            )
-        ]
+        return (
+            mask,
+            [
+                Detection(
+                    category=target_category,
+                    bbox=bbox,
+                    confidence=1.0,
+                    mask=mask,
+                )
+            ],
+            0,
+        )
     if detector_adapter is None:
         raise RuntimeError(f"detector_adapter is required for {detector}")
-    detections = [
+    label_matched_detections = [
         detection
         for detection in detector_adapter.detect(noisy_rgb)
         if _normalize_yolo_label(detection.category) in accepted_detection_labels
     ]
+    detections, filtered_count = _filter_detections_by_area(
+        label_matched_detections,
+        image_shape=noisy_rgb.shape[:2],
+        max_detection_area_ratio=max_detection_area_ratio,
+    )
     mask = np.zeros(noisy_rgb.shape[:2], dtype=bool)
     for detection in detections:
         mask |= detection.mask
-    return mask, detections
+    return mask, detections, filtered_count
+
+
+def _filter_detections_by_area(
+    detections: Sequence[Detection],
+    *,
+    image_shape: tuple[int, int],
+    max_detection_area_ratio: float | None,
+) -> tuple[list[Detection], int]:
+    if max_detection_area_ratio is None:
+        return list(detections), 0
+    image_height, image_width = image_shape
+    image_area = max(1, image_height * image_width)
+    kept: list[Detection] = []
+    filtered_count = 0
+    for detection in detections:
+        x1, y1, x2, y2 = detection.bbox
+        bbox_area = max(0, x2 - x1) * max(0, y2 - y1)
+        if bbox_area / image_area > max_detection_area_ratio:
+            filtered_count += 1
+            continue
+        kept.append(detection)
+    return kept, filtered_count
 
 
 def _detector_for_target(
@@ -1325,6 +1368,9 @@ def _summarize_rgb_noise_run(
             "mean_detector_precision": _mean(rows, "detector_precision"),
             "mean_oracle_recall": _mean(rows, "oracle_recall"),
             "mean_final_p_valid": _mean(episode_summaries, "final_p_valid"),
+            "detection_filtered_count": sum(
+                int(row.get("detection_filtered_count", 0)) for row in rows
+            ),
             "debug_png_counts": dict(sorted((debug_png_counts or {}).items())),
             "debug_png_skipped_counts": dict(
                 sorted((debug_png_skipped_counts or {}).items())
@@ -1404,6 +1450,13 @@ def _validate_yolo_prompt_mode(yolo_prompt_mode: str) -> None:
 def _validate_debug_export_limit(limit: int) -> None:
     if limit <= 0:
         raise ValueError("debug_export_limit_per_category must be positive")
+
+
+def _validate_max_detection_area_ratio(max_detection_area_ratio: float | None) -> None:
+    if max_detection_area_ratio is None:
+        return
+    if not 0.0 < max_detection_area_ratio <= 1.0:
+        raise ValueError("max_detection_area_ratio must be in (0, 1] or None")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

@@ -10,6 +10,7 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_YOLO_PROMPT_MODE,
     DEFAULT_DEBUG_EXPORT_CATEGORIES,
     DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+    DEFAULT_MAX_DETECTION_AREA_RATIO,
     SUPPORTED_DETECTORS,
     SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
@@ -116,6 +117,15 @@ def main() -> None:
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
     parser.add_argument(
+        "--max-detection-area-ratio",
+        type=float,
+        default=DEFAULT_MAX_DETECTION_AREA_RATIO,
+        help=(
+            "Reject detector boxes covering more than this fraction of the image "
+            "before building detector masks. Set <=0 to disable."
+        ),
+    )
+    parser.add_argument(
         "--stop-on-trust",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_STOP_ON_TRUST,
@@ -176,6 +186,9 @@ def main() -> None:
             debug_export_gate_rejections=args.debug_export_gate_rejections,
             debug_export_categories=_split_csv(args.debug_export_categories),
             debug_export_limit_per_category=args.debug_export_limit_per_category,
+            max_detection_area_ratio=_optional_positive_ratio(
+                args.max_detection_area_ratio
+            ),
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -206,12 +219,19 @@ def main() -> None:
             debug_export_gate_rejections=args.debug_export_gate_rejections,
             debug_export_categories=_split_csv(args.debug_export_categories),
             debug_export_limit_per_category=args.debug_export_limit_per_category,
+            max_detection_area_ratio=_optional_positive_ratio(
+                args.max_detection_area_ratio
+            ),
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _optional_positive_ratio(value: float) -> float | None:
+    return value if value > 0.0 else None
 
 
 if __name__ == "__main__":

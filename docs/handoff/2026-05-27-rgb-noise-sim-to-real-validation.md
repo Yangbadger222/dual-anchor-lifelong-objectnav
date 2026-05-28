@@ -212,6 +212,12 @@ After detector setup:
   - current read: `tv_monitor` is mostly Grounding-DINO false-positive /
     over-broad-box behavior; `plant` is mixed between detector false positives
     and strict/clipped Habitat GT masks
+- Added a detector-side max-area filter:
+  - default `--max-detection-area-ratio 0.7`
+  - set `--max-detection-area-ratio 0` to disable for ablations
+  - trace rows include `detection_filtered_count`
+  - summaries include total `detection_filtered_count`
+  - the filter uses only detector bbox geometry and image size, not Habitat GT
 
 Still not run:
 
@@ -254,14 +260,17 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Manually review the full
+1. Pull the detector-area-filter commit on `badger-linux` and rerun the
+   `plant,tv_monitor` diagnostic subset with the default filter.
+2. Compare filtered vs previous unfiltered output, especially `tv_monitor`
+   gate rejections and `detection_filtered_count`.
+3. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-2. Add detector-side sanity checks for `tv_monitor` broad/full-frame boxes.
-3. Add a task where naive count should fail: cross-episode persistence,
+4. Add a task where naive count should fail: cross-episode persistence,
    scene-change handling, negative evidence, or geometry consistency.
-4. Add visibility-aware episode selection and reintroduce `chair`.
-5. Then connect the replay harness to a real navigation policy or Habitat
+5. Add visibility-aware episode selection and reintroduce `chair`.
+6. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor

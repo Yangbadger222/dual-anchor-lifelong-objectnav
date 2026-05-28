@@ -172,6 +172,51 @@ def test_write_gate_rejection_debug_png_creates_visual_artifact(tmp_path: Path) 
     assert png_path.stat().st_size > 0
 
 
+def test_detector_mask_filters_over_broad_detector_boxes() -> None:
+    large_mask = np.ones((20, 30), dtype=bool)
+    small_mask = np.zeros((20, 30), dtype=bool)
+    small_mask[3:9, 4:12] = True
+    detections = [
+        Detection("tv monitor", (0, 0, 30, 20), 0.42, large_mask),
+        Detection("tv monitor", (4, 3, 12, 9), 0.61, small_mask),
+    ]
+    adapter = _StaticDetector(detections)
+
+    mask, kept, filtered_count = stress._detector_mask(
+        detector="grounding_dino",
+        detector_adapter=adapter,
+        noisy_rgb=np.zeros((20, 30, 3), dtype=np.uint8),
+        oracle_mask=np.zeros((20, 30), dtype=bool),
+        target_category="tv_monitor",
+        accepted_detection_labels={"tv monitor"},
+        max_detection_area_ratio=0.7,
+    )
+
+    assert kept == [detections[1]]
+    assert filtered_count == 1
+    assert np.array_equal(mask, small_mask)
+
+
+def test_detector_mask_keeps_over_broad_boxes_when_filter_disabled() -> None:
+    large_mask = np.ones((20, 30), dtype=bool)
+    detection = Detection("tv monitor", (0, 0, 30, 20), 0.42, large_mask)
+    adapter = _StaticDetector([detection])
+
+    mask, kept, filtered_count = stress._detector_mask(
+        detector="grounding_dino",
+        detector_adapter=adapter,
+        noisy_rgb=np.zeros((20, 30, 3), dtype=np.uint8),
+        oracle_mask=np.zeros((20, 30), dtype=bool),
+        target_category="tv_monitor",
+        accepted_detection_labels={"tv monitor"},
+        max_detection_area_ratio=None,
+    )
+
+    assert kept == [detection]
+    assert filtered_count == 0
+    assert np.array_equal(mask, large_mask)
+
+
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
     state = stress.NaiveCountState()
 
@@ -510,3 +555,11 @@ class _Episode:
     def __init__(self, episode_id: str, object_category: str) -> None:
         self.episode_id = episode_id
         self.object_category = object_category
+
+
+class _StaticDetector:
+    def __init__(self, detections: list[Detection]) -> None:
+        self._detections = detections
+
+    def detect(self, rgb: object) -> list[Detection]:
+        return self._detections

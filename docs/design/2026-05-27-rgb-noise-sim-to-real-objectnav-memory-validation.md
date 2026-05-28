@@ -101,6 +101,28 @@ memory updates, or detector outputs. The trace records a `debug_png` path only
 for exported rows so reviewers can jump from aggregate false-trust counts to
 the exact image evidence.
 
+## Update: Detector Area Sanity Filter (2026-05-28)
+
+The debug PNG review showed that some Grounding-DINO `tv_monitor` boxes cover
+most or all of the `1280x720` image while Habitat GT has zero target pixels.
+Those boxes are not useful evidence for memory and should be rejected before
+the detector mask enters the evidence classifier.
+
+The replay runner therefore applies a shared detector-side maximum box-area
+filter before OR-ing detections into the detector mask:
+
+- default `max_detection_area_ratio=0.70`;
+- `None` / CLI value `<=0` disables the filter for ablations;
+- the rule uses only detector bbox geometry and image size, never Habitat GT;
+- the filter is applied before all memory modes, so `on`, `naive_count`, and
+  `off` see the same filtered detector evidence;
+- trace rows record `detection_filtered_count`, and summaries report the total
+  filtered detection count.
+
+This is still a v1 heuristic, not a substitute for instance segmentation. It is
+intended to remove pathological open-vocabulary full-frame detections while
+preserving the existing shared current-positive gate.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so
