@@ -21,7 +21,7 @@ synthetic grid trace. If it only selects repeatedly visible targets, then
 
 | Item | Value |
 |---|---|
-| Branch / commit | `main`, `22cacd2` |
+| Branch / commit | First replay: `main`, `22cacd2`; phase-audit replay: `main`, `5b2a583` |
 | Machine | `badger-linux` |
 | Environment | `conda habitat` |
 | Dataset / scene root | HM3D ObjectNav `val_mini`, HM3D scene root on Linux |
@@ -30,7 +30,7 @@ synthetic grid trace. If it only selects repeatedly visible targets, then
 | Noise levels | `clean,mild,heavy` |
 | Memory modes | `on,naive_count,off` |
 | Selection | `structured_visibility`, 2 episodes/category, min goal viewpoints `2`, min geodesic `2.0`, min complexity `1.2` |
-| Output | `runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384` |
+| Output | First replay: `runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384`; phase-audit replay: `runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384_phase_audit` |
 
 ## Command
 
@@ -85,6 +85,19 @@ Metadata audit by requested category:
 | `plant` | `5` | `5` | selected |
 | `tv_monitor` | `3` | `0` | failed complexity threshold |
 
+The phase-audit replay made this explicit in
+`summary.json["episode_selection"]["category_audit"]`:
+
+| Category | Raw candidates | Structured candidates | Selected IDs | Selection status |
+|---|---:|---:|---|---|
+| `bed` | `7` | `2` | `3, 33` | `selected` |
+| `sofa` | `3` | `0` | none | `no_structured_candidates` |
+| `toilet` | `5` | `2` | `55, 39` | `selected` |
+| `plant` | `5` | `5` | `62, 84` | `selected` |
+| `tv_monitor` | `3` | `0` | none | `no_structured_candidates` |
+
+`zero_structured_candidate_categories = ["sofa", "tv_monitor"]`.
+
 ### Replay Summary
 
 | Metric | Value |
@@ -98,6 +111,42 @@ Metadata audit by requested category:
 | Mean detector precision | `0.365904` |
 | Mean oracle recall | `0.530368` |
 | Oracle-stop success rows | `255` |
+
+### Phase-Audit Replay
+
+The phase-audit replay used the same command and parameters, but ran from
+commit `5b2a583` and wrote:
+
+`runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384_phase_audit`
+
+It completed with the same selected episodes and aggregate memory metrics as
+the first replay, but added `replay_phase` to the trace and phase-level summary
+counts.
+
+| Phase | Rows | Target-visible rows | Positive rows | Non-confirmation rows | Raw trust | Gated trust / success | Gate rejections |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `confirm` | `162` | `126` | `72` | `0` | `44` | `28` | `16` |
+| `depart` | `216` | `144` | `144` | `0` | `105` | `96` | `9` |
+| `non_confirm` | `216` | `198` | `108` | `90` | `82` | `66` | `16` |
+| `revisit` | `216` | `180` | `150` | `54` | `85` | `65` | `20` |
+
+Per-memory phase results:
+
+| Memory | Phase | Rows | Visible | Positive | Non-confirmation | Raw trust | Gated trust / success | Gate rejections |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `on` | `confirm` | `54` | `42` | `24` | `0` | `32` | `16` | `16` |
+| `on` | `depart` | `72` | `48` | `48` | `0` | `57` | `48` | `9` |
+| `on` | `non_confirm` | `72` | `66` | `36` | `30` | `34` | `32` | `2` |
+| `on` | `revisit` | `72` | `60` | `50` | `18` | `27` | `27` | `0` |
+| `naive_count` | `confirm` | `54` | `42` | `24` | `0` | `12` | `12` | `0` |
+| `naive_count` | `depart` | `72` | `48` | `48` | `0` | `48` | `48` | `0` |
+| `naive_count` | `non_confirm` | `72` | `66` | `36` | `30` | `48` | `34` | `14` |
+| `naive_count` | `revisit` | `72` | `60` | `50` | `18` | `58` | `38` | `20` |
+
+The critical audit finding is that the `non_confirm` phase is not actually a
+clean non-confirmation interval: `198 / 216` rows are still target-visible and
+`108 / 216` rows are positive. The current out-and-back action trace therefore
+does not force the stale-memory condition we need.
 
 ### Memory Comparison
 
@@ -138,6 +187,9 @@ Category comparison:
 - This replay still does not reproduce the synthetic structured challenge. It
   mostly rewards repeated positives rather than disappearance, blocked access,
   stale path cost, or multi-object ambiguity.
+- The phase-audit replay confirms why: the index-based `non_confirm` window
+  still contains many visible and positive target observations, so the route is
+  not a true memory invalidation challenge.
 - `naive_count` remains slightly ahead on gated trust / oracle-stop success
   (`132` vs `123`). It also has more gate rejections (`34` vs `27`), so the
   shared gate is still useful, but this is not a memory-win result.
@@ -155,19 +207,21 @@ result remains a repeated-positive replay where `naive_count` is competitive.
 The current conclusion is:
 
 1. `structured_visibility` should stay as a prefilter and audit field.
-2. It should not be treated as proof that the Habitat replay now tests
+2. `replay_phase` and `category_audit` should stay in the trace/summary because
+   they expose whether a run is actually testing memory.
+3. It should not be treated as proof that the Habitat replay now tests
    lifelong/dual-anchor memory.
-3. The next implementation step should create an explicit structured replay
-   protocol, not only metadata selection: first confirm, leave/occlude, revisit,
-   force a non-confirmation window, then test whether memory recovers or
-   retires.
+4. The next implementation step should create an explicit structured replay
+   protocol, not only metadata selection or index-based labels: first confirm,
+   move to an actually target-not-visible view, force a non-confirmation
+   window, then revisit and test whether memory recovers or retires.
 
 ## Follow-up
 
 - Add a fallback selection mode so categories with zero structured candidates
-  can still be included with a `fallback_reason` instead of silently dropping.
-- Add a trace-level structured replay protocol with explicit phases:
-  `confirm`, `depart`, `non_confirm`, `revisit`.
+  can still be included with a `fallback_reason` instead of excluding them.
+- Replace index-based phase labeling with a Habitat viewpoint/action protocol
+  that chooses actual confirm, target-not-visible, and revisit viewpoints.
 - Export representative `plant` structured-replay gate rejections if this
   subset is used for future claims.
 - Do not claim memory beats `naive_count` from this run.
