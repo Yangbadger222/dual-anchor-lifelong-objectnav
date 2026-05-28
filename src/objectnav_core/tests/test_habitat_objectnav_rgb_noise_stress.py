@@ -496,6 +496,31 @@ def test_memory_geometry_gate_quarantines_positive_when_anchor_is_behind_camera(
     assert distance is not None
 
 
+def test_memory_geometry_gate_can_run_fov_without_distance_radius() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=-2.0)
+
+    _, evidence_type, _, quarantined, reason, distance = (
+        stress._apply_memory_geometry_gate(
+            state=state,
+            memory_mode="on",
+            evidence_type=EvidenceType.POSITIVE,
+            evidence_strength=1.0,
+            quarantined=False,
+            evidence_reason="detector_positive_mask",
+            observation_anchor_xz=(0.1, -1.8),
+            gate_radius_m=None,
+            gate_fov=True,
+            agent_pose=((0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)),
+            hfov_degrees=90.0,
+        )
+    )
+
+    assert evidence_type is EvidenceType.UNKNOWN
+    assert quarantined is True
+    assert reason == "geometry_anchor_out_of_view_positive"
+    assert distance is not None
+
+
 def test_anchor_in_camera_fov_uses_agent_yaw_and_hfov() -> None:
     pose = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
 
@@ -514,7 +539,10 @@ def test_anchor_in_camera_fov_uses_agent_yaw_and_hfov() -> None:
 def test_memory_geometry_gate_does_not_change_naive_count_or_disabled_runs() -> None:
     state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=0.0)
 
-    for memory_mode, gate_radius in (("naive_count", 1.5), ("on", None)):
+    for memory_mode, gate_radius, gate_fov in (
+        ("naive_count", 1.5, True),
+        ("on", None, False),
+    ):
         _, evidence_type, strength, quarantined, reason, distance = (
             stress._apply_memory_geometry_gate(
                 state=state,
@@ -525,6 +553,7 @@ def test_memory_geometry_gate_does_not_change_naive_count_or_disabled_runs() -> 
                 evidence_reason="detector_positive_mask",
                 observation_anchor_xz=(3.0, 0.0),
                 gate_radius_m=gate_radius,
+                gate_fov=gate_fov,
             )
         )
 

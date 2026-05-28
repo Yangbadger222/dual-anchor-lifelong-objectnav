@@ -13,6 +13,7 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
+    DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
     DEFAULT_EPISODE_SELECTION_STRATEGY,
     DEFAULT_GEODESIC_PATH_MAX_STEPS,
@@ -196,6 +197,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--memory-geometry-gate-fov",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
+        help=(
+            "For memory=on, reject current positive evidence when the remembered "
+            "anchor is outside the camera FOV. This does not change naive_count."
+        ),
+    )
+    parser.add_argument(
         "--stop-on-trust",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_STOP_ON_TRUST,
@@ -280,6 +290,7 @@ def main() -> None:
             memory_geometry_gate_radius_m=_optional_positive_ratio(
                 args.memory_geometry_gate_radius_m
             ),
+            memory_geometry_gate_fov=args.memory_geometry_gate_fov,
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,
             geodesic_path_max_steps=args.geodesic_path_max_steps,
@@ -324,6 +335,7 @@ def main() -> None:
             memory_geometry_gate_radius_m=_optional_positive_ratio(
                 args.memory_geometry_gate_radius_m
             ),
+            memory_geometry_gate_fov=args.memory_geometry_gate_fov,
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,
             geodesic_path_max_steps=args.geodesic_path_max_steps,

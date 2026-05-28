@@ -380,7 +380,11 @@ The RGB-noise runner therefore adds an optional `memory=on` geometry-gate
 prototype:
 
 - CLI flag: `--memory-geometry-gate-radius-m <meters>`;
-- default: disabled, preserving all previous experiment results;
+- CLI flag: `--memory-geometry-gate-fov` / `--no-memory-geometry-gate-fov`;
+- distance gate default: disabled, preserving previous distance-threshold
+  experiment results unless explicitly enabled;
+- FOV gate default: enabled for `memory=on` when the geometry prototype is
+  used, because it does not depend on a brittle bbox-depth distance threshold;
 - the first accepted positive observation in a replay creates a lightweight
   memory anchor by projecting the detector bbox center through the noisy depth
   image into Habitat world `x/z`;

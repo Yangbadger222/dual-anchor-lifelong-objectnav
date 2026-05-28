@@ -591,6 +591,23 @@ After detector setup:
   - local focused tests passed: `49` RGB-noise stress tests and `60` broader
     focused tests; compileall, geometry preflight, and `git diff --check`
     passed
+- Ran the bed geometry+FOV smoke on `badger-linux`:
+  - output:
+    `runs/habitat_usability/expected_empty_bed_geometry_fov_gate_1280x720_epc2_cap384`
+  - `memory=on`: `27` success rows, `45` raw trust, `18` gate rejections
+  - `naive_count`: `27` success rows, `53` raw trust, `26` gate rejections
+  - all `24` bed expected-empty positives for `memory=on` became `UNKNOWN`
+    due to `geometry_anchor_out_of_view_positive`
+  - remaining problem: distance radius still rejected `3` true revisit
+    positives in episode `33`
+- Split the local geometry prototype into FOV and distance controls:
+  - `--memory-geometry-gate-radius-m <= 0` disables only distance gating
+  - `--memory-geometry-gate-fov` keeps the FOV association check enabled
+  - FOV-only local preflight records `memory_geometry_gate_radius_m=null` and
+    `memory_geometry_gate_fov=true`
+  - local focused tests passed: `50` RGB-noise stress tests and `61` broader
+    focused tests; compileall, FOV-only preflight, and `git diff --check`
+    passed
 
 Still not run:
 
@@ -609,6 +626,7 @@ Still not run:
 - Linux pull/test for the memory-geometry-gate commit.
 - Bed expected-empty geometry-gate smoke on Linux.
 - Bed expected-empty geometry-gate smoke after the FOV-consistency patch.
+- Bed expected-empty FOV-only geometry smoke after the split-controls patch.
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant`.
 - SQLite persistence of object-instance geometry anchors across episodes.
 
@@ -650,6 +668,8 @@ Still not run:
   object store.
 - The radius-only geometry gate is not strong enough by itself; keep the FOV
   consistency run separate in the report so the ablation remains interpretable.
+- Prefer FOV-only geometry gating for the next run; radius gating caused
+  revisit false negatives in the bed smoke.
 - The bed detector issue should not be solved by simply raising
   Grounding-DINO confidence; the threshold ablation shows that route also
   damages true-positive recall.
@@ -660,8 +680,8 @@ Still not run:
    `badger-linux`.
 2. Run focused remote tests in `conda habitat`.
 3. Run a bed-only expected-empty smoke with
-   `--memory-geometry-gate-radius-m 1.5` after the FOV-consistency patch and
-   compare `memory=on` vs `naive_count`.
+   `--memory-geometry-gate-radius-m 0 --memory-geometry-gate-fov` and compare
+   `memory=on` vs `naive_count`.
 4. If the bed smoke reduces geometry-inconsistent positives without killing
    true revisit success, rerun the full
    `expected_empty_grounding_dino_matrix_1280x720_epc2_cap384` equivalent with

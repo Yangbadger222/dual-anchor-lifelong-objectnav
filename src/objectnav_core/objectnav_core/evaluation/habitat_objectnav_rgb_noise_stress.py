@@ -97,6 +97,7 @@ DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES: tuple[str, ...] = ()
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M: float | None = None
+DEFAULT_MEMORY_GEOMETRY_GATE_FOV = True
 DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
 DEFAULT_REPLAY_PROTOCOL = "out_and_back"
 DEFAULT_GEODESIC_PATH_MAX_STEPS = 24
@@ -184,6 +185,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
+    memory_geometry_gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
@@ -235,6 +237,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         debug_export_limit_per_category=debug_export_limit_per_category,
         max_detection_area_ratio=max_detection_area_ratio,
         memory_geometry_gate_radius_m=memory_geometry_gate_radius_m,
+        memory_geometry_gate_fov=memory_geometry_gate_fov,
         episode_selection_strategy=episode_selection_strategy,
         replay_protocol=replay_protocol,
         geodesic_path_max_steps=geodesic_path_max_steps,
@@ -352,6 +355,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             output_path=output_path,
                             max_detection_area_ratio=max_detection_area_ratio,
                             memory_geometry_gate_radius_m=memory_geometry_gate_radius_m,
+                            memory_geometry_gate_fov=memory_geometry_gate_fov,
                             replay_protocol=replay_protocol,
                             geodesic_path_max_steps=geodesic_path_max_steps,
                         )
@@ -417,6 +421,7 @@ def run_rgb_noise_stress_preflight(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
+    memory_geometry_gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
@@ -512,6 +517,7 @@ def run_rgb_noise_stress_preflight(
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "max_detection_area_ratio": max_detection_area_ratio,
         "memory_geometry_gate_radius_m": memory_geometry_gate_radius_m,
+        "memory_geometry_gate_fov": bool(memory_geometry_gate_fov),
         "replay_protocol": replay_protocol,
         "revisit_strategy": replay_protocol,
         "geodesic_path_max_steps": int(geodesic_path_max_steps),
@@ -560,6 +566,7 @@ def _run_rgb_noise_episode(
     output_path: Path | None = None,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
+    memory_geometry_gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -717,6 +724,7 @@ def _run_rgb_noise_episode(
             evidence_reason=evidence_reason,
             observation_anchor_xz=detection_anchor_xz,
             gate_radius_m=memory_geometry_gate_radius_m,
+            gate_fov=memory_geometry_gate_fov,
             agent_pose=pose,
         )
         if evidence_reason == "geometry_inconsistent_positive":
@@ -2072,6 +2080,7 @@ def _apply_memory_geometry_gate(
     evidence_reason: str,
     observation_anchor_xz: tuple[float, float] | None,
     gate_radius_m: float | None,
+    gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     agent_pose: (
         tuple[tuple[float, float, float], tuple[float, float, float, float]] | None
     ) = None,
@@ -2079,7 +2088,7 @@ def _apply_memory_geometry_gate(
 ) -> tuple[MemoryGeometryState, EvidenceType, float, bool, str, float | None]:
     if (
         memory_mode != "on"
-        or gate_radius_m is None
+        or (gate_radius_m is None and not gate_fov)
         or evidence_type is not EvidenceType.POSITIVE
         or observation_anchor_xz is None
     ):
@@ -2102,7 +2111,7 @@ def _apply_memory_geometry_gate(
             None,
         )
     distance_m = float(np.hypot(obs_x - state.anchor_x, obs_z - state.anchor_z))
-    if agent_pose is not None and not _anchor_in_camera_fov(
+    if gate_fov and agent_pose is not None and not _anchor_in_camera_fov(
         anchor_xz=(state.anchor_x, state.anchor_z),
         agent_pose=agent_pose,
         hfov_degrees=hfov_degrees,
@@ -2115,7 +2124,7 @@ def _apply_memory_geometry_gate(
             "geometry_anchor_out_of_view_positive",
             round(distance_m, 6),
         )
-    if distance_m > gate_radius_m:
+    if gate_radius_m is not None and distance_m > gate_radius_m:
         return (
             state,
             EvidenceType.UNKNOWN,
