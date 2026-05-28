@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from objectnav_core.evaluation import habitat_objectnav_rgb_noise_stress as stress
+from objectnav_core.memory.usability import EvidenceType
 from objectnav_core.memory.usability import DecisionType
 
 
@@ -55,6 +56,45 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
     assert summary["out_and_back_action_count"] > 6
     assert (tmp_path / "summary.json").exists()
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
+
+
+def test_preflight_accepts_naive_count_memory_baseline(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="oracle_bbox",
+        detector_weights="unused",
+        detector_conf=0.25,
+        memory_ablation=("naive_count",),
+        seed=313,
+    )
+
+    assert "naive_count" in stress.SUPPORTED_MEMORY_ABLATIONS
+    assert summary["memory_ablation"] == ["naive_count"]
+
+
+def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
+    state = stress.NaiveCountState()
+
+    state, belief = stress._naive_count_belief(state, EvidenceType.POSITIVE)
+    assert state.positive_count == 1
+    assert belief.p_valid >= stress.NAIVE_COUNT_TRUST_P_VALID
+    first_positive_p_valid = belief.p_valid
+
+    state, belief = stress._naive_count_belief(state, EvidenceType.UNKNOWN)
+    assert state.positive_count == 1
+    assert belief.p_valid == first_positive_p_valid
+
+    state, belief = stress._naive_count_belief(state, EvidenceType.NON_CONFIRMATION)
+    assert state.positive_count == 1
+    assert belief.p_valid == first_positive_p_valid
+
+    state, belief = stress._naive_count_belief(state, EvidenceType.POSITIVE)
+    assert state.positive_count == 2
+    assert belief.p_valid >= stress.NAIVE_COUNT_TRUST_P_VALID
+    assert belief.p_valid >= first_positive_p_valid
 
 
 def test_preflight_accepts_grounding_dino_detector(tmp_path: Path) -> None:
@@ -197,7 +237,43 @@ def test_stop_on_trust_uses_objectnav_stop_semantics() -> None:
     )
     assert (
         stress._should_stop_episode(
-            decision=DecisionType.VERIFY,
+            decision=DecisionType.TRUST,
+            target_visible=True,
+            stop_on_trust=False,
+        )
+        is False
+    )
+
+
+def test_shared_decision_gate_requires_current_positive_confirmation() -> None:
+    assert (
+        stress._gated_decision(
+            decision=DecisionType.TRUST,
+            target_visible=True,
+            evidence_type=EvidenceType.POSITIVE,
+        )
+        is DecisionType.TRUST
+    )
+    assert (
+        stress._gated_decision(
+            decision=DecisionType.TRUST,
+            target_visible=True,
+            evidence_type=EvidenceType.UNKNOWN,
+        )
+        is DecisionType.VERIFY
+    )
+    assert (
+        stress._gated_decision(
+            decision=DecisionType.TRUST,
+            target_visible=False,
+            evidence_type=EvidenceType.POSITIVE,
+        )
+        is DecisionType.VERIFY
+    )
+    assert (
+        stress._should_stop_episode(
+            decision=DecisionType.TRUST,
+            gated_decision=DecisionType.VERIFY,
             target_visible=True,
             stop_on_trust=True,
         )
@@ -205,12 +281,61 @@ def test_stop_on_trust_uses_objectnav_stop_semantics() -> None:
     )
     assert (
         stress._should_stop_episode(
-            decision=DecisionType.TRUST,
+            decision=DecisionType.VERIFY,
             target_visible=True,
-            stop_on_trust=False,
+            stop_on_trust=True,
         )
         is False
     )
+
+
+def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> None:
+    summary = stress._summarize_rgb_noise_run(
+        output_path=tmp_path,
+        config_summary={"detector": "oracle_bbox"},
+        dataset_dir=Path("dataset"),
+        scene_root=Path("scenes"),
+        scene_dataset_config=Path("scene_config.json"),
+        start_source="goal_viewpoint",
+        sensor_height=720,
+        sensor_width=1280,
+        max_episodes=None,
+        rows=[
+            {
+                "evidence_type": "positive",
+                "decision": "trust",
+                "raw_decision": "trust",
+                "decision_gate_reason": "current_positive_confirmation",
+                "oracle_stop_success": True,
+                "detector_precision": 1.0,
+                "oracle_recall": 1.0,
+            },
+            {
+                "evidence_type": "positive",
+                "decision": "verify",
+                "raw_decision": "trust",
+                "decision_gate_reason": "target_not_currently_visible",
+                "oracle_stop_success": False,
+                "detector_precision": 0.0,
+                "oracle_recall": 0.0,
+            },
+        ],
+        episode_summaries=[
+            {
+                "object_category": "tv_monitor",
+                "final_p_valid": 0.95,
+                "oracle_stop_success_rows": 1,
+            }
+        ],
+    )
+
+    assert summary["decision_counts"]["trust"] == 1
+    assert summary["decision_counts"]["verify"] == 1
+    assert summary["raw_decision_counts"] == {"trust": 2}
+    assert summary["decision_gate_reason_counts"] == {
+        "current_positive_confirmation": 1,
+        "target_not_currently_visible": 1,
+    }
 
 
 def test_preflight_rejects_unknown_yolo_prompt_mode(tmp_path: Path) -> None:

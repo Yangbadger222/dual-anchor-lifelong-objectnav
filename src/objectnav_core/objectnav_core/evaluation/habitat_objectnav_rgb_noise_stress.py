@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -60,7 +61,7 @@ SUPPORTED_DETECTORS: tuple[str, ...] = (
     "grounding_dino",
     "oracle_bbox",
 )
-SUPPORTED_MEMORY_ABLATIONS: tuple[str, ...] = ("on", "off")
+SUPPORTED_MEMORY_ABLATIONS: tuple[str, ...] = ("on", "naive_count", "off")
 SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
     "target",
     "all_categories",
@@ -77,12 +78,18 @@ INITIAL_BELIEF = MemoryBelief(
     p_location_valid=0.85,
     p_usable=0.85,
 )
+NAIVE_COUNT_TRUST_P_VALID = 0.9
 YOLO_WORLD_PROMPT_ALIASES: dict[str, tuple[str, ...]] = {
     "plant": ("plant", "potted plant", "houseplant"),
     "sofa": ("sofa", "couch"),
     "toilet": ("toilet", "bathroom toilet", "toilet bowl", "white toilet", "commode"),
     "tv monitor": ("tv monitor", "tv", "television", "monitor"),
 }
+
+
+@dataclass(frozen=True)
+class NaiveCountState:
+    positive_count: int = 0
 
 
 def run_habitat_objectnav_rgb_noise_stress(
@@ -380,6 +387,7 @@ def _run_rgb_noise_episode(
     )
     updater = UsabilityUpdater()
     policy = UsabilityDecisionPolicy()
+    naive_count_state = NaiveCountState()
     if memory_mode == "on":
         belief = memory.load_belief(
             scene_id=episode.original_scene_id,
@@ -456,6 +464,11 @@ def _run_rgb_noise_episode(
         )
         if memory_mode == "off":
             belief = updater.apply(INITIAL_BELIEF, event)
+        elif memory_mode == "naive_count":
+            naive_count_state, belief = _naive_count_belief(
+                naive_count_state,
+                evidence_type,
+            )
         else:
             belief = updater.apply(belief, event)
         decision = policy.choose(
@@ -468,12 +481,18 @@ def _run_rgb_noise_episode(
             ),
         )
         target_visible = metrics["oracle_target_pixels"] >= min_target_pixels
+        gated_decision = _gated_decision(
+            decision=decision.decision,
+            target_visible=target_visible,
+            evidence_type=evidence_type,
+        )
         oracle_stop_success = (
-            decision.decision is DecisionType.TRUST
+            gated_decision is DecisionType.TRUST
             and target_visible
         )
         stopped_on_trust = _should_stop_episode(
             decision=decision.decision,
+            gated_decision=gated_decision,
             target_visible=target_visible,
             stop_on_trust=stop_on_trust,
         )
@@ -511,7 +530,15 @@ def _run_rgb_noise_episode(
                 "p_location_valid": round(belief.p_location_valid, 6),
                 "p_usable": round(belief.p_usable, 6),
                 "p_valid": round(decision.p_valid, 6),
-                "decision": decision.decision.value,
+                "raw_decision": decision.decision.value,
+                "decision": gated_decision.value,
+                "decision_gate_reason": _decision_gate_reason(
+                    decision=decision.decision,
+                    gated_decision=gated_decision,
+                    target_visible=target_visible,
+                    evidence_type=evidence_type,
+                ),
+                "naive_positive_count": naive_count_state.positive_count,
                 "oracle_stop_success": oracle_stop_success,
                 "stopped_on_trust": stopped_on_trust,
             }
@@ -709,10 +736,65 @@ def _edge_sides(
 def _should_stop_episode(
     *,
     decision: DecisionType,
+    gated_decision: DecisionType | None = None,
     target_visible: bool,
     stop_on_trust: bool,
 ) -> bool:
-    return bool(stop_on_trust and target_visible and decision is DecisionType.TRUST)
+    effective_decision = gated_decision if gated_decision is not None else decision
+    return bool(
+        stop_on_trust
+        and target_visible
+        and effective_decision is DecisionType.TRUST
+    )
+
+
+def _gated_decision(
+    *,
+    decision: DecisionType,
+    target_visible: bool,
+    evidence_type: EvidenceType,
+) -> DecisionType:
+    if decision is not DecisionType.TRUST:
+        return decision
+    if target_visible and evidence_type is EvidenceType.POSITIVE:
+        return DecisionType.TRUST
+    return DecisionType.VERIFY
+
+
+def _decision_gate_reason(
+    *,
+    decision: DecisionType,
+    gated_decision: DecisionType,
+    target_visible: bool,
+    evidence_type: EvidenceType,
+) -> str:
+    if decision is not DecisionType.TRUST:
+        return "not_raw_trust"
+    if gated_decision is DecisionType.TRUST:
+        return "current_positive_confirmation"
+    if not target_visible:
+        return "target_not_currently_visible"
+    if evidence_type is not EvidenceType.POSITIVE:
+        return "missing_current_positive_evidence"
+    return "trust_rejected"
+
+
+def _naive_count_belief(
+    state: NaiveCountState,
+    evidence_type: EvidenceType,
+) -> tuple[NaiveCountState, MemoryBelief]:
+    positive_count = state.positive_count
+    if evidence_type is EvidenceType.POSITIVE:
+        positive_count += 1
+    if positive_count > 0:
+        belief = MemoryBelief(
+            p_existence=0.98,
+            p_location_valid=0.98,
+            p_usable=0.98,
+        )
+    else:
+        belief = INITIAL_BELIEF
+    return NaiveCountState(positive_count=positive_count), belief
 
 
 def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
@@ -830,6 +912,11 @@ def _summarize_rgb_noise_run(
             "trace_rows": len(rows),
             "evidence_counts": _count_values(rows, "evidence_type"),
             "decision_counts": _count_values(rows, "decision"),
+            "raw_decision_counts": _count_values(rows, "raw_decision"),
+            "decision_gate_reason_counts": _count_values(
+                rows,
+                "decision_gate_reason",
+            ),
             "oracle_stop_success_rows": sum(
                 int(row["oracle_stop_success"]) for row in rows
             ),

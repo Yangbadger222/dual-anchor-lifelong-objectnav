@@ -50,19 +50,26 @@ validation matrix uses a fixed replay protocol rather than a planner:
   real detector adapter.
 - `memory=on` persists and accumulates belief through the replay using the
   existing `LifelongMemoryHarness`.
-- `memory=off` is interpreted as a strict single-frame baseline: each
+- `memory=off` is interpreted as a strict single-frame sanity baseline: each
   observation updates `INITIAL_BELIEF` and then discards that belief before the
   next row.
-- The main metric is `oracle_stop_success` (`TRUST` while the oracle target is
-  visible in the current frame), plus false-trust rows where `TRUST` occurs
-  without current oracle visibility.
+- `memory=naive_count` is the main non-memory accumulating baseline. It only
+  counts positive detector evidence inside the current replay. It must not use
+  non-confirmation, unknown, delayed birth, geometric consistency, or
+  cross-episode persistence because those are algorithm contributions.
+- A shared decision-side current-view gate is applied to all memory ablations
+  before `TRUST` is allowed to become a stop/success decision. The gate must be
+  independent of memory mode so the comparison stays fair.
+- The main metric is `oracle_stop_success`: gated `TRUST` while the oracle
+  target is visible in the current frame, plus false-trust rows where raw memory
+  preference says `TRUST` but the shared gate rejects the current stop.
 - This stage may support a memory-update / evidence-accumulation claim, but it
   must not be reported as official Habitat ObjectNav success or SPL.
 
-The next ablation needed before a stronger lifelong-memory claim is an
-`episode_local` mode: accumulate evidence within one replay but reset between
-episodes. That will separate short-horizon evidence accumulation from
-cross-episode persistence.
+The next ablation needed before a stronger lifelong-memory claim is this
+`naive_count` baseline. It separates short-horizon positive-count accumulation
+from Dual-Anchor / Lifelong behavior without borrowing the algorithm's
+negative-evidence handling or birth logic.
 
 ## Goal
 

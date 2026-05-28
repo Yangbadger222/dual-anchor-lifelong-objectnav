@@ -163,14 +163,26 @@ After detector setup:
   `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.md`
   and
   `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html`.
+- Added `memory_ablation=naive_count` as the fairer accumulating baseline:
+  - it only counts positive detector evidence inside one replay
+  - it ignores non-confirmation and unknown observations
+  - it does not use delayed birth, geometry, negative evidence handling, or
+    cross-episode persistence
+  - the first positive observation creates the naive belief
+- Added a shared decision-side current-positive gate for all memory modes:
+  - raw `TRUST` only remains gated `TRUST` when the current frame has target
+    visibility and positive detector evidence
+  - trace rows now include `raw_decision`, gated `decision`,
+    `decision_gate_reason`, and `naive_positive_count`
+  - summaries now include `raw_decision_counts` and
+    `decision_gate_reason_counts`
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- `episode_local` memory ablation that accumulates inside one replay but does
-  not persist across episodes.
+- Post-change Linux Grounding-DINO replay matrix with `on,naive_count,off`.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -193,19 +205,21 @@ Still not run:
 - The current memory `off` baseline is intentionally harsh: it applies each
   frame's evidence to `INITIAL_BELIEF` and discards belief before the next row.
   It is a single-frame baseline, not an episode-local accumulating baseline.
-- Memory `on` can over-trust sparse categories after detector positives even
-  when the target is not currently oracle-visible. This especially affects
-  `tv_monitor` and `plant`.
+- `naive_count` is intentionally weak and positive-only. Do not add
+  non-confirmation, unknown handling, delayed birth, geometry, or persistence to
+  it, because those are algorithm contributions.
+- The current-positive gate is shared by all memory modes. Keep it on the
+  decision path, not as a post-hoc metric-only filter.
 
 ## Next Recommended Step
 
-1. Add an `episode_local` ablation mode so results can separate within-episode
-   evidence accumulation from cross-episode lifelong memory.
-2. Add a current-view or geometry confirmation gate before treating `TRUST` as
-   a stop decision.
-3. Generate debug PNGs for `plant` and `tv_monitor` false-trust rows.
-4. Add visibility-aware episode selection and reintroduce `chair`.
-5. Then connect the replay harness to a real navigation policy or Habitat
+1. Pull the naive-count/shared-gate commit on `badger-linux`.
+2. Run focused tests and a Grounding-DINO replay smoke with
+   `--memory-ablation on,naive_count,off`.
+3. Re-run the full memory-only replay matrix and update the experiment report.
+4. Generate debug PNGs for `plant` and `tv_monitor` gate rejections.
+5. Add visibility-aware episode selection and reintroduce `chair`.
+6. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor

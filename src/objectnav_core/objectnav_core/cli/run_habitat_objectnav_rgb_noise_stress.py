@@ -82,8 +82,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--memory-ablation",
-        default="on,off",
-        help="Comma-separated memory ablations: on,off.",
+        default="on,naive_count,off",
+        help="Comma-separated memory ablations: on,naive_count,off.",
     )
     parser.add_argument("--seed", type=int, default=313)
     parser.add_argument("--max-episodes", type=int, default=None)
