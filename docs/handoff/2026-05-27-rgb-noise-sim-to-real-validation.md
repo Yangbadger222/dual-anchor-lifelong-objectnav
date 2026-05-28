@@ -657,6 +657,15 @@ After detector setup:
       `runs/habitat_usability/object_instance_anchor_oracle_smoke`
     - smoke selected episode `3`, completed `2` replay summaries, and wrote
       one persisted anchor: category `bed`, instance `goal_object:17`
+    - Grounding-DINO bed smoke:
+      `runs/habitat_usability/object_instance_anchor_grounding_dino_bed_smoke_1280x720_cap384`
+      succeeded `1/1` for both `memory=on` and `naive_count`; memory had
+      fewer raw trust rows (`7` vs `12`) and wrote the same persisted anchor
+    - Grounding-DINO bed persistence smoke:
+      `runs/habitat_usability/object_instance_anchor_grounding_dino_bed_persistence_smoke_1280x720_cap384`
+      with `clean,mild` confirmed cross-replay reuse: the first
+      `mild`/`memory=on` row loaded `memory_anchor_x=-1.329567`,
+      `memory_anchor_z=-9.573214` from the previous clean replay
 
 Still not run:
 
@@ -676,8 +685,9 @@ Still not run:
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
 - Long-range Grounding-DINO replay rerun after object-instance geometry anchor
-  persistence. The remote oracle-bbox smoke verifies schema/write path only; it
-  is not detector or algorithm evidence.
+  persistence for the full `bed,toilet,plant` EPC2 matrix. The bed-only
+  Grounding-DINO smoke verifies detector-path persistence but is not a final
+  algorithm result.
 - Instance-scoped belief persistence. Current belief persistence is still
   scene/category-level; the new instance scope currently applies only to the
   geometry anchor.
