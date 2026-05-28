@@ -407,7 +407,9 @@ After detector setup:
     for final goal-viewpoint frames
   - episode summaries include `path_translation_m`,
     `episode_geodesic_distance`, and `episode_euclidean_distance`
-  - local focused tests passed: `38` tests
+  - motion accounting starts from the first replay step for teleport protocols,
+    avoiding construction-time pose leakage into `path_translation_m`
+  - local focused tests passed: `39` tests
   - CLI preflight recorded `replay_protocol=geodesic_path`,
     `geodesic_path_max_steps=12`, and replay phase `approach`
 

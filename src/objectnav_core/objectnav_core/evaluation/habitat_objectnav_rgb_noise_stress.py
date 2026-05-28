@@ -596,7 +596,7 @@ def _run_rgb_noise_episode(
         belief = INITIAL_BELIEF
     rows: list[dict[str, Any]] = []
     negative_streak = 0
-    previous_pose = _agent_pose(agent)
+    previous_pose = _initial_replay_pose_from_steps(replay_steps) or _agent_pose(agent)
     total_steps = len(replay_steps)
     for step_index, replay_step in enumerate(replay_steps):
         action = replay_step.action
@@ -1504,6 +1504,17 @@ def _out_and_back_replay_steps(actions: Sequence[str]) -> tuple[ReplayStep, ...]
         )
         for step_index, action in enumerate(("reset", *actions))
     )
+
+
+def _initial_replay_pose_from_steps(
+    replay_steps: Sequence[ReplayStep],
+) -> tuple[tuple[float, float, float], tuple[float, float, float, float]] | None:
+    if not replay_steps:
+        return None
+    first = replay_steps[0]
+    if first.position is None or first.rotation is None:
+        return None
+    return first.position, first.rotation
 
 
 def _visibility_challenge_replay_steps(

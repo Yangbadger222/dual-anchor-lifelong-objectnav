@@ -734,6 +734,22 @@ def test_geodesic_path_replay_steps_use_approach_then_goal_confirm() -> None:
     assert steps[-1].target_pixels == 240
 
 
+def test_initial_replay_pose_uses_first_teleport_step() -> None:
+    step = stress.ReplayStep(
+        phase="approach",
+        action="reset",
+        source="geodesic_path:waypoint:0",
+        position=(1.0, 0.0, 2.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=0,
+    )
+
+    assert stress._initial_replay_pose_from_steps((step,)) == (
+        (1.0, 0.0, 2.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
     centered = stress._target_view_metrics(_mask_with_box((10, 12, 30, 36), (48, 48)))
     clipped = stress._target_view_metrics(_mask_with_box((31, 40, 48, 48), (48, 48)))
