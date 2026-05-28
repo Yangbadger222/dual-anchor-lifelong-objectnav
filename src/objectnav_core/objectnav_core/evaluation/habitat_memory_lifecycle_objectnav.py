@@ -439,89 +439,69 @@ def run_habitat_memory_lifecycle_objectnav(
                     seed=seed + scene_index * 1000 + group_index,
                     waypoint_count=search_proxy_waypoints,
                 )
-                for noise_level in noise_levels:
+                detector_adapter = _detector_for_target(
+                    detector_cache=detector_cache,
+                    detector=detector,
+                    detector_weights=detector_weights,
+                    detector_conf=detector_conf,
+                    grounding_dino_text_threshold=grounding_dino_text_threshold,
+                    grounding_dino_max_image_side=grounding_dino_max_image_side,
+                    target_category=group.category,
+                    yolo_prompt_mode="target",
+                )
+                accepted_labels = _accepted_yolo_detection_labels(
+                    group.category,
+                    "target",
+                )
+                helper_bundle = {
+                    "detector_mask": _detector_mask,
+                    "mask_metrics": _mask_metrics,
+                    "target_view_metrics": _target_view_metrics,
+                    "classify": _classify_semantic_evidence,
+                    "depth_valid_ratio": _depth_valid_ratio,
+                }
+                prompt_categories = _yolo_prompt_categories(group.category, "target")
+                for noise_index, noise_level in enumerate(noise_levels):
+                    base_frame_index = (
+                        scene_index * 100000 + group_index * 1000 + noise_index * 10
+                    )
+                    memory_verification = _verify_lifecycle_view(
+                        sim=sim,
+                        position=group.memory_position,
+                        rotation=group.memory_rotation,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        frame_index=base_frame_index,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        helpers=helper_bundle,
+                    )
+                    fallback_verification = _verify_lifecycle_view(
+                        sim=sim,
+                        position=fallback_candidate.position,
+                        rotation=fallback_candidate.rotation,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        frame_index=base_frame_index + 1,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        helpers=helper_bundle,
+                    )
                     for mode in modes:
-                        memory_verification = _verify_lifecycle_view(
-                            sim=sim,
-                            position=group.memory_position,
-                            rotation=group.memory_rotation,
-                            target_semantic_ids=target_semantic_ids,
-                            target_category=group.category,
-                            detector=detector,
-                            detector_adapter=_detector_for_target(
-                                detector_cache=detector_cache,
-                                detector=detector,
-                                detector_weights=detector_weights,
-                                detector_conf=detector_conf,
-                                grounding_dino_text_threshold=grounding_dino_text_threshold,
-                                grounding_dino_max_image_side=grounding_dino_max_image_side,
-                                target_category=group.category,
-                                yolo_prompt_mode="target",
-                            ),
-                            accepted_detection_labels=_accepted_yolo_detection_labels(
-                                group.category,
-                                "target",
-                            ),
-                            noise_level=noise_level,
-                            rgb_noise=rgb_noise,
-                            depth_noise=depth_noise,
-                            frame_index=(
-                                scene_index * 100000
-                                + group_index * 1000
-                                + len(trace_rows)
-                            ),
-                            min_target_pixels=min_target_pixels,
-                            min_detector_pixels=min_detector_pixels,
-                            max_detection_area_ratio=max_detection_area_ratio,
-                            helpers={
-                                "detector_mask": _detector_mask,
-                                "mask_metrics": _mask_metrics,
-                                "target_view_metrics": _target_view_metrics,
-                                "classify": _classify_semantic_evidence,
-                                "depth_valid_ratio": _depth_valid_ratio,
-                            },
-                        )
-                        fallback_verification = _verify_lifecycle_view(
-                            sim=sim,
-                            position=fallback_candidate.position,
-                            rotation=fallback_candidate.rotation,
-                            target_semantic_ids=target_semantic_ids,
-                            target_category=group.category,
-                            detector=detector,
-                            detector_adapter=_detector_for_target(
-                                detector_cache=detector_cache,
-                                detector=detector,
-                                detector_weights=detector_weights,
-                                detector_conf=detector_conf,
-                                grounding_dino_text_threshold=grounding_dino_text_threshold,
-                                grounding_dino_max_image_side=grounding_dino_max_image_side,
-                                target_category=group.category,
-                                yolo_prompt_mode="target",
-                            ),
-                            accepted_detection_labels=_accepted_yolo_detection_labels(
-                                group.category,
-                                "target",
-                            ),
-                            noise_level=noise_level,
-                            rgb_noise=rgb_noise,
-                            depth_noise=depth_noise,
-                            frame_index=(
-                                scene_index * 100000
-                                + group_index * 1000
-                                + len(trace_rows)
-                                + 1
-                            ),
-                            min_target_pixels=min_target_pixels,
-                            min_detector_pixels=min_detector_pixels,
-                            max_detection_area_ratio=max_detection_area_ratio,
-                            helpers={
-                                "detector_mask": _detector_mask,
-                                "mask_metrics": _mask_metrics,
-                                "target_view_metrics": _target_view_metrics,
-                                "classify": _classify_semantic_evidence,
-                                "depth_valid_ratio": _depth_valid_ratio,
-                            },
-                        )
                         result = plan_lifecycle_query(
                             mode=mode,
                             memory_path_cost_m=memory_path_cost,
@@ -536,17 +516,14 @@ def run_habitat_memory_lifecycle_objectnav(
                                 mode=mode,
                                 noise_level=noise_level,
                                 detector=detector,
-                                detector_prompt_categories=_yolo_prompt_categories(
-                                group.category,
-                                "target",
-                            ),
-                            memory_path_cost=memory_path_cost,
-                            fallback_path_cost=fallback_path_cost,
-                            oracle_goal_path_cost=oracle_goal_path_cost,
-                            search_proxy_waypoint_count=search_proxy_waypoint_count,
-                            memory_verification=memory_verification,
-                            fallback_verification=fallback_verification,
-                            result=result,
+                                detector_prompt_categories=prompt_categories,
+                                memory_path_cost=memory_path_cost,
+                                fallback_path_cost=fallback_path_cost,
+                                oracle_goal_path_cost=oracle_goal_path_cost,
+                                search_proxy_waypoint_count=search_proxy_waypoint_count,
+                                memory_verification=memory_verification,
+                                fallback_verification=fallback_verification,
+                                result=result,
                                 normalized_category=_normalize_yolo_label(group.category),
                             )
                         )
