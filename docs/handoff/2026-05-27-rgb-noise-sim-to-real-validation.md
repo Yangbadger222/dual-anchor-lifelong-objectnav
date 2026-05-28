@@ -377,6 +377,25 @@ After detector setup:
     trace
   - CLI preflight recorded `debug_export_directory=debug_rows` for
     `depart,non_confirm` + `positive`
+- Pulled commit `d89ebf6` on `badger-linux` and ran the trace-filtered
+  hidden-bed positive diagnostic:
+  - output:
+    `runs/habitat_usability/visibility_challenge_hidden_bed_positive_debug_1280x720_cap384`
+  - remote focused tests passed in `conda habitat`: `32` tests
+  - diagnostic trace rows: `26`
+  - debug PNGs: `12` under `debug_rows/`
+  - selected episodes: `3`, `33`
+  - exported rows:
+    - `depart`: `4` rows, `0` target-visible, `4` positive PNGs
+    - `non_confirm`: `8` rows, `0` target-visible, `8` positive PNGs
+    - `confirm/revisit`: `0` exported PNGs
+  - local contact sheet:
+    `/tmp/dual_anchor_hidden_bed_positive_debug/contact_sheet.png`
+  - visual read: all exported hidden positives are Grounding-DINO false
+    positives on visible non-bed structures, not Habitat GT being too strict
+    around a visible bed.
+  - Chinese HTML status report updated:
+    `docs/experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html`
 
 Still not run:
 
@@ -385,9 +404,9 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Linux trace-filtered PNG diagnostic for hidden-phase positives. The export
-  feature is implemented locally, but the remote Habitat/Grounding-DINO run has
-  not been executed yet.
+- Trace-filtered hidden-positive export across all selected categories. The
+  focused `bed` diagnostic is complete, but a broader category sweep has not
+  been run.
 - Full planner-backed Habitat action protocol. The new visibility challenge
   teleports between measured viewpoints; it is still a memory/evidence stress
   test, not a navigation metric.
@@ -429,9 +448,8 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Pull the trace-filtered debug export on `badger-linux` and run a bed-only
-   hidden-positive diagnostic using `--debug-export-replay-phases
-   depart,non_confirm` and `--debug-export-evidence-types positive`.
+3. If broader detector/GT evidence is needed, run trace-filtered hidden-positive
+   PNG export across all selected categories at a controlled cap.
 4. Decide whether hidden-view `unknown` is enough for the next memory claim or
    whether the harness needs an explicit expected-location-empty evidence
    context to produce true `NON_CONFIRMATION`.

@@ -146,6 +146,7 @@
       <span class="tag">dataset: HM3D ObjectNav val_mini</span>
       <span class="tag">resolution: 1280x720</span>
       <span class="tag">detector cap: 384</span>
+      <span class="tag">latest update: d89ebf6</span>
     </p>
   </header>
 
@@ -167,7 +168,53 @@
     </section>
 
     <section>
-      <h2>2. 这次跑了什么</h2>
+      <h2>2. 2026-05-28 更新：visibility_challenge</h2>
+      <div class="callout">
+        <strong>方向已经调整。</strong>
+        旧 out-and-back replay 太容易让 <code>naive_count</code> 解释掉结果；
+        新的 <code>visibility_challenge</code> replay 用 Habitat goal viewpoint
+        构造 visible → hidden → revisit 结构。最新 1280x720 Grounding-DINO
+        诊断中，memory <code>on</code> 的 gated success 是 <code>93</code>，
+        <code>naive_count</code> 是 <code>86</code>，但这还不是论文结论。
+      </div>
+      <p>
+        原因是 hidden phase 暴露出强烈的 <code>bed</code> detector false positive：
+        在 <code>depart/non_confirm</code> 里，oracle target visible 为 0，
+        但 Grounding-DINO 对 <code>bed</code> 产生了 108 行 positive。新的
+        trace-filtered PNG export 已经在 commit <code>d89ebf6</code> 上验证：
+        只导出 <code>depart,non_confirm</code> + <code>positive</code>，
+        bed-only 小诊断输出 12 张 <code>debug_rows/</code> PNG，全部来自 hidden
+        positive。
+      </p>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>结果</th>
+              <th>解释</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>visibility-challenge replay</td><td>702 trace rows</td><td>bed/toilet/plant，各 2 episode，clean/mild/heavy，on/naive_count/off</td></tr>
+            <tr><td>phase visibility</td><td>depart/non_confirm: 0 target-visible</td><td>hidden interval 构造成功</td></tr>
+            <tr><td>memory vs naive_count</td><td>93 vs 86 gated success</td><td>memory 首次超过 naive_count，但还受 detector false positive 影响</td></tr>
+            <tr><td>hidden bed positives</td><td>108 / 108 hidden bed rows</td><td>DINO 在 hidden view 把门框/柜子等非床结构框成 bed</td></tr>
+            <tr><td>trace-filtered PNGs</td><td>12 / 12 精确命中</td><td>新导出器只抓 depart/non_confirm + positive，不依赖 gate rejection</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        当前状态：可以说 replay protocol 和 debug/export 工具已经能支撑下一轮诊断；
+        但算法结论仍应表述为 diagnostic。下一步应决定是否加入
+        “expected location is visible and empty” 的 evidence context，让 hidden
+        interval 产生真正的 <code>NON_CONFIRMATION</code>，同时保持
+        <code>naive_count</code> 只做朴素 positive count。
+      </p>
+    </section>
+
+    <section>
+      <h2>3. 旧 out-and-back 跑了什么</h2>
       <div class="grid">
         <div class="box">
           <h3>轨迹</h3>
@@ -201,7 +248,7 @@
     </section>
 
     <section>
-      <h2>3. 总体结果</h2>
+      <h2>4. 总体结果</h2>
       <div class="wide">
         <table>
           <thead>
@@ -227,7 +274,7 @@
     </section>
 
     <section>
-      <h2>4. Memory Mode 对照</h2>
+      <h2>5. Memory Mode 对照</h2>
       <div class="wide">
         <table>
           <thead>
@@ -262,7 +309,7 @@
     </section>
 
     <section>
-      <h2>5. Gate 为什么重要</h2>
+      <h2>6. Gate 为什么重要</h2>
       <div class="wide">
         <table>
           <thead>
@@ -289,7 +336,7 @@
     </section>
 
     <section>
-      <h2>6. Category Breakdown</h2>
+      <h2>7. Category Breakdown</h2>
       <div class="wide">
         <table>
           <thead>
@@ -325,7 +372,7 @@
     </section>
 
     <section>
-      <h2>7. Revisit Proxy</h2>
+      <h2>8. Revisit Proxy</h2>
       <div class="wide">
         <table>
           <thead>
@@ -353,7 +400,7 @@
     </section>
 
     <section>
-      <h2>8. 当前状态</h2>
+      <h2>9. 当前状态</h2>
       <div class="grid">
         <div class="box">
           <h3 class="good">已完成</h3>
@@ -383,7 +430,7 @@
     </section>
 
     <section>
-      <h2>9. 下一步建议</h2>
+      <h2>10. 下一步建议</h2>
       <ol>
         <li>设计 naive-count 会失败的任务：跨 episode persistence、scene-change、negative evidence 或 geometry consistency。</li>
         <li>导出 <code>plant</code> 和 <code>tv_monitor</code> gate rejection debug PNG。</li>
@@ -393,7 +440,7 @@
     </section>
 
     <section>
-      <h2>10. 复现实验命令</h2>
+      <h2>11. 复现实验命令</h2>
       <pre><code>ssh badger@100.88.131.52 \
   'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384_naive_count_gate --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,naive_count,off --episodes-per-category 2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
     </section>

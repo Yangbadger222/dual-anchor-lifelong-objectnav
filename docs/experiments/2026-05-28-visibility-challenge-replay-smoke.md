@@ -43,6 +43,19 @@ Follow-up larger replay:
 | Output | `runs/habitat_usability/visibility_challenge_grounding_dino_replay_1280x720_epc2_cap384` |
 | Debug output | `runs/habitat_usability/visibility_challenge_hidden_bed_debug_1280x720_cap384` |
 
+Trace-filtered debug export follow-up:
+
+| Item | Value |
+|---|---|
+| Branch / commit | `main`, `d89ebf6` |
+| Detector | Grounding-DINO `IDEA-Research/grounding-dino-tiny`, image-side cap `384` |
+| Resolution | `1280x720` |
+| Noise | `clean` |
+| Selection | `structured_visibility`, `bed`, 2 episodes |
+| Memory mode | `off` |
+| Trace filters | `replay_phase=depart,non_confirm`, `evidence_type=positive` |
+| Output | `runs/habitat_usability/visibility_challenge_hidden_bed_positive_debug_1280x720_cap384` |
+
 ## Command
 
 Oracle smoke:
@@ -73,6 +86,41 @@ Grounding-DINO smoke used the same parameters, replacing the detector with
 `grounding_dino`, `IDEA-Research/grounding-dino-tiny`,
 `--grounding-dino-text-threshold 0.25`, and
 `--grounding-dino-max-image-side 384`.
+
+Trace-filtered hidden-bed positive export:
+
+```bash
+cd ~/Desktop/dual-anchor-lifelong-objectnav && \
+source ~/anaconda3/etc/profile.d/conda.sh && \
+conda activate habitat && \
+PYTHONPATH=src/objectnav_core \
+python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
+  --output runs/habitat_usability/visibility_challenge_hidden_bed_positive_debug_1280x720_cap384 \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --rgb-noise-profile configs/noise/rgb_published_v1.yaml \
+  --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml \
+  --noise-levels clean \
+  --detector grounding_dino \
+  --detector-weights IDEA-Research/grounding-dino-tiny \
+  --detector-conf 0.25 \
+  --grounding-dino-text-threshold 0.25 \
+  --grounding-dino-max-image-side 384 \
+  --memory-ablation off \
+  --target-categories bed \
+  --episodes-per-category 2 \
+  --episode-selection-strategy structured_visibility \
+  --replay-protocol visibility_challenge \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --min-target-pixels 24 \
+  --min-detector-pixels 20 \
+  --no-stop-on-trust \
+  --debug-export-categories bed \
+  --debug-export-replay-phases depart,non_confirm \
+  --debug-export-evidence-types positive \
+  --debug-export-limit-per-category 20
+```
 
 ## Metrics
 
@@ -175,6 +223,47 @@ repeatedly boxing door/furniture regions in the turned-around view while the
 Habitat target mask is absent. This looks like detector false positive behavior
 under the `bed` prompt, not simply strict Habitat GT on a visible bed.
 
+### Trace-Filtered Hidden-Bed Positive Export
+
+The trace-filtered export wrote:
+
+`runs/habitat_usability/visibility_challenge_hidden_bed_positive_debug_1280x720_cap384`
+
+Summary:
+
+| Metric | Value |
+|---|---:|
+| Trace rows | `26` |
+| Selected episodes | `3, 33` |
+| Debug PNGs | `12` |
+| Debug PNG skipped rows | `0` |
+| Artifact directory | `debug_rows/` |
+
+Phase visibility:
+
+| Phase | Rows | Target-visible rows | Exported positive PNGs |
+|---|---:|---:|---:|
+| `confirm` | `6` | `6` | `0` |
+| `depart` | `4` | `0` | `4` |
+| `non_confirm` | `8` | `0` | `8` |
+| `revisit` | `8` | `8` | `0` |
+
+All 12 exported rows match the intended filter:
+`replay_phase in {depart, non_confirm}`, `evidence_type=positive`, and
+`target_visible=False`. The PNG filenames also encode phase and evidence, for
+example `000_bed_off_clean_ep1_step3_depart_positive_not_raw_trust.png`.
+
+A local contact sheet was generated for review at:
+
+`/tmp/dual_anchor_hidden_bed_positive_debug/contact_sheet.png`
+
+Visual inspection of all 12 exported PNGs confirms the earlier diagnosis:
+Grounding-DINO is repeatedly labeling non-bed structures as `bed`. In episode
+`33`, it boxes a red furniture/door-edge region behind a doorway. In episode
+`3`, it boxes the red dresser/cabinet edge against a blue wall. Habitat GT is
+not merely sparse around a visually present bed in these hidden views; the
+target is genuinely not visible in the current camera frame.
+
 ## Observations
 
 - The visibility protocol works at the oracle-visibility level: both smokes
@@ -199,6 +288,9 @@ under the `bed` prompt, not simply strict Habitat GT on a visible bed.
 - Hidden-phase Grounding-DINO positives are category-specific in this run:
   all `108` hidden positives are `bed`; `plant` and `toilet` have zero hidden
   positives.
+- The trace-filtered debug export now confirms the hidden-bed failure mode
+  directly, without relying on gate-rejection rows. The exported hidden
+  positives are detector false positives on visible non-bed structures.
 
 ## Result
 
@@ -212,9 +304,8 @@ treats target-hidden views as `unknown`, not true `NON_CONFIRMATION`.
 
 ## Follow-up
 
-- Run the same visibility-challenge comparison with hidden-phase positive PNG
-  export enabled for all categories at a controlled cap, or add trace filters
-  that export only hidden-phase positives.
+- Run trace-filtered hidden-positive PNG export across all selected categories
+  at a controlled cap before making a detector/GT claim beyond `bed`.
 - Consider a new replay subphase or evidence context for "expected location is
   in view and empty" so the hidden interval can produce true
   `NON_CONFIRMATION` without borrowing algorithm contributions for
