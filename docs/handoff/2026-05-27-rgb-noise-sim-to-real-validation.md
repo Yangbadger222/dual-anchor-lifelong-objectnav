@@ -243,6 +243,28 @@ After detector setup:
     `docs/experiments/2026-05-28-structured-naive-count-decision-challenge.md`
     and HTML companion
     `docs/experiments/2026-05-28-structured-naive-count-decision-challenge.zh.html`
+- Ran the structured-visibility Habitat replay on Linux:
+  - pulled to commit `22cacd2`
+  - remote focused tests passed in `conda habitat`: 24 tests
+  - output:
+    `runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384`
+  - artifacts: `summary.json`, `rgb_noise_trace.csv`, `lifelong_memory.sqlite`
+  - episode selection:
+    - requested categories: `bed,sofa,toilet,plant,tv_monitor`
+    - category candidates: `23`
+    - structured candidates: `9`
+    - selected episodes: `3,33,55,39,62,84`
+    - selected categories: `bed=2`, `toilet=2`, `plant=2`
+    - `sofa` and `tv_monitor` had zero candidates under complexity ratio `1.2`
+  - memory metrics:
+    - `on`: 150 raw trust, 123 gated trust / success, 27 gate rejections
+    - `naive_count`: 166 raw trust, 132 gated trust / success, 34 gate rejections
+    - `off`: 0 trust / success
+  - conclusion: metadata-based structured selection is useful for audit, but it
+    still produces a repeated-positive replay where `naive_count` remains
+    competitive. Do not use this run as a memory-beats-baseline claim.
+  - report:
+    `docs/experiments/2026-05-28-structured-visibility-grounding-dino-replay.md`
 
 Still not run:
 
@@ -251,8 +273,9 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Habitat execution of the structured decision challenge that already works in
-  the synthetic 2D trace.
+- Explicit Habitat execution of the synthetic structured challenge phases
+  (`confirm`, `depart`, `non_confirm`, `revisit`). Metadata-based
+  `structured_visibility` alone is not sufficient.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -291,12 +314,12 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Pull the structured episode-selection commit on Linux and run:
-   `cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384 --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,naive_count,off --episodes-per-category 2 --episode-selection-strategy structured_visibility --structured-min-goal-viewpoints 2 --structured-min-geodesic-distance 2.0 --structured-min-path-complexity-ratio 1.2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313`
-   Then inspect `summary.json["episode_selection"]` before interpreting memory
-   metrics.
-4. Add visibility-aware episode selection and reintroduce `chair`.
-5. Then connect the replay harness to a real navigation policy or Habitat
+3. Add fallback/audit reporting for categories with zero structured candidates
+   so `sofa` and `tv_monitor` are not silently excluded.
+4. Implement explicit Habitat replay phases that match the synthetic challenge:
+   confirm, depart, non-confirm, revisit.
+5. Add visibility-aware episode selection and reintroduce `chair`.
+6. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor
