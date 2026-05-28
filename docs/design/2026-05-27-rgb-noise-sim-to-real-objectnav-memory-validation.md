@@ -341,6 +341,33 @@ stop-on-trust behavior. They are needed before scaling to a larger lifelong
 matrix because top-tier evidence should show both reliability and efficiency
 over long-distance episodes.
 
+## Update: Expected-Empty Replay Challenge (2026-05-28)
+
+The long-range `geodesic_path` smoke still mostly rewards repeated positive
+detections. It does not reliably create the stale-memory condition where an
+agent goes to a remembered/expected object location, observes that the target
+is absent, and must reduce trust before later recovery or search.
+
+The harness therefore adds `replay_protocol=expected_empty_challenge`:
+
+- choose a measured target-visible Habitat goal view for initial confirmation;
+- choose a measured target-hidden view as an explicit expected-empty
+  verification interval;
+- emit `confirm -> expected_empty -> revisit` phases;
+- mark only the expected-empty interval with `expected_target_absent=True`;
+- when `expected_target_absent=True`, the target is not oracle-visible, and
+  the detector does not produce a positive target mask, convert the frame's
+  evidence to `NON_CONFIRMATION` with reason `expected_location_empty`;
+- preserve detector positives in the expected-empty interval as positives so
+  false-positive pressure remains visible;
+- record `expected_target_absent` in each trace row.
+
+This is not a post-hoc success filter and it is not added to `naive_count`.
+`naive_count` still only accumulates positive evidence and ignores
+non-confirmation. The goal is to expose the algorithm's negative-evidence and
+retirement behavior in Habitat before scaling to a larger noise/category
+matrix.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

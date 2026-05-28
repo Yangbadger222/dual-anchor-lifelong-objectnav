@@ -488,6 +488,15 @@ After detector setup:
     - `plant`: `on` first succeeds at step `13`, `naive_count` at step `10`
   - conclusion: this smoke still favors positive-count accumulation on
     efficiency; do not scale it as a paper claim without a stronger challenge.
+- Added local `expected_empty_challenge` replay protocol:
+  - phase sequence: `confirm -> expected_empty -> revisit`
+  - only `expected_empty` rows set `expected_target_absent=True`
+  - expected-empty rows with target absent and no detector positive are
+    converted to `NON_CONFIRMATION` with reason `expected_location_empty`
+  - expected-empty rows with detector positives remain positive, preserving
+    false-positive pressure
+  - trace rows record `expected_target_absent`
+  - local focused tests passed: `43` tests
 
 Still not run:
 
@@ -503,7 +512,7 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
-- Expected-location-empty / stale-memory Habitat replay protocol.
+- Linux expected-empty `oracle_bbox` and Grounding-DINO smokes.
 
 ## Known Risks
 
@@ -560,11 +569,13 @@ Still not run:
    `summary.json["episode_selection"]`, `memory=on`, and `naive_count`.
    Completed for commit `2e67295`; delayed birth did not change the smoke.
 8. Implement an explicit expected-location-empty context before running a
-   larger matrix. The current geodesic smoke does not show a memory advantage.
-9. After that protocol exists, run a larger `bed,toilet,plant` matrix with
+   larger matrix. Local implementation exists; next run Linux smokes.
+9. Run `oracle_bbox` expected-empty smoke first to confirm `expected_empty`
+   rows become `NON_CONFIRMATION`, then run Grounding-DINO.
+10. After that protocol is validated, run a larger `bed,toilet,plant` matrix with
    `clean,mild,heavy` and compare success episodes, first-success step,
    path-to-first-success, raw trust, and gate rejections.
-10. Connect the replay harness to a real action-level Habitat follower and
+11. Connect the replay harness to a real action-level Habitat follower and
    report navigation metrics.
 
 ## Context for Next Contributor

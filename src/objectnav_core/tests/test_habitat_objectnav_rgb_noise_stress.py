@@ -184,6 +184,25 @@ def test_preflight_records_geodesic_path_replay_protocol(tmp_path: Path) -> None
     assert "approach" in summary["replay_phases"]
 
 
+def test_preflight_records_expected_empty_challenge_replay_protocol(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        replay_protocol="expected_empty_challenge",
+    )
+
+    assert "expected_empty_challenge" in stress.SUPPORTED_REPLAY_PROTOCOLS
+    assert summary["replay_protocol"] == "expected_empty_challenge"
+    assert "expected_empty" in summary["replay_phases"]
+
+
 def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
     categories = {"plant", "tv_monitor"}
 
@@ -739,6 +758,72 @@ def test_visibility_challenge_replay_steps_require_hidden_view() -> None:
         assert "target-hidden" in str(exc)
     else:
         raise AssertionError("visibility_challenge should require a target-hidden view")
+
+
+def test_expected_empty_challenge_replay_steps_mark_expected_empty_context() -> None:
+    visible = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0",
+        position=(1.0, 0.0, 1.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        target_pixels=240,
+    )
+    hidden = stress.ReplayViewCandidate(
+        source="goal_viewpoint:0_turn_around",
+        position=(1.0, 0.0, 1.0),
+        rotation=(0.0, 1.0, 0.0, 0.0),
+        target_pixels=0,
+    )
+
+    steps = stress._expected_empty_challenge_replay_steps(
+        (hidden, visible),
+        min_target_pixels=24,
+    )
+
+    assert [step.phase for step in steps] == (
+        ["confirm"] * 3
+        + ["expected_empty"] * 4
+        + ["revisit"] * 4
+    )
+    assert all(not step.expected_target_absent for step in steps if step.phase == "confirm")
+    assert all(step.expected_target_absent for step in steps if step.phase == "expected_empty")
+    assert all(not step.expected_target_absent for step in steps if step.phase == "revisit")
+    assert {step.source for step in steps if step.phase == "expected_empty"} == {
+        "goal_viewpoint:0_turn_around"
+    }
+
+
+def test_expected_empty_context_turns_empty_positive_miss_into_non_confirmation() -> None:
+    evidence_type, strength, quarantined, reason = stress._apply_expected_empty_context(
+        evidence_type=EvidenceType.UNKNOWN,
+        evidence_strength=0.45,
+        quarantined=False,
+        evidence_reason="target_out_of_current_view",
+        expected_target_absent=True,
+        detector_positive=False,
+        target_visible=False,
+    )
+
+    assert evidence_type is EvidenceType.NON_CONFIRMATION
+    assert strength == 1.0
+    assert quarantined is False
+    assert reason == "expected_location_empty"
+
+
+def test_expected_empty_context_preserves_detector_positive_evidence() -> None:
+    evidence_type, strength, quarantined, reason = stress._apply_expected_empty_context(
+        evidence_type=EvidenceType.POSITIVE,
+        evidence_strength=1.2,
+        quarantined=False,
+        evidence_reason="detector_positive_mask",
+        expected_target_absent=True,
+        detector_positive=True,
+        target_visible=False,
+    )
+
+    assert evidence_type is EvidenceType.POSITIVE
+    assert strength == 1.2
+    assert quarantined is False
+    assert reason == "detector_positive_mask"
 
 
 def test_resample_path_positions_keeps_endpoints_and_respects_limit() -> None:

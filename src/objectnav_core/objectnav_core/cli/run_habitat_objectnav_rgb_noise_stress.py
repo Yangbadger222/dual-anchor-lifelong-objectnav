@@ -123,8 +123,10 @@ def main() -> None:
         help=(
             "Replay protocol. out_and_back preserves the original fixed action "
             "trace; visibility_challenge teleports between measured visible and "
-            "target-hidden viewpoints; geodesic_path replays navmesh shortest-path "
-            "waypoints from start to goal before final confirmation."
+            "target-hidden viewpoints; expected_empty_challenge marks the hidden "
+            "verification interval as expected empty; geodesic_path replays "
+            "navmesh shortest-path waypoints from start to goal before final "
+            "confirmation."
         ),
     )
     parser.add_argument(

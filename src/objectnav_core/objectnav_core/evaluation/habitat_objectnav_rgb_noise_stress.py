@@ -71,11 +71,13 @@ SUPPORTED_REPLAY_PROTOCOLS: tuple[str, ...] = (
     "out_and_back",
     "visibility_challenge",
     "geodesic_path",
+    "expected_empty_challenge",
 )
 REPLAY_PHASES: tuple[str, ...] = (
     "approach",
     "confirm",
     "depart",
+    "expected_empty",
     "non_confirm",
     "revisit",
 )
@@ -139,6 +141,7 @@ class ReplayStep:
     position: tuple[float, float, float] | None = None
     rotation: tuple[float, float, float, float] | None = None
     target_pixels: int | None = None
+    expected_target_absent: bool = False
 
 
 def run_habitat_objectnav_rgb_noise_stress(
@@ -571,6 +574,14 @@ def _run_rgb_noise_episode(
             target_semantic_ids=target_semantic_ids,
             min_target_pixels=min_target_pixels,
         )
+    elif replay_protocol == "expected_empty_challenge":
+        replay_steps = _build_expected_empty_challenge_replay_steps(
+            sim=sim,
+            agent=agent,
+            episode=episode,
+            target_semantic_ids=target_semantic_ids,
+            min_target_pixels=min_target_pixels,
+        )
     elif replay_protocol == "geodesic_path":
         replay_steps = _build_geodesic_path_replay_steps(
             sim=sim,
@@ -655,6 +666,17 @@ def _run_rgb_noise_episode(
                 metrics=metrics,
                 min_target_pixels=min_target_pixels,
                 min_detector_pixels=min_detector_pixels,
+            )
+        )
+        evidence_type, evidence_strength, quarantined, evidence_reason = (
+            _apply_expected_empty_context(
+                evidence_type=evidence_type,
+                evidence_strength=evidence_strength,
+                quarantined=quarantined,
+                evidence_reason=evidence_reason,
+                expected_target_absent=replay_step.expected_target_absent,
+                detector_positive=metrics["detector_pixels"] >= min_detector_pixels,
+                target_visible=metrics["oracle_target_pixels"] >= min_target_pixels,
             )
         )
         if evidence_type is EvidenceType.POSITIVE:
@@ -798,6 +820,7 @@ def _run_rgb_noise_episode(
                 "start_source_used": start.source_used,
                 "replay_source": replay_step.source,
                 "replay_source_target_pixels": replay_step.target_pixels,
+                "expected_target_absent": replay_step.expected_target_absent,
                 "step_index": step_index,
                 "action": action,
                 "replay_phase": replay_phase,
@@ -1569,6 +1592,49 @@ def _visibility_challenge_replay_steps(
     return tuple(steps)
 
 
+def _expected_empty_challenge_replay_steps(
+    candidates: Sequence[ReplayViewCandidate],
+    *,
+    min_target_pixels: int,
+) -> tuple[ReplayStep, ...]:
+    visible_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.target_pixels >= min_target_pixels
+    ]
+    hidden_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.target_pixels < min_target_pixels
+    ]
+    if not visible_candidates:
+        raise ValueError("expected_empty_challenge requires a target-visible view")
+    if not hidden_candidates:
+        raise ValueError("expected_empty_challenge requires a target-hidden view")
+    visible = max(visible_candidates, key=lambda candidate: candidate.target_pixels)
+    hidden = min(hidden_candidates, key=lambda candidate: candidate.target_pixels)
+    plan = (
+        ("confirm", visible, 3, False),
+        ("expected_empty", hidden, 4, True),
+        ("revisit", visible, 4, False),
+    )
+    steps: list[ReplayStep] = []
+    for phase, candidate, count, expected_absent in plan:
+        for _ in range(count):
+            steps.append(
+                ReplayStep(
+                    phase=phase,
+                    action="reset" if not steps else f"teleport_{phase}",
+                    source=candidate.source,
+                    position=candidate.position,
+                    rotation=candidate.rotation,
+                    target_pixels=candidate.target_pixels,
+                    expected_target_absent=expected_absent,
+                )
+            )
+    return tuple(steps)
+
+
 def _geodesic_path_replay_steps(
     *,
     waypoints: Sequence[ReplayViewCandidate],
@@ -1676,6 +1742,26 @@ def _build_visibility_challenge_replay_steps(
         target_semantic_ids=target_semantic_ids,
     )
     return _visibility_challenge_replay_steps(
+        candidates,
+        min_target_pixels=min_target_pixels,
+    )
+
+
+def _build_expected_empty_challenge_replay_steps(
+    *,
+    sim: Any,
+    agent: Any,
+    episode: Any,
+    target_semantic_ids: Sequence[int],
+    min_target_pixels: int,
+) -> tuple[ReplayStep, ...]:
+    candidates = _sample_replay_view_candidates(
+        sim=sim,
+        agent=agent,
+        episode=episode,
+        target_semantic_ids=target_semantic_ids,
+    )
+    return _expected_empty_challenge_replay_steps(
         candidates,
         min_target_pixels=min_target_pixels,
     )
@@ -1896,6 +1982,31 @@ def _memory_on_belief_update(
     if not candidate_born and event.evidence_type is not EvidenceType.POSITIVE:
         return False, belief
     return True, updater.apply(belief, event)
+
+
+def _apply_expected_empty_context(
+    *,
+    evidence_type: EvidenceType,
+    evidence_strength: float,
+    quarantined: bool,
+    evidence_reason: str,
+    expected_target_absent: bool,
+    detector_positive: bool,
+    target_visible: bool,
+) -> tuple[EvidenceType, float, bool, str]:
+    if (
+        expected_target_absent
+        and not detector_positive
+        and not target_visible
+        and evidence_type is not EvidenceType.POSITIVE
+    ):
+        return (
+            EvidenceType.NON_CONFIRMATION,
+            1.0,
+            False,
+            "expected_location_empty",
+        )
+    return evidence_type, evidence_strength, quarantined, evidence_reason
 
 
 def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
