@@ -115,7 +115,7 @@ def _detections_from_grounding_result(
 ) -> list[Detection]:
     boxes = _as_numpy(result.get("boxes", []))
     scores = _as_numpy(result.get("scores", []))
-    labels = result.get("labels", [])
+    labels = result.get("text_labels", result.get("labels", []))
     accepted = {category.strip().lower() for category in categories}
     detections: list[Detection] = []
     for xyxy, score, label in zip(boxes, scores, labels):

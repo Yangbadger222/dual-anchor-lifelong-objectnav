@@ -80,7 +80,8 @@ class _FakeNewProcessor(_FakeProcessor):
             {
                 "boxes": _FakeTensor([[1.2, 2.0, 4.8, 5.1]]),
                 "scores": _FakeTensor([0.91]),
-                "labels": ["chair"],
+                "labels": [0],
+                "text_labels": ["chair"],
             }
         ]
 
