@@ -651,7 +651,12 @@ After detector setup:
     preventing same-category object viewpoint mixing
   - local focused tests passed after the implementation:
     `71` memory/RGB-noise tests, `16` val-mini tests, and compileall
-  - this has not yet been pulled or tested on `badger-linux`
+  - Linux verification after pulling `fed75ea`:
+    - focused suite in `conda habitat`: `87` tests passed
+    - oracle-bbox Habitat smoke:
+      `runs/habitat_usability/object_instance_anchor_oracle_smoke`
+    - smoke selected episode `3`, completed `2` replay summaries, and wrote
+      one persisted anchor: category `bed`, instance `goal_object:17`
 
 Still not run:
 
@@ -670,8 +675,9 @@ Still not run:
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant` with
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
-- Linux pull/test for the object-instance geometry anchor persistence commit.
-- Long-range replay rerun after object-instance geometry anchor persistence.
+- Long-range Grounding-DINO replay rerun after object-instance geometry anchor
+  persistence. The remote oracle-bbox smoke verifies schema/write path only; it
+  is not detector or algorithm evidence.
 - Instance-scoped belief persistence. Current belief persistence is still
   scene/category-level; the new instance scope currently applies only to the
   geometry anchor.
@@ -726,9 +732,7 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Pull the object-instance geometry anchor persistence commit on
-   `badger-linux` and run focused tests in `conda habitat`.
-2. Rerun a small `geodesic_expected_empty_challenge` smoke with the same
+1. Rerun a small `geodesic_expected_empty_challenge` smoke with the same
    Grounding-DINO settings and inspect whether `lifelong_memory.sqlite`
    contains `object_instance_anchors`.
 3. Build a true lifecycle scenario: confirm object, leave through multiple
