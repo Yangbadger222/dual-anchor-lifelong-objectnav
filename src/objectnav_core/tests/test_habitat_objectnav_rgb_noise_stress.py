@@ -570,6 +570,35 @@ def test_memory_geometry_gate_can_defer_fov_during_anchor_acquisition() -> None:
     assert distance is not None
 
 
+def test_memory_geometry_gate_does_not_overwrite_persisted_anchor_during_approach() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=-2.0, persisted=True)
+
+    updated_state, evidence_type, strength, quarantined, reason, distance = (
+        stress._apply_memory_geometry_gate(
+            state=state,
+            memory_mode="on",
+            evidence_type=EvidenceType.POSITIVE,
+            evidence_strength=1.0,
+            quarantined=False,
+            evidence_reason="detector_positive_mask",
+            observation_anchor_xz=(5.0, 5.0),
+            gate_radius_m=None,
+            gate_fov=True,
+            fov_gate_active=False,
+            allow_anchor_refresh=False,
+            agent_pose=((0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)),
+            hfov_degrees=90.0,
+        )
+    )
+
+    assert updated_state == state
+    assert evidence_type is EvidenceType.POSITIVE
+    assert strength == 1.0
+    assert quarantined is False
+    assert reason == "detector_positive_mask"
+    assert distance is not None
+
+
 def test_memory_geometry_gate_can_turn_expected_empty_out_of_fov_positive_negative() -> None:
     state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=-2.0)
 
@@ -679,7 +708,7 @@ def test_memory_geometry_state_loads_and_saves_only_for_memory_on(tmp_path: Path
         memory=memory,
         episode=episode,
         memory_mode="on",
-    ) == stress.MemoryGeometryState(anchor_x=0.5, anchor_z=-1.5)
+    ) == stress.MemoryGeometryState(anchor_x=0.5, anchor_z=-1.5, persisted=True)
     assert stress._load_memory_geometry_state(
         memory=memory,
         episode=episode,

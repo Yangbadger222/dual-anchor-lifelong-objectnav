@@ -151,6 +151,7 @@ class ReplayStep:
 class MemoryGeometryState:
     anchor_x: float | None = None
     anchor_z: float | None = None
+    persisted: bool = False
 
 
 def run_habitat_objectnav_rgb_noise_stress(
@@ -741,6 +742,7 @@ def _run_rgb_noise_episode(
             gate_radius_m=memory_geometry_gate_radius_m,
             gate_fov=memory_geometry_gate_fov,
             fov_gate_active=replay_phase in {"expected_empty", "revisit"},
+            allow_anchor_refresh=replay_phase in {"confirm", "revisit"},
             fov_rejection_evidence_type=(
                 EvidenceType.NON_CONFIRMATION
                 if replay_step.expected_target_absent
@@ -2233,6 +2235,7 @@ def _apply_memory_geometry_gate(
     gate_radius_m: float | None,
     gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
     fov_gate_active: bool = True,
+    allow_anchor_refresh: bool = True,
     fov_rejection_evidence_type: EvidenceType = EvidenceType.UNKNOWN,
     agent_pose: (
         tuple[tuple[float, float, float], tuple[float, float, float, float]] | None
@@ -2301,6 +2304,15 @@ def _apply_memory_geometry_gate(
             round(distance_m, 6),
         )
     if not fov_gate_active:
+        if state.persisted and not allow_anchor_refresh:
+            return (
+                state,
+                evidence_type,
+                evidence_strength,
+                quarantined,
+                evidence_reason,
+                round(distance_m, 6),
+            )
         return (
             MemoryGeometryState(anchor_x=obs_x, anchor_z=obs_z),
             evidence_type,
@@ -2336,7 +2348,7 @@ def _load_memory_geometry_state(
     if anchor is None:
         return MemoryGeometryState()
     anchor_x, anchor_z = anchor
-    return MemoryGeometryState(anchor_x=anchor_x, anchor_z=anchor_z)
+    return MemoryGeometryState(anchor_x=anchor_x, anchor_z=anchor_z, persisted=True)
 
 
 def _save_memory_geometry_state(
