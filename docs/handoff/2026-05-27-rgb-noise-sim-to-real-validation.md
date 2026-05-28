@@ -497,6 +497,27 @@ After detector setup:
     false-positive pressure
   - trace rows record `expected_target_absent`
   - local focused tests passed: `43` tests
+- Pulled commit `c34e87f` on `badger-linux` and ran expected-empty smokes:
+  - remote focused tests passed in `conda habitat`: `54` tests
+  - `oracle_bbox` output:
+    `runs/habitat_usability/expected_empty_oracle_bbox_smoke`
+  - Grounding-DINO output:
+    `runs/habitat_usability/expected_empty_grounding_dino_smoke_1280x720_cap384`
+  - `oracle_bbox` expected-empty evidence:
+    `36` `NON_CONFIRMATION`, `0` positive
+  - Grounding-DINO expected-empty evidence:
+    `24` `NON_CONFIRMATION`, `12` positive
+  - Grounding-DINO memory comparison:
+    - `on`: `3/3` successful episodes, `11` success rows, `15` raw trust,
+      `4` gate rejections, mean final `p_valid=0.973380`
+    - `naive_count`: `3/3` successful episodes, `15` success rows, `27` raw
+      trust, `12` gate rejections, mean final `p_valid=0.941192`
+    - `off`: `0/3` successful episodes
+  - conclusion: expected-empty finally exposes the intended negative-evidence
+    advantage. Memory reduces stale raw trust and gate rejections, though it is
+    more conservative and has fewer total success rows.
+- Created experiment report:
+  `docs/experiments/2026-05-28-expected-empty-grounding-dino-replay.md`
 
 Still not run:
 
@@ -512,7 +533,8 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
-- Linux expected-empty `oracle_bbox` and Grounding-DINO smokes.
+- Larger expected-empty `clean,mild,heavy` matrix.
+- Expected-empty detector-positive debug PNG export/review.
 
 ## Known Risks
 
@@ -570,12 +592,14 @@ Still not run:
    Completed for commit `2e67295`; delayed birth did not change the smoke.
 8. Implement an explicit expected-location-empty context before running a
    larger matrix. Local implementation exists; next run Linux smokes.
-9. Run `oracle_bbox` expected-empty smoke first to confirm `expected_empty`
-   rows become `NON_CONFIRMATION`, then run Grounding-DINO.
-10. After that protocol is validated, run a larger `bed,toilet,plant` matrix with
-   `clean,mild,heavy` and compare success episodes, first-success step,
-   path-to-first-success, raw trust, and gate rejections.
-11. Connect the replay harness to a real action-level Habitat follower and
+9. Run a larger `expected_empty_challenge` matrix with `bed,toilet,plant`,
+   `clean,mild,heavy`, and at least two structured episodes/category; compare
+   success episodes, first-success step, path-to-first-success, raw trust, and
+   gate rejections.
+10. Export expected-empty detector-positive PNGs at a controlled cap to
+   understand Grounding-DINO false positives in the hidden interval.
+11. Combine expected-empty semantics with a long-range approach protocol or
+   connect the replay harness to a real action-level Habitat follower and
    report navigation metrics.
 
 ## Context for Next Contributor
