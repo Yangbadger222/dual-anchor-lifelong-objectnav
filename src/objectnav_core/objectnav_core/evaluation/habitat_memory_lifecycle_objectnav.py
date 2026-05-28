@@ -192,6 +192,51 @@ def plan_lifecycle_query(
     )
 
 
+def plan_lifecycle_sequence(
+    *,
+    mode: str,
+    repeats: int,
+    initial_memory_path_cost_m: float,
+    repaired_memory_path_cost_m: float,
+    fallback_path_cost_m: float,
+    initial_memory_verification: LifecycleVerification,
+    repaired_memory_verification: LifecycleVerification,
+    fallback_verification: LifecycleVerification,
+    naive_prior_positive_count: int = 0,
+) -> tuple[LifecyclePlanResult, ...]:
+    if repeats <= 0:
+        raise ValueError("repeats must be positive")
+    results: list[LifecyclePlanResult] = []
+    repaired = False
+    for repeat_index in range(repeats):
+        if mode == "memory_guided" and repaired:
+            result = plan_lifecycle_query(
+                mode=mode,
+                memory_path_cost_m=repaired_memory_path_cost_m,
+                fallback_path_cost_m=fallback_path_cost_m,
+                memory_verification=repaired_memory_verification,
+                fallback_verifications=(fallback_verification,),
+            )
+        else:
+            result = plan_lifecycle_query(
+                mode=mode,
+                memory_path_cost_m=initial_memory_path_cost_m,
+                fallback_path_cost_m=fallback_path_cost_m,
+                memory_verification=initial_memory_verification,
+                fallback_verifications=(fallback_verification,),
+                naive_prior_positive_count=naive_prior_positive_count,
+            )
+        if (
+            mode == "memory_guided"
+            and repeat_index == 0
+            and result.fallback_used
+            and fallback_verification.shared_gate_success
+        ):
+            repaired = True
+        results.append(result)
+    return tuple(results)
+
+
 def run_habitat_memory_lifecycle_preflight(
     output_dir: str | Path,
     *,
@@ -294,6 +339,7 @@ def run_habitat_memory_lifecycle_objectnav(
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     search_proxy_waypoints: int = DEFAULT_SEARCH_PROXY_WAYPOINTS,
+    query_repeats: int = 1,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -328,6 +374,8 @@ def run_habitat_memory_lifecycle_objectnav(
         raise ValueError("structured_min_path_complexity_ratio must be non-negative")
     if search_proxy_waypoints < 0:
         raise ValueError("search_proxy_waypoints must be non-negative")
+    if query_repeats <= 0:
+        raise ValueError("query_repeats must be positive")
 
     from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
         _accepted_yolo_detection_labels,
@@ -502,31 +550,49 @@ def run_habitat_memory_lifecycle_objectnav(
                         helpers=helper_bundle,
                     )
                     for mode in modes:
-                        result = plan_lifecycle_query(
-                            mode=mode,
-                            memory_path_cost_m=memory_path_cost,
-                            fallback_path_cost_m=fallback_path_cost,
-                            memory_verification=memory_verification,
-                            fallback_verifications=(fallback_verification,),
-                            naive_prior_positive_count=1 if mode == "naive_count" else 0,
-                        )
-                        trace_rows.append(
-                            _lifecycle_row(
-                                group=group,
+                        repaired = False
+                        for query_repeat_index in range(query_repeats):
+                            active_memory_path_cost = memory_path_cost
+                            active_memory_verification = memory_verification
+                            if mode == "memory_guided" and repaired:
+                                active_memory_path_cost = oracle_goal_path_cost
+                                active_memory_verification = fallback_verification
+                            result = plan_lifecycle_query(
                                 mode=mode,
-                                noise_level=noise_level,
-                                detector=detector,
-                                detector_prompt_categories=prompt_categories,
-                                memory_path_cost=memory_path_cost,
-                                fallback_path_cost=fallback_path_cost,
-                                oracle_goal_path_cost=oracle_goal_path_cost,
-                                search_proxy_waypoint_count=search_proxy_waypoint_count,
-                                memory_verification=memory_verification,
-                                fallback_verification=fallback_verification,
-                                result=result,
-                                normalized_category=_normalize_yolo_label(group.category),
+                                memory_path_cost_m=active_memory_path_cost,
+                                fallback_path_cost_m=fallback_path_cost,
+                                memory_verification=active_memory_verification,
+                                fallback_verifications=(fallback_verification,),
+                                naive_prior_positive_count=(
+                                    1 if mode == "naive_count" else 0
+                                ),
                             )
-                        )
+                            if (
+                                mode == "memory_guided"
+                                and result.fallback_used
+                                and fallback_verification.shared_gate_success
+                            ):
+                                repaired = True
+                            trace_rows.append(
+                                _lifecycle_row(
+                                    group=group,
+                                    mode=mode,
+                                    noise_level=noise_level,
+                                    detector=detector,
+                                    detector_prompt_categories=prompt_categories,
+                                    memory_path_cost=active_memory_path_cost,
+                                    fallback_path_cost=fallback_path_cost,
+                                    oracle_goal_path_cost=oracle_goal_path_cost,
+                                    search_proxy_waypoint_count=search_proxy_waypoint_count,
+                                    memory_verification=active_memory_verification,
+                                    fallback_verification=fallback_verification,
+                                    result=result,
+                                    normalized_category=_normalize_yolo_label(
+                                        group.category
+                                    ),
+                                    query_repeat_index=query_repeat_index,
+                                )
+                            )
         finally:
             sim.close()
 
@@ -545,6 +611,7 @@ def run_habitat_memory_lifecycle_objectnav(
                 structured_min_path_complexity_ratio
             ),
             "search_proxy_waypoints": int(search_proxy_waypoints),
+            "query_repeats": int(query_repeats),
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -780,6 +847,7 @@ def _lifecycle_row(
     fallback_verification: LifecycleVerification,
     result: LifecyclePlanResult,
     normalized_category: str,
+    query_repeat_index: int = 0,
 ) -> dict[str, Any]:
     detector_miss = (
         fallback_verification.target_visible
@@ -795,6 +863,7 @@ def _lifecycle_row(
         "query_episode_id": str(group.query_episode.episode_id),
         "mode": mode,
         "noise_level": noise_level,
+        "query_repeat_index": int(query_repeat_index),
         "detector": detector,
         "detector_prompt_categories": "|".join(detector_prompt_categories),
         "success": result.success,

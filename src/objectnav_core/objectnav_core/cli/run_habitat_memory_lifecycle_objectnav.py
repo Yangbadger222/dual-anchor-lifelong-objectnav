@@ -101,6 +101,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--query-repeats",
+        type=int,
+        default=1,
+        help=(
+            "Repeat each lifecycle query this many times. memory_guided can "
+            "reuse a repaired fallback anchor after the first stale check; "
+            "naive_count remains positive-only."
+        ),
+    )
+    parser.add_argument(
         "--structured-min-goal-viewpoints",
         type=int,
         default=DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -152,6 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "structured_min_geodesic_distance": args.structured_min_geodesic_distance,
                 "structured_min_path_complexity_ratio": args.structured_min_path_complexity_ratio,
                 "search_proxy_waypoints": args.search_proxy_waypoints,
+                "query_repeats": args.query_repeats,
             }
         ),
         seed=args.seed,

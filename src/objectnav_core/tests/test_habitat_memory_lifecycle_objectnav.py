@@ -6,6 +6,7 @@ from pathlib import Path
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
     plan_lifecycle_query,
+    plan_lifecycle_sequence,
     run_habitat_memory_lifecycle_preflight,
     summarize_lifecycle_results,
 )
@@ -219,3 +220,42 @@ def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:
     assert result.total_path_length_m == 21.0
     assert result.route == ("fallback",)
     assert result.total_path_length_m > 5.0
+
+
+def test_memory_guided_repairs_stale_anchor_across_repeated_queries() -> None:
+    stale_memory = _verification(EvidenceType.NON_CONFIRMATION, target_visible=False)
+    repaired_memory = _verification(EvidenceType.POSITIVE, target_visible=True)
+    fallback = _verification(EvidenceType.POSITIVE, target_visible=True)
+
+    memory_results = plan_lifecycle_sequence(
+        mode="memory_guided",
+        repeats=2,
+        initial_memory_path_cost_m=6.0,
+        repaired_memory_path_cost_m=2.0,
+        fallback_path_cost_m=11.0,
+        initial_memory_verification=stale_memory,
+        repaired_memory_verification=repaired_memory,
+        fallback_verification=fallback,
+    )
+    naive_results = plan_lifecycle_sequence(
+        mode="naive_count",
+        repeats=2,
+        initial_memory_path_cost_m=6.0,
+        repaired_memory_path_cost_m=2.0,
+        fallback_path_cost_m=11.0,
+        initial_memory_verification=stale_memory,
+        repaired_memory_verification=repaired_memory,
+        fallback_verification=fallback,
+        naive_prior_positive_count=1,
+    )
+
+    assert [result.route for result in memory_results] == [
+        ("memory", "fallback"),
+        ("memory",),
+    ]
+    assert [result.total_path_length_m for result in memory_results] == [17.0, 2.0]
+    assert [result.route for result in naive_results] == [
+        ("memory", "fallback"),
+        ("memory", "fallback"),
+    ]
+    assert [result.total_path_length_m for result in naive_results] == [17.0, 17.0]
