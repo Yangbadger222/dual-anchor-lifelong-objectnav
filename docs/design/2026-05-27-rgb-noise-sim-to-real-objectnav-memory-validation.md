@@ -387,6 +387,9 @@ prototype:
 - later `memory=on` positives whose projected anchor is farther than the
   configured radius are quarantined as `UNKNOWN` with reason
   `geometry_inconsistent_positive`;
+- later `memory=on` positives are also quarantined when the remembered anchor
+  is outside the current camera field of view, because a same-category
+  detector hit in that view cannot be confirming the remembered object;
 - trace rows record the memory anchor, observation anchor, geometry distance,
   and geometry gate reason;
 - `naive_count` is unchanged: it still only counts positive observations and

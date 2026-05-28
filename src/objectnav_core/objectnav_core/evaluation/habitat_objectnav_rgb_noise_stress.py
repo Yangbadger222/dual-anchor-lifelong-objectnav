@@ -717,8 +717,11 @@ def _run_rgb_noise_episode(
             evidence_reason=evidence_reason,
             observation_anchor_xz=detection_anchor_xz,
             gate_radius_m=memory_geometry_gate_radius_m,
+            agent_pose=pose,
         )
         if evidence_reason == "geometry_inconsistent_positive":
+            memory_geometry_gate_reason = evidence_reason
+        elif evidence_reason == "geometry_anchor_out_of_view_positive":
             memory_geometry_gate_reason = evidence_reason
         if evidence_type is EvidenceType.POSITIVE:
             negative_streak = 0
@@ -2069,6 +2072,10 @@ def _apply_memory_geometry_gate(
     evidence_reason: str,
     observation_anchor_xz: tuple[float, float] | None,
     gate_radius_m: float | None,
+    agent_pose: (
+        tuple[tuple[float, float, float], tuple[float, float, float, float]] | None
+    ) = None,
+    hfov_degrees: float = 79.0,
 ) -> tuple[MemoryGeometryState, EvidenceType, float, bool, str, float | None]:
     if (
         memory_mode != "on"
@@ -2095,6 +2102,19 @@ def _apply_memory_geometry_gate(
             None,
         )
     distance_m = float(np.hypot(obs_x - state.anchor_x, obs_z - state.anchor_z))
+    if agent_pose is not None and not _anchor_in_camera_fov(
+        anchor_xz=(state.anchor_x, state.anchor_z),
+        agent_pose=agent_pose,
+        hfov_degrees=hfov_degrees,
+    ):
+        return (
+            state,
+            EvidenceType.UNKNOWN,
+            0.35,
+            True,
+            "geometry_anchor_out_of_view_positive",
+            round(distance_m, 6),
+        )
     if distance_m > gate_radius_m:
         return (
             state,
@@ -2112,6 +2132,26 @@ def _apply_memory_geometry_gate(
         evidence_reason,
         round(distance_m, 6),
     )
+
+
+def _anchor_in_camera_fov(
+    *,
+    anchor_xz: tuple[float, float],
+    agent_pose: tuple[tuple[float, float, float], tuple[float, float, float, float]],
+    hfov_degrees: float = 79.0,
+) -> bool:
+    position, rotation = agent_pose
+    dx = anchor_xz[0] - position[0]
+    dz = anchor_xz[1] - position[2]
+    if abs(dx) + abs(dz) < 1e-6:
+        return True
+    target_bearing = float(np.arctan2(-dx, -dz))
+    delta = _wrap_angle_rad(target_bearing - _yaw_from_quaternion_xyzw(rotation))
+    return abs(delta) <= np.deg2rad(hfov_degrees) / 2.0
+
+
+def _wrap_angle_rad(value: float) -> float:
+    return float((value + np.pi) % (2.0 * np.pi) - np.pi)
 
 
 def _estimate_detection_anchor_xz(

@@ -572,6 +572,25 @@ After detector setup:
   - local focused tests passed: `47` RGB-noise stress tests and `58` broader
     focused tests; compileall, geometry preflight, and `git diff --check`
     passed
+- Ran the first bed-only geometry-gate smoke on `badger-linux`:
+  - output:
+    `runs/habitat_usability/expected_empty_bed_geometry_gate_1280x720_epc2_cap384`
+  - `memory=on`: `27` success rows, `49` raw trust, `22` gate rejections
+  - `naive_count`: `27` success rows, `53` raw trust, `26` gate rejections
+  - `off`: `0` success rows
+  - geometry gate rows: `15`
+  - read: radius-only gating helped on episode `33` but missed episode `3`
+    red-dresser false positives because coarse bbox-center depth landed within
+    `0.86 m` of the remembered bed anchor; it also rejected a few true revisit
+    positives in episode `33`.
+- Added local memory-anchor FOV consistency:
+  - if the remembered anchor is outside the current camera FOV but detector
+    reports the target category, `memory=on` quarantines the positive as
+    `UNKNOWN` with reason `geometry_anchor_out_of_view_positive`
+  - `naive_count` remains positive-only and unchanged
+  - local focused tests passed: `49` RGB-noise stress tests and `60` broader
+    focused tests; compileall, geometry preflight, and `git diff --check`
+    passed
 
 Still not run:
 
@@ -589,6 +608,7 @@ Still not run:
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 - Linux pull/test for the memory-geometry-gate commit.
 - Bed expected-empty geometry-gate smoke on Linux.
+- Bed expected-empty geometry-gate smoke after the FOV-consistency patch.
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant`.
 - SQLite persistence of object-instance geometry anchors across episodes.
 
@@ -628,6 +648,8 @@ Still not run:
 - The new geometry gate is currently per replay and optional. It is a
   candidate-association prototype, not yet the final Dual-Anchor lifelong
   object store.
+- The radius-only geometry gate is not strong enough by itself; keep the FOV
+  consistency run separate in the report so the ablation remains interpretable.
 - The bed detector issue should not be solved by simply raising
   Grounding-DINO confidence; the threshold ablation shows that route also
   damages true-positive recall.
@@ -638,8 +660,8 @@ Still not run:
    `badger-linux`.
 2. Run focused remote tests in `conda habitat`.
 3. Run a bed-only expected-empty smoke with
-   `--memory-geometry-gate-radius-m 1.5` and compare `memory=on` vs
-   `naive_count`.
+   `--memory-geometry-gate-radius-m 1.5` after the FOV-consistency patch and
+   compare `memory=on` vs `naive_count`.
 4. If the bed smoke reduces geometry-inconsistent positives without killing
    true revisit success, rerun the full
    `expected_empty_grounding_dino_matrix_1280x720_epc2_cap384` equivalent with
