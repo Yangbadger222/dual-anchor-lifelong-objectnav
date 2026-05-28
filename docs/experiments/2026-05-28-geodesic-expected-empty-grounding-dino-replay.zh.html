@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>长距离 Expected-Empty Grounding-DINO Replay 报告</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5f6d7b;
+      --line: #d8e1ea;
+      --panel: #f6f8fb;
+      --panel-strong: #edf3f7;
+      --accent: #176a73;
+      --good: #17613a;
+      --warn: #8a5600;
+      --bad: #8a2634;
+      --code: #111827;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
+      line-height: 1.62;
+    }
+    header {
+      padding: 40px 7vw 30px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f5fbfc 0%, #ffffff 100%);
+    }
+    main {
+      max-width: 1240px;
+      padding: 28px 7vw 70px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+    h1 { max-width: 980px; font-size: clamp(28px, 4vw, 42px); }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 { margin-top: 18px; font-size: 18px; }
+    p { margin: 10px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th { background: var(--panel-strong); text-align: left; }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #edf3fb;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code { background: transparent; border: 0; color: inherit; padding: 0; }
+    .meta, .note { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    .box h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 2px 8px;
+      margin: 4px 6px 0 0;
+    }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f4f8fa;
+      padding: 12px 16px;
+      margin: 16px 0;
+    }
+    .good { color: var(--good); font-weight: 650; }
+    .warn { color: var(--warn); font-weight: 650; }
+    .bad { color: var(--bad); font-weight: 650; }
+    .wide { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-28 · 本地 HTML 实验报告</p>
+    <h1>长距离 Expected-Empty Grounding-DINO Replay 报告</h1>
+    <p>
+      这次把官方 ObjectNav episode start 到 goal 的长距离 navmesh replay，
+      和 expected-empty stale-memory 验证合在一起跑。配置使用
+      Grounding-DINO、1280x720、RGB/depth noise、memory on / naive_count / off。
+    </p>
+    <p>
+      <span class="tag">commit: 937e47c</span>
+      <span class="tag">host: badger-linux</span>
+      <span class="tag">conda env: habitat</span>
+      <span class="tag">dataset: HM3D ObjectNav val_mini</span>
+      <span class="tag">detector cap: 384</span>
+      <span class="tag">protocol: geodesic_expected_empty_challenge</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 结论</h2>
+      <div class="callout">
+        <strong>现在有一条可复现的长距离 replay 结果了。</strong>
+        EPC2 矩阵里，<code>memory=on</code> 和 <code>naive_count</code>
+        都是 <code>17/18</code> successful episodes。memory 的 raw trust
+        更少：<code>240</code> vs <code>256</code>，平均首次成功路径略短：
+        <code>13.344742m</code> vs <code>13.471588m</code>。
+      </div>
+      <p>
+        但这还不是“算法碾压 baseline”。<code>naive_count</code> 的 gated
+        success rows 更多：<code>136</code> vs <code>117</code>。当前最诚实的
+        结论是：memory 在 stale trust 安全性上更稳，成功 episode 不输；
+        但在 replay row 数量上仍偏保守。顶会级主张还需要 object-instance
+        anchor 持久化和 action-level navigation。
+      </p>
+    </section>
+
+    <section>
+      <h2>2. 做了什么</h2>
+      <div class="grid">
+        <div class="box">
+          <h3>新 replay 协议</h3>
+          <p><code>geodesic_expected_empty_challenge</code>：</p>
+          <p>official episode start → navmesh waypoints → goal confirm → expected-empty hidden view → revisit。</p>
+        </div>
+        <div class="box">
+          <h3>关键修正</h3>
+          <p>FOV geometry gate 只在 <code>expected_empty</code> 和 <code>revisit</code> 阶段做 anchor 验证，避免 early approach positive 污染锚点后误杀真阳性。</p>
+        </div>
+        <div class="box">
+          <h3>恢复阈值</h3>
+          <p>current-positive recovery threshold 从 <code>0.88</code> 调到 <code>0.84</code>，但 shared gate 仍要求当前目标可见且 detector positive。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 最终 EPC2 结果</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Memory mode</th>
+              <th>Successful episodes</th>
+              <th>Success rows</th>
+              <th>Raw trust</th>
+              <th>Gate rejections</th>
+              <th>Mean first step</th>
+              <th>Mean path to first success</th>
+              <th>Mean final p_valid</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>on</code></td><td class="good">17/18</td><td>117</td><td class="good">240</td><td>123</td><td>8.176471</td><td class="good">13.344742 m</td><td>0.860704</td></tr>
+            <tr><td><code>naive_count</code></td><td>17/18</td><td class="good">136</td><td>256</td><td class="good">120</td><td>8.176471</td><td>13.471588 m</td><td>0.928914</td></tr>
+            <tr><td><code>off</code></td><td>0/18</td><td>0</td><td>0</td><td>0</td><td>n/a</td><td>n/a</td><td>0.793014</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        输出目录：
+        <code>runs/habitat_usability/geodesic_expected_empty_grounding_dino_matrix_1280x720_epc2_cap384_recovery084</code>
+      </p>
+    </section>
+
+    <section>
+      <h2>4. 类别拆解</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Memory</th>
+              <th>Success rows</th>
+              <th>Raw trust</th>
+              <th>Gate rejections</th>
+              <th>Successful episodes</th>
+              <th>Expected-empty</th>
+              <th>Revisit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>bed</td><td>on</td><td>53</td><td>71</td><td>18</td><td>6/6</td><td>24 non-confirmation</td><td>24 positive</td></tr>
+            <tr><td>bed</td><td>naive_count</td><td>57</td><td>88</td><td>31</td><td>6/6</td><td>24 positive</td><td>24 positive</td></tr>
+            <tr><td>plant</td><td>on</td><td>20</td><td>69</td><td>49</td><td>5/6</td><td>24 non-confirmation</td><td>14 positive, 9 non-confirmation, 1 unknown</td></tr>
+            <tr><td>plant</td><td>naive_count</td><td>29</td><td>76</td><td>47</td><td>5/6</td><td>24 non-confirmation</td><td>15 positive, 9 non-confirmation</td></tr>
+            <tr><td>toilet</td><td>on</td><td>44</td><td>100</td><td>56</td><td>6/6</td><td>24 non-confirmation</td><td>24 positive</td></tr>
+            <tr><td>toilet</td><td>naive_count</td><td>50</td><td>92</td><td>42</td><td>6/6</td><td>24 non-confirmation</td><td>24 positive</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        只有 <code>plant</code> episode <code>84</code> heavy noise 失败，而且
+        <code>memory=on</code> 和 <code>naive_count</code> 都失败。原因是
+        confirm/revisit 阶段 detector 几乎全 miss，可见目标没有变成当前正证据。
+      </p>
+    </section>
+
+    <section>
+      <h2>5. 关键演进</h2>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Output</th>
+              <th>结果</th>
+              <th>解释</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>初版长距离 expected-empty</td>
+              <td><code>...epc1_cap384</code></td>
+              <td><code>memory=on</code> 3/9</td>
+              <td>FOV gate 太早应用，early approach anchor 会误杀后续真阳性。</td>
+            </tr>
+            <tr>
+              <td>phase-scoped FOV</td>
+              <td><code>...phase_scoped_fov</code></td>
+              <td><code>memory=on</code> 8/9</td>
+              <td>只在 expected-empty/revisit 做 anchor 验证，恢复明显变好。</td>
+            </tr>
+            <tr>
+              <td>current-positive recovery 0.84</td>
+              <td><code>...recovery084</code></td>
+              <td><code>memory=on</code> 9/9 smoke，17/18 EPC2</td>
+              <td>当前正检测存在时更快恢复 trust，不增加无当前证据的 stop。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 当前状态</h2>
+      <ul>
+        <li><span class="good">已完成：</span>Grounding-DINO category qualification、短 expected-empty、bed PNG 诊断、FOV geometry gate、长距离 expected-empty replay。</li>
+        <li><span class="warn">仍不足：</span>当前还是 replay，不是 action-level Habitat ObjectNav；指标是 oracle-stop rows，不是 SPL。</li>
+        <li><span class="warn">算法还不够强：</span>memory 成功 episode 不输，raw trust 更少，但 success rows 没超过 naive_count。</li>
+        <li><span class="bad">主要风险：</span>plant heavy detector miss、object-instance anchor 还没有 SQLite 持久化、没有真正多房间生命周期移动/删除场景。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>7. 下一步</h2>
+      <ol>
+        <li>实现 object-instance anchor persistence：把 per-replay geometry anchor 升级成 SQLite 中的对象实例锚点，带观测计数和不确定性。</li>
+        <li>做真正 lifecycle 场景：跨房间/走廊 confirm → expected-empty → search/reacquire/retire，而不是只在单 episode 内 replay。</li>
+        <li>接 action-level Habitat follower，报告路径长度、stop action、SPL-like 指标。</li>
+        <li>继续保持 <code>naive_count</code> 朴素：只数 positive，不吸收 non-confirmation、geometry、delayed birth 或 persistence。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
