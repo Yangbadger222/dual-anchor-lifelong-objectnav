@@ -35,6 +35,7 @@ should not be presented as a paper claim without the next Habitat validation.
 - `src/objectnav_core/objectnav_core/evaluation/lifelong_objectnav_benchmark.py`
 - `src/objectnav_core/objectnav_core/cli/run_lifelong_objectnav_benchmark.py`
 - `src/objectnav_core/setup.py`
+- `pyproject.toml`
 - `src/objectnav_core/tests/test_lifelong_objectnav_benchmark.py`
 - `src/objectnav_core/tests/test_cli_runner.py`
 
@@ -45,6 +46,7 @@ git status --short --branch
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests/test_lifelong_objectnav_benchmark.py -q
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests/test_lifelong_objectnav_benchmark.py src/objectnav_core/tests/test_cli_runner.py -q
 PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_lifelong_objectnav_benchmark --output runs/lifelong_objectnav/active_memory_guided_benchmark_v1
+ssh badger@100.88.131.52 'source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && python -m pip install "pydantic>=2,<3" PyYAML'
 ```
 
 ## Verification
@@ -59,7 +61,8 @@ Passed locally:
 Verification still needed:
 
 - Full `objectnav_core` test suite after any follow-up edits.
-- Linux pull and focused tests.
+- Linux focused tests after installing `eval_type_backport` in `conda habitat`
+  or after pulling the dependency update.
 - Habitat active port and Grounding-DINO run.
 
 ## Known Risks
@@ -73,6 +76,9 @@ Verification still needed:
 - Observations are config-truth, not Grounding-DINO.
 - The navigation backend is A* over a designed grid, not Habitat actions or
   real Nav2.
+- The Linux `conda habitat` environment is Python `3.9.23`; it needs
+  `eval_type_backport` for Pydantic v2 model annotations. This dependency is
+  now declared, but the remote environment must install it before tests pass.
 
 ## Next Recommended Step
 

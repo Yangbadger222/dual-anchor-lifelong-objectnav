@@ -7,6 +7,7 @@ dependencies = [
   "numpy",
   "pydantic>=2",
   "PyYAML",
+  "eval_type_backport; python_version < '3.10'",
 ]
 
 [project.optional-dependencies]

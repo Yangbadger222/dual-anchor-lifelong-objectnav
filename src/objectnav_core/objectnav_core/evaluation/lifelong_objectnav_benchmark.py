@@ -441,7 +441,7 @@ def _estimate_path_length(grid: Any, start: Pose2D, goal: Pose2D) -> float | Non
     if navigator.status.value == "SUCCEEDED":
         return start.distance_to(goal)
     path = [start, *navigator.planned_path[1:]]
-    return sum(first.distance_to(second) for first, second in zip(path, path[1:], strict=False))
+    return sum(first.distance_to(second) for first, second in zip(path, path[1:]))
 
 
 def _navigate(grid: Any, start: Pose2D, goal: Pose2D) -> tuple[Pose2D, float, float]:
