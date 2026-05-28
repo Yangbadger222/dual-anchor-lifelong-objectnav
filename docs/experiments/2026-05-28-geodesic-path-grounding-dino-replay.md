@@ -16,7 +16,7 @@ Can the RGB-noise ObjectNav harness replay official episode-start to goal-viewpo
 
 | Item | Value |
 |---|---|
-| Branch / commits | `main`, `1a96500`, `07ef48b`, `2e67295` |
+| Branch / commits | `main`, `1a96500`, `07ef48b`, `2e67295`, `5d0513f` |
 | Machine | `badger-linux` |
 | Environment | `conda habitat` |
 | Dataset / scene root | HM3D ObjectNav `val_mini`, `datasets/habitat/scene_datasets/hm3d` |
@@ -26,7 +26,7 @@ Can the RGB-noise ObjectNav harness replay official episode-start to goal-viewpo
 | Memory modes | `on,naive_count,off` |
 | Selection | `structured_visibility`, `bed,toilet,plant`, 1 episode/category |
 | Replay | `geodesic_path`, `episode_start`, max 12 approach waypoints |
-| Outputs | `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384`, `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_current_positive`, `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_delayed_birth` |
+| Outputs | `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384`, `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_current_positive`, `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_delayed_birth`, `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_timing` |
 
 ## Command
 
@@ -37,7 +37,7 @@ conda activate habitat && \
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 PYTHONPATH=src/objectnav_core \
 python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
-  --output runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_delayed_birth \
+  --output runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_timing \
   --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
   --scene-root datasets/habitat/scene_datasets/hm3d \
   --rgb-noise-profile configs/noise/rgb_published_v1.yaml \
@@ -90,8 +90,10 @@ Per selected episode:
 | baseline geodesic | `1a96500` | `49` | `23` | `26` | first Grounding-DINO long-range smoke |
 | current-positive trust | `07ef48b` | `52` | `24` | `28` | `bed` memory catches up by one row |
 | delayed birth | `2e67295` | `52` | `24` | `28` | no metric change from current-positive run |
+| timing-metrics rerun | `5d0513f` | `52` | `24` | `28` | same behavior, adds timing fields |
 
-The delayed-birth run produced `114` trace rows, with phase counts `approach=87` and `confirm=27`.
+The timing-metrics rerun produced `114` trace rows, with phase counts
+`approach=87` and `confirm=27`.
 
 ### Memory Comparison After Delayed Birth
 
@@ -100,6 +102,27 @@ The delayed-birth run produced `114` trace rows, with phase counts `approach=87`
 | `on` | `38` | `24` | `11` | `13` | bed `0.980614`, toilet `0.997939`, plant `0.968501` |
 | `naive_count` | `38` | `28` | `13` | `15` | all `0.941192` |
 | `off` | `38` | `0` | `0` | `0` | all `0.811041` |
+
+### Timing Metrics After Timing Rerun
+
+Run-level `summary.json["memory_mode_metrics"]`:
+
+| Memory mode | Episodes | Successful episodes | Success rows | Raw trust rows | Gate rejections | Mean first-success step | Mean path to first success | Mean final `p_valid` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `on` | `3` | `3` | `11` | `24` | `13` | `8.666667` | `11.657279 m` | `0.982351` |
+| `naive_count` | `3` | `3` | `13` | `28` | `15` | `7.666667` | `10.492845 m` | `0.941192` |
+| `off` | `3` | `0` | `0` | `0` | `0` | n/a | n/a | `0.811041` |
+
+Per-category first success:
+
+| Category | Memory | First positive step | First raw trust step | First success step | Path to first success | Success rows |
+|---|---|---:|---:|---:|---:|---:|
+| `bed` | `on` | `3` | `4` | `4` | `4.284924 m` | `4` |
+| `bed` | `naive_count` | `3` | `4` | `4` | `4.284924 m` | `4` |
+| `toilet` | `on` | `3` | `4` | `9` | `15.498963 m` | `5` |
+| `toilet` | `naive_count` | `3` | `4` | `9` | `15.498963 m` | `5` |
+| `plant` | `on` | `1` | `2` | `13` | `15.187949 m` | `2` |
+| `plant` | `naive_count` | `1` | `2` | `10` | `11.694647 m` | `4` |
 
 Category detail:
 
@@ -120,6 +143,10 @@ Category detail:
 - The current-positive trust change improved the smoke by one success row, making `bed` match `naive_count`.
 - Delayed birth fixed the algorithm boundary but did not change this smoke because the first positive evidence appears early, especially for `plant` at step 1.
 - `plant` remains the blocking category: `memory=on` is more conservative and gets `2` gated successes versus `4` for `naive_count`.
+- The timing rerun shows no hidden efficiency win: `memory=on` succeeds in all
+  three episodes, but later than `naive_count` on average. The entire timing
+  gap comes from `plant`, where memory waits until the final confirm phase
+  while `naive_count` trusts during approach.
 
 ## Result
 
@@ -128,11 +155,16 @@ Category detail:
 1. The harness can run official episode-start to goal-viewpoint long-range replay with Grounding-DINO at `1280x720`.
 2. The current memory policy is conservative and can reduce raw trust, but it does not yet dominate positive-only counting on this repeated-positive smoke.
 3. Delayed birth is correct to keep, but it is not the main bottleneck for these selected episodes.
-4. The next larger run needs timing metrics and a stronger lifelong/expected-empty challenge before any paper claim.
+4. Timing metrics confirm the same conclusion: on this smoke, memory is safer
+   in raw-trust volume but slower to first success.
+5. The next larger run needs a stronger lifelong/expected-empty challenge
+   before any paper claim.
 
 ## Follow-up
 
-- Rerun this smoke after adding per-episode first-success and path-to-success metrics.
-- Scale to a larger `clean,mild,heavy` geodesic matrix only after the metrics can show both reliability and efficiency.
+- Do not scale this exact smoke as a main paper claim; it currently favors
+  positive-count accumulation.
+- Inspect or redesign the `plant` decision behavior before a larger matrix:
+  memory has higher final validity but reaches gated success later.
 - Add an expected-location-empty verification context before claiming stale-memory handling from Habitat replay.
 - Connect to an action-level Habitat follower after the replay metrics are stable.

@@ -468,6 +468,26 @@ After detector setup:
     `test_habitat_objectnav_rgb_noise_stress.py`
 - Created experiment report:
   `docs/experiments/2026-05-28-geodesic-path-grounding-dino-replay.md`
+- Pulled commit `5d0513f` on `badger-linux` and reran timing-metrics
+  verification:
+  - remote focused tests passed in `conda habitat`: `50` tests
+  - output:
+    `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_timing`
+  - selected episodes: `3`, `55`, `62`
+  - `memory_mode_metrics`:
+    - `on`: `3/3` successful episodes, `11` success rows, `24` raw trust,
+      `13` gate rejections, mean first-success step `8.666667`, mean path to
+      first success `11.657279 m`, mean final `p_valid=0.982351`
+    - `naive_count`: `3/3` successful episodes, `13` success rows, `28` raw
+      trust, `15` gate rejections, mean first-success step `7.666667`, mean
+      path to first success `10.492845 m`, mean final `p_valid=0.941192`
+    - `off`: `0/3` successful episodes
+  - category timing:
+    - `bed`: `on` and `naive_count` both first succeed at step `4`
+    - `toilet`: both first succeed at step `9`
+    - `plant`: `on` first succeeds at step `13`, `naive_count` at step `10`
+  - conclusion: this smoke still favors positive-count accumulation on
+    efficiency; do not scale it as a paper claim without a stronger challenge.
 
 Still not run:
 
@@ -483,8 +503,7 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
-- Linux rerun of the `geodesic_path` Grounding-DINO smoke after adding timing
-  metrics.
+- Expected-location-empty / stale-memory Habitat replay protocol.
 
 ## Known Risks
 
@@ -540,12 +559,11 @@ Still not run:
    Grounding-DINO `geodesic_path` smoke from `episode_start`; compare
    `summary.json["episode_selection"]`, `memory=on`, and `naive_count`.
    Completed for commit `2e67295`; delayed birth did not change the smoke.
-8. Pull the timing-metrics commit on `badger-linux`, rerun the same
-   Grounding-DINO `geodesic_path` smoke, and inspect
-   `summary.json["memory_mode_metrics"]`.
-9. If timing metrics show memory advantage, scale to a larger
-   `bed,toilet,plant` matrix with `clean,mild,heavy`; otherwise implement an
-   explicit expected-location-empty context before running a larger matrix.
+8. Implement an explicit expected-location-empty context before running a
+   larger matrix. The current geodesic smoke does not show a memory advantage.
+9. After that protocol exists, run a larger `bed,toilet,plant` matrix with
+   `clean,mild,heavy` and compare success episodes, first-success step,
+   path-to-first-success, raw trust, and gate rejections.
 10. Connect the replay harness to a real action-level Habitat follower and
    report navigation metrics.
 
