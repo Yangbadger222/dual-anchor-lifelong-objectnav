@@ -156,13 +156,33 @@ The immediate algorithmic conclusion is unchanged: keep the shared current-view
 gate. Without it, both memory `on` and `naive_count` would count many stale or
 false-positive raw-trust rows as success.
 
+## Detector Area Filter Follow-Up
+
+After this diagnostic export, the runner added a detector-side area sanity
+filter in commits `a146bf2` and `345429e`. The filter uses only detector
+geometry and image size, not Habitat GT. Two thresholds were checked on the
+same `plant,tv_monitor` subset:
+
+| Run | Max area ratio | Filtered detections | Positive rows | Out-of-view positive rows | Visible positive rows | Oracle-stop success rows | Result |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Unfiltered | n/a | n/a | `194` | `158` | `36` | `21` | Baseline diagnostic export |
+| Conservative filter | `0.70` | `190` | `164` | `128` | `36` | `21` | Reduces broad false positives without losing visible positives |
+| Aggressive filter | `0.40` | `272` | `114` | `102` | `12` | `11` | Over-filters and removes all plant visible positives |
+
+The project should keep the conservative `0.70` default for now. It removes
+pathological full-frame / union-mask detections while preserving the visible
+positive rows in this subset. The `0.40` sweep is useful evidence that area
+thresholds alone cannot solve the detector problem without harming `plant`.
+Remaining TV-monitor false positives need a better mask source, category
+sanity check, or appearance/segmentation validation rather than a stricter
+global area cutoff.
+
 ## Follow-up
 
 1. Manually review more than the four representative PNGs before making a paper
    claim about detector-vs-GT responsibility.
-2. For `tv_monitor`, add detector-side sanity checks such as maximum box area,
-   edge/full-frame box rejection, or a segmentation-backed mask before trusting
-   broad Grounding-DINO boxes.
+2. For `tv_monitor`, add a segmentation-backed mask or appearance sanity check
+   before trusting broad Grounding-DINO boxes.
 3. For `plant`, add an annotation-aware review bucket for edge-clipped GT and
    consider relaxing mask precision only in diagnostics, not in the main gate.
 4. Add visibility-aware episode selection so categories are evaluated on frames
