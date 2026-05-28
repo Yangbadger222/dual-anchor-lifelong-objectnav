@@ -101,6 +101,31 @@ memory updates, or detector outputs. The trace records a `debug_png` path only
 for exported rows so reviewers can jump from aggregate false-trust counts to
 the exact image evidence.
 
+## Update: Trace-Filtered Visual Diagnostics (2026-05-28)
+
+The visibility-challenge replay exposed a second diagnostic need: some frames
+need to be exported because their trace fields match a research question, even
+when they are not gate rejections. In particular, hidden-phase detector
+positives should be inspectable directly so we can tell whether Grounding-DINO
+is hallucinating objects or Habitat GT is too strict.
+
+The replay runner therefore extends the PNG export with optional trace filters:
+
+- `debug_export_replay_phases` filters by row `replay_phase`, for example
+  `depart,non_confirm`;
+- `debug_export_evidence_types` filters by row `evidence_type`, for example
+  `positive`;
+- `debug_export_categories` still scopes categories for both gate-rejection
+  and trace-filtered exports;
+- the existing `debug_export_gate_rejections` mode remains available and can be
+  combined with the trace filters;
+- per-category export caps, skipped counts, row-level `debug_png`, and summary
+  artifact reporting use the same code path.
+
+This remains instrumentation only. It must not change replay viewpoint
+selection, detector inference, evidence classification, memory updates,
+`naive_count`, or the shared decision-side gate.
+
 ## Update: Detector Area Sanity Filter (2026-05-28)
 
 The debug PNG review showed that some Grounding-DINO `tv_monitor` boxes cover

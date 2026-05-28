@@ -9,7 +9,9 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_STOP_ON_TRUST,
     DEFAULT_YOLO_PROMPT_MODE,
     DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES,
     DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+    DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
     DEFAULT_EPISODE_SELECTION_STRATEGY,
     DEFAULT_REPLAY_PROTOCOL,
@@ -194,8 +196,24 @@ def main() -> None:
         "--debug-export-categories",
         default=",".join(DEFAULT_DEBUG_EXPORT_CATEGORIES),
         help=(
-            "Comma-separated category filter for gate-rejection PNG export. "
+            "Comma-separated category filter for debug PNG export. "
             "Use an empty value to export every category."
+        ),
+    )
+    parser.add_argument(
+        "--debug-export-replay-phases",
+        default=",".join(DEFAULT_DEBUG_EXPORT_REPLAY_PHASES),
+        help=(
+            "Comma-separated replay_phase filter for debug PNG export. "
+            "Example: depart,non_confirm."
+        ),
+    )
+    parser.add_argument(
+        "--debug-export-evidence-types",
+        default=",".join(DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES),
+        help=(
+            "Comma-separated evidence_type filter for debug PNG export. "
+            "Example: positive."
         ),
     )
     parser.add_argument(
@@ -233,6 +251,8 @@ def main() -> None:
             episodes_per_category=args.episodes_per_category,
             debug_export_gate_rejections=args.debug_export_gate_rejections,
             debug_export_categories=_split_csv(args.debug_export_categories),
+            debug_export_replay_phases=_split_csv(args.debug_export_replay_phases),
+            debug_export_evidence_types=_split_csv(args.debug_export_evidence_types),
             debug_export_limit_per_category=args.debug_export_limit_per_category,
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio
@@ -271,6 +291,8 @@ def main() -> None:
             episodes_per_category=args.episodes_per_category,
             debug_export_gate_rejections=args.debug_export_gate_rejections,
             debug_export_categories=_split_csv(args.debug_export_categories),
+            debug_export_replay_phases=_split_csv(args.debug_export_replay_phases),
+            debug_export_evidence_types=_split_csv(args.debug_export_evidence_types),
             debug_export_limit_per_category=args.debug_export_limit_per_category,
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio

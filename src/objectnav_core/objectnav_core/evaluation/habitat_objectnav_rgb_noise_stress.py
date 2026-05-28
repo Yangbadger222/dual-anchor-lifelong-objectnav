@@ -88,6 +88,8 @@ DEFAULT_SENSOR_HEIGHT = 480
 DEFAULT_YOLO_PROMPT_MODE = "target"
 DEFAULT_STOP_ON_TRUST = True
 DEFAULT_DEBUG_EXPORT_CATEGORIES: tuple[str, ...] = ("plant", "tv_monitor")
+DEFAULT_DEBUG_EXPORT_REPLAY_PHASES: tuple[str, ...] = ()
+DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES: tuple[str, ...] = ()
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
@@ -163,6 +165,8 @@ def run_habitat_objectnav_rgb_noise_stress(
     episodes_per_category: int | None = None,
     debug_export_gate_rejections: bool = False,
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    debug_export_replay_phases: Sequence[str] = DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
+    debug_export_evidence_types: Sequence[str] = DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
@@ -210,6 +214,8 @@ def run_habitat_objectnav_rgb_noise_stress(
         episodes_per_category=episodes_per_category,
         debug_export_gate_rejections=debug_export_gate_rejections,
         debug_export_categories=debug_export_categories,
+        debug_export_replay_phases=debug_export_replay_phases,
+        debug_export_evidence_types=debug_export_evidence_types,
         debug_export_limit_per_category=debug_export_limit_per_category,
         max_detection_area_ratio=max_detection_area_ratio,
         episode_selection_strategy=episode_selection_strategy,
@@ -251,10 +257,15 @@ def run_habitat_objectnav_rgb_noise_stress(
     trace_rows: list[dict[str, Any]] = []
     episode_summaries: list[dict[str, Any]] = []
     debug_categories = _debug_category_filter(debug_export_categories)
+    debug_replay_phases = _debug_replay_phase_filter(debug_export_replay_phases)
+    debug_evidence_types = _debug_evidence_type_filter(debug_export_evidence_types)
+    debug_export_dir_name = _debug_export_directory_name(
+        debug_export_gate_rejections=debug_export_gate_rejections,
+        debug_export_replay_phases=debug_replay_phases,
+        debug_export_evidence_types=debug_evidence_types,
+    )
     debug_export_dir = (
-        output_path / "debug_gate_rejections"
-        if debug_export_gate_rejections
-        else None
+        output_path / debug_export_dir_name if debug_export_dir_name else None
     )
     debug_png_counts: dict[str, int] = {}
     debug_png_skipped_counts: dict[str, int] = {}
@@ -314,6 +325,8 @@ def run_habitat_objectnav_rgb_noise_stress(
                             stop_on_trust=stop_on_trust,
                             debug_export_gate_rejections=debug_export_gate_rejections,
                             debug_export_categories=debug_categories,
+                            debug_export_replay_phases=debug_replay_phases,
+                            debug_export_evidence_types=debug_evidence_types,
                             debug_export_dir=debug_export_dir,
                             debug_export_counts=debug_png_counts,
                             debug_export_skipped_counts=debug_png_skipped_counts,
@@ -350,6 +363,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         episode_summaries=episode_summaries,
         debug_png_counts=debug_png_counts,
         debug_png_skipped_counts=debug_png_skipped_counts,
+        debug_export_dir_name=debug_export_dir_name,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -377,6 +391,8 @@ def run_rgb_noise_stress_preflight(
     episodes_per_category: int | None = None,
     debug_export_gate_rejections: bool = False,
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    debug_export_replay_phases: Sequence[str] = DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
+    debug_export_evidence_types: Sequence[str] = DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
@@ -398,6 +414,8 @@ def run_rgb_noise_stress_preflight(
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     _validate_debug_export_limit(debug_export_limit_per_category)
+    _validate_debug_export_replay_phases(debug_export_replay_phases)
+    _validate_debug_export_evidence_types(debug_export_evidence_types)
     _validate_max_detection_area_ratio(max_detection_area_ratio)
     _validate_replay_protocol(replay_protocol)
     _validate_episode_selection(
@@ -413,6 +431,8 @@ def run_rgb_noise_stress_preflight(
     )
     if episodes_per_category is not None and episodes_per_category <= 0:
         raise ValueError("episodes_per_category must be positive when provided")
+    debug_replay_phases = _debug_replay_phase_filter(debug_export_replay_phases)
+    debug_evidence_types = _debug_evidence_type_filter(debug_export_evidence_types)
     controller = OutAndBackController()
     actions = controller.actions_for_episode(
         start_pose=(0.0, 0.0, 0.0),
@@ -453,6 +473,17 @@ def run_rgb_noise_stress_preflight(
         "memory_ablation": list(memory_ablation),
         "debug_export_gate_rejections": bool(debug_export_gate_rejections),
         "debug_export_categories": sorted(_debug_category_filter(debug_export_categories)),
+        "debug_export_replay_phases": _ordered_debug_replay_phases(
+            debug_replay_phases
+        ),
+        "debug_export_evidence_types": _ordered_debug_evidence_types(
+            debug_evidence_types
+        ),
+        "debug_export_directory": _debug_export_directory_name(
+            debug_export_gate_rejections=debug_export_gate_rejections,
+            debug_export_replay_phases=debug_replay_phases,
+            debug_export_evidence_types=debug_evidence_types,
+        ),
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "max_detection_area_ratio": max_detection_area_ratio,
         "replay_protocol": replay_protocol,
@@ -493,6 +524,8 @@ def _run_rgb_noise_episode(
     stop_on_trust: bool,
     debug_export_gate_rejections: bool = False,
     debug_export_categories: set[str] | None = None,
+    debug_export_replay_phases: set[str] | None = None,
+    debug_export_evidence_types: set[str] | None = None,
     debug_export_dir: Path | None = None,
     debug_export_counts: dict[str, int] | None = None,
     debug_export_skipped_counts: dict[str, int] | None = None,
@@ -656,15 +689,19 @@ def _run_rgb_noise_episode(
         )
         debug_png = ""
         if (
-            debug_export_gate_rejections
-            and debug_export_dir is not None
+            debug_export_dir is not None
             and debug_export_counts is not None
             and debug_export_skipped_counts is not None
-            and _should_export_gate_rejection_debug(
+            and _should_export_debug_png(
                 object_category=episode.object_category,
                 decision=decision.decision,
                 gated_decision=gated_decision,
+                replay_phase=replay_phase,
+                evidence_type=evidence_type,
                 debug_categories=debug_export_categories,
+                debug_export_gate_rejections=debug_export_gate_rejections,
+                debug_export_replay_phases=debug_export_replay_phases,
+                debug_export_evidence_types=debug_export_evidence_types,
             )
         ):
             debug_key = _debug_category_token(episode.object_category)
@@ -1050,14 +1087,75 @@ def _should_export_gate_rejection_debug(
     gated_decision: DecisionType,
     debug_categories: set[str] | None,
 ) -> bool:
-    if decision is not DecisionType.TRUST or gated_decision is DecisionType.TRUST:
+    return _should_export_debug_png(
+        object_category=object_category,
+        decision=decision,
+        gated_decision=gated_decision,
+        replay_phase="",
+        evidence_type=EvidenceType.UNKNOWN,
+        debug_categories=debug_categories,
+        debug_export_gate_rejections=True,
+        debug_export_replay_phases=set(),
+        debug_export_evidence_types=set(),
+    )
+
+
+def _should_export_debug_png(
+    *,
+    object_category: str,
+    decision: DecisionType,
+    gated_decision: DecisionType,
+    replay_phase: str,
+    evidence_type: EvidenceType,
+    debug_categories: set[str] | None,
+    debug_export_gate_rejections: bool,
+    debug_export_replay_phases: set[str] | None,
+    debug_export_evidence_types: set[str] | None,
+) -> bool:
+    if not _debug_category_matches(object_category, debug_categories):
         return False
+    if (
+        debug_export_gate_rejections
+        and decision is DecisionType.TRUST
+        and gated_decision is not DecisionType.TRUST
+    ):
+        return True
+    return _debug_trace_filter_matches(
+        replay_phase=replay_phase,
+        evidence_type=evidence_type,
+        debug_export_replay_phases=debug_export_replay_phases,
+        debug_export_evidence_types=debug_export_evidence_types,
+    )
+
+
+def _debug_category_matches(
+    object_category: str,
+    debug_categories: set[str] | None,
+) -> bool:
     normalized_categories = {
         _debug_category_token(category) for category in (debug_categories or set())
     }
     return not normalized_categories or (
         _debug_category_token(object_category) in normalized_categories
     )
+
+
+def _debug_trace_filter_matches(
+    *,
+    replay_phase: str,
+    evidence_type: EvidenceType,
+    debug_export_replay_phases: set[str] | None,
+    debug_export_evidence_types: set[str] | None,
+) -> bool:
+    phase_filter = debug_export_replay_phases or set()
+    evidence_filter = debug_export_evidence_types or set()
+    if not phase_filter and not evidence_filter:
+        return False
+    if phase_filter and replay_phase not in phase_filter:
+        return False
+    if evidence_filter and evidence_type.value not in evidence_filter:
+        return False
+    return True
 
 
 def _write_gate_rejection_debug_png(
@@ -1076,7 +1174,7 @@ def _write_gate_rejection_debug_png(
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Pillow is required for debug PNG export. Install pillow or disable "
-            "--debug-export-gate-rejections."
+            "debug PNG export."
         ) from exc
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1258,7 +1356,8 @@ def _debug_metadata_lines(
         ),
         (
             f"episode={metadata.get('episode_index')} id={metadata.get('episode_id')} "
-            f"step={metadata.get('step_index')} action={metadata.get('action')}"
+            f"step={metadata.get('step_index')} phase={metadata.get('replay_phase')} "
+            f"action={metadata.get('action')}"
         ),
         (
             f"raw={metadata.get('raw_decision')} gated={metadata.get('decision')} "
@@ -1301,6 +1400,8 @@ def _debug_png_filename(metadata: dict[str, Any], sequence_id: int) -> str:
     category = _debug_category_token(str(metadata.get("object_category", "unknown")))
     memory = _sanitize_debug_token(str(metadata.get("memory_mode", "unknown")))
     noise = _sanitize_debug_token(str(metadata.get("noise_level", "unknown")))
+    phase = _sanitize_debug_token(str(metadata.get("replay_phase", "unknown")))
+    evidence = _sanitize_debug_token(str(metadata.get("evidence_type", "unknown")))
     reason = _sanitize_debug_token(
         str(metadata.get("decision_gate_reason", "trust_rejected"))
     )
@@ -1308,12 +1409,53 @@ def _debug_png_filename(metadata: dict[str, Any], sequence_id: int) -> str:
     step = _sanitize_debug_token(str(metadata.get("step_index", "unknown")))
     return (
         f"{sequence_id:03d}_{category}_{memory}_{noise}_"
-        f"ep{episode}_step{step}_{reason}.png"
+        f"ep{episode}_step{step}_{phase}_{evidence}_{reason}.png"
     )
 
 
 def _debug_category_filter(categories: Sequence[str]) -> set[str]:
     return {_debug_category_token(category) for category in categories}
+
+
+def _debug_replay_phase_filter(phases: Sequence[str]) -> set[str]:
+    return {phase.strip().lower() for phase in phases if phase.strip()}
+
+
+def _debug_evidence_type_filter(evidence_types: Sequence[str]) -> set[str]:
+    return {
+        evidence_type.strip().lower()
+        for evidence_type in evidence_types
+        if evidence_type.strip()
+    }
+
+
+def _ordered_debug_replay_phases(phases: set[str]) -> list[str]:
+    return [phase for phase in REPLAY_PHASES if phase in phases]
+
+
+def _ordered_debug_evidence_types(evidence_types: set[str]) -> list[str]:
+    return [
+        evidence.value for evidence in EvidenceType if evidence.value in evidence_types
+    ]
+
+
+def _debug_export_directory_name(
+    *,
+    debug_export_gate_rejections: bool,
+    debug_export_replay_phases: set[str],
+    debug_export_evidence_types: set[str],
+) -> str | None:
+    if not (
+        debug_export_gate_rejections
+        or debug_export_replay_phases
+        or debug_export_evidence_types
+    ):
+        return None
+    if debug_export_gate_rejections and not (
+        debug_export_replay_phases or debug_export_evidence_types
+    ):
+        return "debug_gate_rejections"
+    return "debug_rows"
 
 
 def _debug_category_token(category: str) -> str:
@@ -1832,6 +1974,7 @@ def _summarize_rgb_noise_run(
     episode_summaries: Sequence[dict[str, Any]],
     debug_png_counts: dict[str, int] | None = None,
     debug_png_skipped_counts: dict[str, int] | None = None,
+    debug_export_dir_name: str | None = None,
 ) -> dict[str, Any]:
     artifact_files = {
         "trace": "rgb_noise_trace.csv",
@@ -1839,8 +1982,13 @@ def _summarize_rgb_noise_run(
         "memory": "lifelong_memory.sqlite",
         "scene_dataset_config": scene_dataset_config.name,
     }
-    if debug_png_counts:
-        artifact_files["debug_gate_rejections"] = "debug_gate_rejections/"
+    if debug_png_counts and debug_export_dir_name is not None:
+        artifact_key = (
+            "debug_gate_rejections"
+            if debug_export_dir_name == "debug_gate_rejections"
+            else "debug_rows"
+        )
+        artifact_files[artifact_key] = f"{debug_export_dir_name}/"
     summary = dict(config_summary)
     summary.update(
         {
@@ -2002,6 +2150,25 @@ def _validate_yolo_prompt_mode(yolo_prompt_mode: str) -> None:
 def _validate_debug_export_limit(limit: int) -> None:
     if limit <= 0:
         raise ValueError("debug_export_limit_per_category must be positive")
+
+
+def _validate_debug_export_replay_phases(phases: Sequence[str]) -> None:
+    unknown = sorted(_debug_replay_phase_filter(phases) - set(REPLAY_PHASES))
+    if unknown:
+        raise ValueError(
+            f"debug_export_replay_phases must use {', '.join(REPLAY_PHASES)}; "
+            f"got {', '.join(unknown)}"
+        )
+
+
+def _validate_debug_export_evidence_types(evidence_types: Sequence[str]) -> None:
+    supported = {evidence.value for evidence in EvidenceType}
+    unknown = sorted(_debug_evidence_type_filter(evidence_types) - supported)
+    if unknown:
+        raise ValueError(
+            "debug_export_evidence_types must use "
+            f"{', '.join(sorted(supported))}; got {', '.join(unknown)}"
+        )
 
 
 def _validate_max_detection_area_ratio(max_detection_area_ratio: float | None) -> None:

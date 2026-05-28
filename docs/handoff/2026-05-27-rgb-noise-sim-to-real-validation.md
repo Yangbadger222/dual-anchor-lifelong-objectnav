@@ -367,6 +367,16 @@ After detector setup:
   - visual read: Grounding-DINO repeatedly boxes door/furniture regions in the
     turned-around hidden view. This looks like detector false positives under
     the `bed` prompt rather than Habitat GT being too strict on a visible bed.
+- Added local trace-filtered debug PNG export:
+  - CLI flags:
+    `--debug-export-replay-phases` and `--debug-export-evidence-types`
+  - trace-filtered exports write to `debug_rows/`
+  - the old `--debug-export-gate-rejections` mode still writes to
+    `debug_gate_rejections/` when used alone
+  - local tests passed: `35` focused tests across RGB-noise stress and grid
+    trace
+  - CLI preflight recorded `debug_export_directory=debug_rows` for
+    `depart,non_confirm` + `positive`
 
 Still not run:
 
@@ -375,9 +385,9 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Trace-filtered PNG export for hidden-phase positives. Current debug export
-  can capture them through gate rejections, but it is not phase/evidence
-  selective.
+- Linux trace-filtered PNG diagnostic for hidden-phase positives. The export
+  feature is implemented locally, but the remote Habitat/Grounding-DINO run has
+  not been executed yet.
 - Full planner-backed Habitat action protocol. The new visibility challenge
   teleports between measured viewpoints; it is still a memory/evidence stress
   test, not a navigation metric.
@@ -419,8 +429,9 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Add a trace-filtered debug export for hidden-phase positives so detector
-   false positives can be inspected without exporting broad gate rejections.
+3. Pull the trace-filtered debug export on `badger-linux` and run a bed-only
+   hidden-positive diagnostic using `--debug-export-replay-phases
+   depart,non_confirm` and `--debug-export-evidence-types positive`.
 4. Decide whether hidden-view `unknown` is enough for the next memory claim or
    whether the harness needs an explicit expected-location-empty evidence
    context to produce true `NON_CONFIRMATION`.

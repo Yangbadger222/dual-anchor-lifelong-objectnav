@@ -101,6 +101,26 @@ def test_preflight_records_gate_rejection_debug_export_config(tmp_path: Path) ->
     assert summary["debug_export_limit_per_category"] == 12
 
 
+def test_preflight_records_trace_filtered_debug_export_config(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on",),
+        seed=313,
+        debug_export_categories=("bed",),
+        debug_export_replay_phases=("depart", "non_confirm"),
+        debug_export_evidence_types=("positive",),
+    )
+
+    assert summary["debug_export_replay_phases"] == ["depart", "non_confirm"]
+    assert summary["debug_export_evidence_types"] == ["positive"]
+
+
 def test_preflight_records_structured_episode_selection_config(tmp_path: Path) -> None:
     summary = stress.run_rgb_noise_stress_preflight(
         output_dir=tmp_path,
@@ -163,6 +183,71 @@ def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
         decision=DecisionType.VERIFY,
         gated_decision=DecisionType.VERIFY,
         debug_categories=categories,
+    )
+
+
+def test_trace_filtered_debug_export_condition_matches_hidden_positive_rows() -> None:
+    categories = {"bed"}
+    replay_phases = {"depart", "non_confirm"}
+    evidence_types = {"positive"}
+
+    assert stress._should_export_debug_png(
+        object_category="bed",
+        decision=DecisionType.VERIFY,
+        gated_decision=DecisionType.VERIFY,
+        replay_phase="non_confirm",
+        evidence_type=EvidenceType.POSITIVE,
+        debug_categories=categories,
+        debug_export_gate_rejections=False,
+        debug_export_replay_phases=replay_phases,
+        debug_export_evidence_types=evidence_types,
+    )
+    assert not stress._should_export_debug_png(
+        object_category="bed",
+        decision=DecisionType.VERIFY,
+        gated_decision=DecisionType.VERIFY,
+        replay_phase="confirm",
+        evidence_type=EvidenceType.POSITIVE,
+        debug_categories=categories,
+        debug_export_gate_rejections=False,
+        debug_export_replay_phases=replay_phases,
+        debug_export_evidence_types=evidence_types,
+    )
+    assert not stress._should_export_debug_png(
+        object_category="bed",
+        decision=DecisionType.VERIFY,
+        gated_decision=DecisionType.VERIFY,
+        replay_phase="non_confirm",
+        evidence_type=EvidenceType.UNKNOWN,
+        debug_categories=categories,
+        debug_export_gate_rejections=False,
+        debug_export_replay_phases=replay_phases,
+        debug_export_evidence_types=evidence_types,
+    )
+    assert not stress._should_export_debug_png(
+        object_category="plant",
+        decision=DecisionType.VERIFY,
+        gated_decision=DecisionType.VERIFY,
+        replay_phase="non_confirm",
+        evidence_type=EvidenceType.POSITIVE,
+        debug_categories=categories,
+        debug_export_gate_rejections=False,
+        debug_export_replay_phases=replay_phases,
+        debug_export_evidence_types=evidence_types,
+    )
+
+
+def test_debug_export_condition_preserves_gate_rejection_mode() -> None:
+    assert stress._should_export_debug_png(
+        object_category="tv_monitor",
+        decision=DecisionType.TRUST,
+        gated_decision=DecisionType.VERIFY,
+        replay_phase="confirm",
+        evidence_type=EvidenceType.UNKNOWN,
+        debug_categories={"tv_monitor"},
+        debug_export_gate_rejections=True,
+        debug_export_replay_phases=set(),
+        debug_export_evidence_types=set(),
     )
 
 
