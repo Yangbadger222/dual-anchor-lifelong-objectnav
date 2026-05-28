@@ -10,6 +10,7 @@ def test_importing_rgb_noise_stress_does_not_import_habitat_or_ultralytics() -> 
     assert "habitat" not in sys.modules
     assert "habitat_sim" not in sys.modules
     assert "ultralytics" not in sys.modules
+    assert "transformers" not in sys.modules
 
 
 def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
@@ -56,6 +57,26 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 
 
+def test_preflight_accepts_grounding_dino_detector(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on",),
+        seed=313,
+        grounding_dino_text_threshold=0.2,
+    )
+
+    assert "grounding_dino" in stress.SUPPORTED_DETECTORS
+    assert summary["detector"] == "grounding_dino"
+    assert summary["detector_weights"] == "IDEA-Research/grounding-dino-tiny"
+    assert summary["grounding_dino_text_threshold"] == 0.2
+
+
 def test_default_yolo_prompting_is_target_conditioned() -> None:
     assert stress.DEFAULT_SENSOR_WIDTH == 640
     assert stress.DEFAULT_SENSOR_HEIGHT == 480
@@ -75,6 +96,30 @@ def test_default_yolo_prompting_is_target_conditioned() -> None:
         "toilet",
         "target_aliases",
     )
+
+
+def test_detector_adapter_cache_supports_grounding_dino() -> None:
+    cache: dict[tuple[str, tuple[str, ...]], object] = {}
+
+    adapter = stress._detector_for_target(
+        detector_cache=cache,
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        grounding_dino_text_threshold=0.2,
+        target_category="tv_monitor",
+        yolo_prompt_mode="target",
+        detector_factory=lambda **kwargs: kwargs,
+    )
+
+    assert adapter == {
+        "model_id": "IDEA-Research/grounding-dino-tiny",
+        "categories": ["tv monitor"],
+        "conf": 0.25,
+        "text_threshold": 0.2,
+        "device": "auto",
+    }
+    assert list(cache) == [("grounding_dino", ("tv monitor",))]
 
 
 def test_sensor_resolution_prefers_explicit_rectangular_dimensions() -> None:
@@ -182,6 +227,26 @@ def test_preflight_rejects_unknown_yolo_prompt_mode(tmp_path: Path) -> None:
         assert "yolo_prompt_mode" in str(exc)
     else:
         raise AssertionError("unknown yolo prompt modes should fail preflight")
+
+
+def test_preflight_rejects_bad_grounding_dino_text_threshold(tmp_path: Path) -> None:
+    try:
+        stress.run_rgb_noise_stress_preflight(
+            output_dir=tmp_path,
+            rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+            depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+            noise_levels=("clean",),
+            detector="grounding_dino",
+            detector_weights="IDEA-Research/grounding-dino-tiny",
+            detector_conf=0.25,
+            grounding_dino_text_threshold=1.1,
+            memory_ablation=("on",),
+            seed=313,
+        )
+    except ValueError as exc:
+        assert "grounding_dino_text_threshold" in str(exc)
+    else:
+        raise AssertionError("bad Grounding-DINO text thresholds should fail preflight")
 
 
 def test_preflight_rejects_noise_level_missing_from_profile(tmp_path: Path) -> None:

@@ -38,6 +38,7 @@ from objectnav_core.memory.usability import (
     UsabilityDecisionPolicy,
     UsabilityUpdater,
 )
+from objectnav_core.perception.grounding_dino_adapter import GroundingDinoDetector
 from objectnav_core.perception.yolo_world_adapter import Detection, YoloWorldDetector
 from objectnav_core.simulation.depth_noise import DepthNoisePipelineD435
 from objectnav_core.simulation.depth_noise import DepthNoiseProfile
@@ -54,7 +55,11 @@ TARGET_CATEGORIES: tuple[str, ...] = (
     "toilet",
     "tv_monitor",
 )
-SUPPORTED_DETECTORS: tuple[str, ...] = ("yolo_world", "oracle_bbox")
+SUPPORTED_DETECTORS: tuple[str, ...] = (
+    "yolo_world",
+    "grounding_dino",
+    "oracle_bbox",
+)
 SUPPORTED_MEMORY_ABLATIONS: tuple[str, ...] = ("on", "off")
 SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
     "target",
@@ -100,6 +105,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
+    grounding_dino_text_threshold: float = 0.25,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
     target_categories: Sequence[str] = TARGET_CATEGORIES,
@@ -131,6 +137,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
+        grounding_dino_text_threshold=grounding_dino_text_threshold,
         memory_ablation=memory_ablation,
         seed=seed,
         yolo_prompt_mode=yolo_prompt_mode,
@@ -146,7 +153,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     rgb_noise = RgbNoisePipeline(rgb_profile, seed=seed)
     depth_noise = DepthNoisePipelineD435(depth_profile, seed=seed)
     controller = OutAndBackController()
-    detector_cache: dict[tuple[str, ...], YoloWorldDetector] = {}
+    detector_cache: dict[tuple[str, tuple[str, ...]], Any] = {}
 
     dataset_path = Path(dataset_dir).expanduser().resolve()
     scene_root_path = Path(scene_root).expanduser().resolve()
@@ -199,11 +206,12 @@ def run_habitat_objectnav_rgb_noise_stress(
                             rgb_noise=rgb_noise,
                             depth_noise=depth_noise,
                             detector=detector,
-                            detector_adapter=_yolo_detector_for_target(
+                            detector_adapter=_detector_for_target(
                                 detector_cache=detector_cache,
                                 detector=detector,
                                 detector_weights=detector_weights,
                                 detector_conf=detector_conf,
+                                grounding_dino_text_threshold=grounding_dino_text_threshold,
                                 target_category=episode.object_category,
                                 yolo_prompt_mode=yolo_prompt_mode,
                             ),
@@ -256,6 +264,7 @@ def run_rgb_noise_stress_preflight(
     detector_conf: float,
     memory_ablation: Sequence[str],
     seed: int,
+    grounding_dino_text_threshold: float = 0.25,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
     sensor_size: int | None = None,
@@ -272,6 +281,7 @@ def run_rgb_noise_stress_preflight(
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
     _validate_noise_levels(noise_levels, rgb_profile, depth_profile)
     _validate_detector(detector, detector_conf)
+    _validate_grounding_dino_text_threshold(grounding_dino_text_threshold)
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
@@ -299,6 +309,7 @@ def run_rgb_noise_stress_preflight(
         "detector": detector,
         "detector_weights": detector_weights,
         "detector_conf": detector_conf,
+        "grounding_dino_text_threshold": grounding_dino_text_threshold,
         "yolo_prompt_mode": yolo_prompt_mode,
         "stop_on_trust": bool(stop_on_trust),
         "sensor_size": sensor_size,
@@ -336,7 +347,7 @@ def _run_rgb_noise_episode(
     rgb_noise: RgbNoisePipeline,
     depth_noise: DepthNoisePipelineD435,
     detector: str,
-    detector_adapter: YoloWorldDetector | None,
+    detector_adapter: YoloWorldDetector | GroundingDinoDetector | None,
     accepted_detection_labels: set[str],
     yolo_prompt_categories: Sequence[str],
     semantic_id_to_category: dict[int, str],
@@ -549,7 +560,7 @@ def _detector_mask(
             )
         ]
     if detector_adapter is None:
-        raise RuntimeError("detector_adapter is required for yolo_world")
+        raise RuntimeError(f"detector_adapter is required for {detector}")
     detections = [
         detection
         for detection in detector_adapter.detect(noisy_rgb)
@@ -561,26 +572,40 @@ def _detector_mask(
     return mask, detections
 
 
-def _yolo_detector_for_target(
+def _detector_for_target(
     *,
-    detector_cache: dict[tuple[str, ...], YoloWorldDetector],
+    detector_cache: dict[tuple[str, tuple[str, ...]], Any],
     detector: str,
     detector_weights: str,
     detector_conf: float,
+    grounding_dino_text_threshold: float,
     target_category: str,
     yolo_prompt_mode: str,
-) -> YoloWorldDetector | None:
-    if detector != "yolo_world":
+    detector_factory: Any | None = None,
+) -> YoloWorldDetector | GroundingDinoDetector | None:
+    if detector not in {"yolo_world", "grounding_dino"}:
         return None
     prompt_categories = _yolo_prompt_categories(target_category, yolo_prompt_mode)
-    if prompt_categories not in detector_cache:
-        detector_cache[prompt_categories] = YoloWorldDetector(
-            weights=detector_weights,
-            categories=list(prompt_categories),
-            conf=detector_conf,
-            device="auto",
-        )
-    return detector_cache[prompt_categories]
+    cache_key = (detector, prompt_categories)
+    if cache_key not in detector_cache:
+        if detector == "yolo_world":
+            factory = detector_factory or YoloWorldDetector
+            detector_cache[cache_key] = factory(
+                weights=detector_weights,
+                categories=list(prompt_categories),
+                conf=detector_conf,
+                device="auto",
+            )
+        else:
+            factory = detector_factory or GroundingDinoDetector
+            detector_cache[cache_key] = factory(
+                model_id=detector_weights,
+                categories=list(prompt_categories),
+                conf=detector_conf,
+                text_threshold=grounding_dino_text_threshold,
+                device="auto",
+            )
+    return detector_cache[cache_key]
 
 
 def _yolo_prompt_categories(target_category: str, yolo_prompt_mode: str) -> tuple[str, ...]:
@@ -849,6 +874,11 @@ def _validate_detector(detector: str, detector_conf: float) -> None:
         )
     if not 0.0 <= detector_conf <= 1.0:
         raise ValueError("detector_conf must be in [0, 1]")
+
+
+def _validate_grounding_dino_text_threshold(text_threshold: float) -> None:
+    if not 0.0 <= text_threshold <= 1.0:
+        raise ValueError("grounding_dino_text_threshold must be in [0, 1]")
 
 
 def _validate_memory_ablation(memory_ablation: Sequence[str]) -> None:

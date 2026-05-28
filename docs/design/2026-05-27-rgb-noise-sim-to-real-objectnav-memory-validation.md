@@ -18,6 +18,28 @@ Status: Approved
 | Revisit strategy | `out_and_back` controller as v1; frontier-based revisit deferred | Minimum that exercises Dual-Anchor without building a planner |
 | ObjectNav success metric | Oracle stop (`TRUST` while within 1.0 m and target in view) for v1 | Acceptable under the robotics-systems venue decision; no learned policy needed |
 
+## Update: Grounding-DINO Detector Comparison (2026-05-28)
+
+The first YOLO-World detector category qualification at `1280x720` showed that
+`bed`, `sofa`, and `toilet` are usable, while `plant`, `tv_monitor`, and
+`chair` remain blocked by detector and/or visibility issues. The next detector
+comparison adds **Grounding-DINO** as a second real open-vocabulary detector
+backend under the same harness.
+
+The comparison must preserve the existing evaluation boundary:
+
+- Grounding-DINO replaces only the detector adapter.
+- RGB/depth noise, oracle visibility, memory update, stop-on-trust semantics,
+  category balancing, and summary metrics remain unchanged.
+- Grounding-DINO detections are converted to the same
+  `(category, bbox, confidence, mask)` interface as YOLO-World, with masks
+  derived from axis-aligned boxes for v1.
+- The first run is a clean `1280x720` detector category qualification, not a
+  full noise-memory matrix.
+
+This makes the outcome directly comparable with the YOLO-World qualification
+report and keeps detector failures separate from memory-algorithm behavior.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so
@@ -106,17 +128,22 @@ This design owns:
   sees it.
 - A **depth noise pipeline** implementing Nguyen 2012 axial + lateral noise
   for Intel RealSense D435, applied to Habitat depth observations.
-- A **detector adapter** wrapping **YOLO-World** (Ultralytics
-  `YOLOWorld('yolov8s-worldv2.pt')` or equivalent) that produces per-frame
-  `(category, bbox, confidence, mask)` tuples. For the ObjectNav harness the
-  default prompt policy is target-conditioned: YOLO-World is prompted with the
-  current episode goal category rather than the full 6-category set. This
-  matches the ObjectNav interface, where the goal category is known, and avoids
-  open-vocabulary class competition such as visible `toilet` regions being
-  labeled `bed`. The legacy full category prompt set remains available as
-  `--yolo-prompt-mode all_categories` for ablations. Masks are derived from
-  boxes (axis-aligned) for v1; instance masks via YOLO-World's segmentation head
-  are deferred to v2.
+- **Detector adapters** wrapping real open-vocabulary detectors that produce
+  per-frame `(category, bbox, confidence, mask)` tuples:
+  - **YOLO-World** via Ultralytics `YOLOWorld('yolov8s-worldv2.pt')` or
+    equivalent.
+  - **Grounding-DINO** via Hugging Face Transformers
+    `AutoProcessor` / `AutoModelForZeroShotObjectDetection`, defaulting to
+    `IDEA-Research/grounding-dino-tiny` unless overridden by
+    `--detector-weights`.
+  For the ObjectNav harness the default prompt policy is target-conditioned:
+  the detector is prompted with the current episode goal category rather than
+  the full 6-category set. This matches the ObjectNav interface, where the
+  goal category is known, and avoids open-vocabulary class competition such as
+  visible `toilet` regions being labeled `bed`. The legacy full category prompt
+  set remains available as `--yolo-prompt-mode all_categories` for ablations.
+  Masks are derived from boxes (axis-aligned) for v1; instance masks via a
+  segmentation head are deferred to v2.
 - A **revisit controller** (`out_and_back`) that produces an action
   sequence guaranteed to view the target from ≥2 distinct viewpoints with
   a non-target interval in between.
@@ -203,6 +230,27 @@ python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
   --seed 313
 ```
 
+Grounding-DINO should use the same qualification protocol:
+
+```bash
+python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_usability/grounding_dino_category_qualification_1280x720 \
+  --noise-levels clean \
+  --detector grounding_dino \
+  --detector-weights IDEA-Research/grounding-dino-tiny \
+  --detector-conf 0.25 \
+  --grounding-dino-text-threshold 0.25 \
+  --memory-ablation on \
+  --episodes-per-category 2 \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --yolo-prompt-mode target \
+  --stop-on-trust \
+  --seed 313
+```
+
 Python interfaces (new):
 
 - `simulation/rgb_noise.py`
@@ -221,6 +269,11 @@ Python interfaces (new):
   - `class YoloWorldDetector(weights: str, categories: list[str], conf: float, device: str)`
   - `detect(rgb: np.uint8[H,W,3]) -> list[Detection]`
   - `Detection = (category: str, bbox: tuple[int,int,int,int], confidence: float, mask: np.bool_[H,W])`
+- `perception/grounding_dino_adapter.py`
+  - `class GroundingDinoDetector(model_id: str, categories: list[str], conf: float, text_threshold: float, device: str)`
+  - `detect(rgb: np.uint8[H,W,3]) -> list[Detection]`
+  - Uses the same `Detection` tuple shape as YOLO-World so the Habitat and
+    memory harness does not care which detector produced the boxes.
 - `simulation/revisit_controller.py`
   - `class OutAndBackController(forward_actions)`
   - `actions_for_episode(start_pose, target_pose) -> list[str]`

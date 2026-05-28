@@ -8,6 +8,7 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_SENSOR_WIDTH,
     DEFAULT_STOP_ON_TRUST,
     DEFAULT_YOLO_PROMPT_MODE,
+    SUPPORTED_DETECTORS,
     SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
     run_rgb_noise_stress_preflight,
@@ -47,15 +48,19 @@ def main() -> None:
     parser.add_argument(
         "--detector",
         default="yolo_world",
-        choices=("yolo_world", "oracle_bbox"),
+        choices=SUPPORTED_DETECTORS,
         help="Detector backend. oracle_bbox is for smoke tests only.",
     )
     parser.add_argument(
         "--detector-weights",
         default="yolov8s-worldv2.pt",
-        help="YOLO-World weights name or path.",
+        help=(
+            "Detector weights/model id. Examples: yolov8s-worldv2.pt or "
+            "IDEA-Research/grounding-dino-tiny."
+        ),
     )
     parser.add_argument("--detector-conf", type=float, default=0.25)
+    parser.add_argument("--grounding-dino-text-threshold", type=float, default=0.25)
     parser.add_argument(
         "--yolo-prompt-mode",
         default=DEFAULT_YOLO_PROMPT_MODE,
@@ -124,6 +129,7 @@ def main() -> None:
             detector=args.detector,
             detector_weights=args.detector_weights,
             detector_conf=args.detector_conf,
+            grounding_dino_text_threshold=args.grounding_dino_text_threshold,
             memory_ablation=_split_csv(args.memory_ablation),
             seed=args.seed,
             yolo_prompt_mode=args.yolo_prompt_mode,
@@ -145,6 +151,7 @@ def main() -> None:
             detector=args.detector,
             detector_weights=args.detector_weights,
             detector_conf=args.detector_conf,
+            grounding_dino_text_threshold=args.grounding_dino_text_threshold,
             memory_ablation=_split_csv(args.memory_ablation),
             max_episodes=args.max_episodes,
             start_source=args.start_source,
