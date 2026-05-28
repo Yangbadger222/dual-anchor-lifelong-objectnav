@@ -2,7 +2,7 @@
 
 Date: 2026-05-27  
 Owner: Codex  
-Status: Ready For Detector Category Qualification
+Status: Ready For Visibility-Aware Qualification And Detector Fixes
 
 ## Current State
 
@@ -110,11 +110,36 @@ After detector setup:
   - oracle-stop success rows: `0`; aliases degraded toilet and did not help plant
 - Wrote a detailed local HTML status report:
   - `docs/experiments/2026-05-27-yolo-world-objectnav-status-report.zh.html`
+- Pulled commit `18254e7` on `badger-linux`, ran focused tests, and started
+  real-resolution detector category qualification:
+  - output: `runs/habitat_usability/detector_category_qualification_1280x720_epc1`
+  - config: clean RGB, `sensor_resolution=1280x720`, `episodes_per_category=1`,
+    `yolo_prompt_mode=target`, `stop_on_trust=true`
+  - first-pass detector-ready categories: `bed`, `sofa`, `toilet`
+  - first-pass blockers: `plant`, `tv_monitor`; `chair` was not assessable
+    because the first selected episode had zero target-visible rows
+- Ran full-trace two-episode-per-category qualification:
+  - output: `runs/habitat_usability/detector_category_qualification_1280x720_epc2_fulltrace`
+  - episodes completed: `12`
+  - trace rows: `180`
+  - detector-ready: `bed`, `sofa`, usable/view-sensitive `toilet`
+  - blockers: `plant`, `tv_monitor`
+  - `chair` still had `0` target-visible rows in the first two episodes
+- Ran chair/tv-monitor probe:
+  - output: `runs/habitat_usability/detector_category_qualification_1280x720_chair_tv_probe`
+  - chair: 7 sampled episodes, but only sparse or zero target-visible rows and
+    no positives
+  - tv-monitor: 3 sampled episodes, 2 visible rows each, no positives
+- Recorded this in
+  `docs/experiments/2026-05-28-detector-category-qualification-1280x720.md`.
+- Wrote a detailed local HTML report:
+  - `docs/experiments/2026-05-28-detector-category-qualification-1280x720.zh.html`
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
-- Full category qualification across ObjectNav classes with enough episodes per class.
+- Visibility-aware category qualification that selects episodes by actual
+  oracle-visible reset/goal-viewpoint rows.
 - Full `clean/mild/heavy x memory on/off` matrix.
 
 ## Known Risks
@@ -126,15 +151,21 @@ Still not run:
 - Plant remains a detector/category bottleneck. Raw low-threshold probes with
   `plant`, `potted plant`, `houseplant`, `indoor plant`, and
   `decorative plant` did not produce target-overlapping boxes above 0.25.
+- `tv_monitor` is also a detector/visibility blocker at 1280x720 under current
+  prompts and sampled views.
+- `chair` cannot be evaluated from the current early sampled goal viewpoints;
+  semantic chair IDs exist, but sampled episodes have zero or sparse visible
+  target rows.
 - The out-and-back controller is a deterministic action retrace helper, not a navmesh-aware `ShortestPathFollower` integration yet.
 - The success metric is oracle-stop row count, not official Habitat SPL.
 
 ## Next Recommended Step
 
-1. Review the HTML status report locally.
-2. Run detector category qualification before the full 6-cell matrix.
-3. Fix or explicitly scope the plant detector limitation.
-4. Then run the `clean/mild/heavy x memory on/off` matrix.
+1. Add visibility-aware episode selection for detector qualification.
+2. Generate debug PNGs for `plant`, `tv_monitor`, and sparse `chair` views.
+3. Fix or explicitly scope `plant` / `tv_monitor` detector limitations.
+4. Run the first full matrix only on detector-ready categories (`bed`, `sofa`,
+   `toilet`) unless blockers are fixed.
 
 ## Context for Next Contributor
 

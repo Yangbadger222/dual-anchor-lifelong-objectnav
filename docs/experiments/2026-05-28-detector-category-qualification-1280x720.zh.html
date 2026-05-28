@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>1280x720 YOLO-World Detector Category Qualification 报告</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5e6a78;
+      --line: #d9e1ea;
+      --panel: #f6f8fb;
+      --panel-strong: #edf3f7;
+      --accent: #126a73;
+      --good: #17613a;
+      --warn: #8a5600;
+      --bad: #8a2634;
+      --code: #101826;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
+      line-height: 1.62;
+    }
+    header {
+      padding: 42px 7vw 30px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f6fbfc 0%, #ffffff 100%);
+    }
+    main {
+      max-width: 1240px;
+      padding: 28px 7vw 68px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      line-height: 1.22;
+    }
+    h1 {
+      max-width: 980px;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: 0;
+    }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 {
+      margin-top: 18px;
+      font-size: 18px;
+    }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-strong);
+      text-align: left;
+    }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #edf3fb;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .meta, .note { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    .box h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 2px 8px;
+      margin: 4px 6px 0 0;
+    }
+    .good { color: var(--good); font-weight: 650; }
+    .warn { color: var(--warn); font-weight: 650; }
+    .bad { color: var(--bad); font-weight: 650; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f4f8fa;
+      padding: 12px 16px;
+      margin: 16px 0;
+    }
+    .wide { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-28 · 本地 HTML 实验报告</p>
+    <h1>1280x720 YOLO-World Detector Category Qualification 报告</h1>
+    <p>
+      本报告说明我在 Linux Habitat 环境中做了什么、为什么改成正常分辨率、
+      detector category qualification 跑出了什么结果、目前算法能支持哪些类别，
+      以及下一步该先修什么。
+    </p>
+    <p>
+      <span class="tag">code under test: 18254e7</span>
+      <span class="tag">host: badger@100.88.131.52</span>
+      <span class="tag">conda env: habitat</span>
+      <span class="tag">dataset: HM3D ObjectNav val_mini</span>
+      <span class="tag">resolution: 1280x720</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 当前结论</h2>
+      <div class="grid">
+        <div class="box">
+          <h3 class="good">可以进入主实验的类别</h3>
+          <p><code>bed</code>、<code>sofa</code>、<code>toilet</code>。</p>
+          <p>
+            这三个类别在 clean RGB、target-conditioned YOLO-World prompt、
+            <code>1280x720</code> 输入下已经能触发 positive evidence 和 trust/stop。
+          </p>
+        </div>
+        <div class="box">
+          <h3 class="warn">可用但视角敏感</h3>
+          <p><code>toilet</code>。</p>
+          <p>
+            stop-on-trust 语义下能成功；full trace 会继续走到更差视角，
+            导致后续 belief 被低质量视角稀释。因此 ObjectNav stop 语义是必要的。
+          </p>
+        </div>
+        <div class="box">
+          <h3 class="bad">暂时不能直接进全矩阵</h3>
+          <p><code>plant</code>、<code>tv_monitor</code>、<code>chair</code>。</p>
+          <p>
+            <code>plant</code> 和 <code>tv_monitor</code> 是 detector/visibility blocker；
+            <code>chair</code> 主要是当前采样 episode 缺少稳定可见目标，不适合直接评价 detector。
+          </p>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>总判断：</strong>
+        现在不要把 <code>clean/mild/heavy x memory on/off</code> 全矩阵直接跑在所有类别上。
+        先用 <code>bed</code>、<code>sofa</code>、<code>toilet</code> 做第一版主实验；
+        同时补 visibility-aware episode selection 和失败类别 debug PNG。
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 什么是 Detector Category Qualification</h2>
+      <p>
+        这里的 <strong>clean detector category qualification</strong> 不是最终算法指标，
+        而是一个前置资格检查：在没有 RGB 噪声的 clean 条件下，确认每个 ObjectNav
+        类别是否能被当前真实 detector 路径稳定看见并确认。
+      </p>
+      <p>
+        这么做的原因是：如果 detector 连 clean 可见目标都无法确认，后面的 memory
+        更新、noise robustness、sim-to-real claim 都会被 perception 失败污染。
+        资格检查把问题拆开：先问 detector/category 能不能用，再问 memory 算法在噪声下有没有帮助。
+      </p>
+    </section>
+
+    <section>
+      <h2>3. 为什么改成 1280x720</h2>
+      <p>
+        之前 <code>64</code>、<code>96</code>、<code>224</code>、<code>320</code>
+        都是 smoke-test 分辨率，用来快速找 pipeline bug。它们不代表真实相机输入，
+        也会让 YOLO-World 的小物体和边缘视角表现偏差很大。
+      </p>
+      <p>
+        本轮改成 <code>1280x720</code>，目的是模拟更接近真实 RGB-D 处理链路的输入尺寸：
+        不再用低分辨率解释 detector 失败，同时又比直接追求最高相机规格更适合批量 Habitat 运行。
+      </p>
+      <p class="note">
+        注：本实验关心的是算法验证分辨率，不是声明某个硬件唯一分辨率。
+        真实部署时应以实际相机 stream profile 和算力预算为准。
+      </p>
+    </section>
+
+    <section>
+      <h2>4. 做过的代码工作</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>文件</th>
+            <th>改动</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>habitat_objectnav_rgb_noise_stress.py</code></td>
+            <td>加入 <code>sensor_width</code>、<code>sensor_height</code>、<code>sensor_size</code> square override。</td>
+            <td>支持真实宽高比渲染；默认从 square smoke 转为 <code>640x480</code>，本轮显式跑 <code>1280x720</code>。</td>
+          </tr>
+          <tr>
+            <td><code>habitat_objectnav_rgb_noise_stress.py</code></td>
+            <td>加入 <code>target_categories</code> 与 <code>episodes_per_category</code>。</td>
+            <td>让 qualification 可以按类别均衡取 episode，而不是被数据集原始顺序带偏。</td>
+          </tr>
+          <tr>
+            <td><code>habitat_semantic_yolo_stress.py</code></td>
+            <td>Simulator sensor resolution 支持 <code>(height, width)</code> tuple。</td>
+            <td>Habitat RGB/depth/semantic sensor 可以渲染非方形图像。</td>
+          </tr>
+          <tr>
+            <td><code>run_habitat_objectnav_rgb_noise_stress.py</code></td>
+            <td>CLI 增加 <code>--sensor-width</code>、<code>--sensor-height</code>、<code>--episodes-per-category</code>、<code>--target-categories</code>。</td>
+            <td>Linux 上不改代码即可发起正常分辨率 qualification。</td>
+          </tr>
+          <tr>
+            <td><code>test_habitat_objectnav_rgb_noise_stress.py</code></td>
+            <td>补矩形分辨率解析、类别均衡选择、preflight summary 的测试。</td>
+            <td>防止以后又退回低分辨率或丢掉 category qualification 参数。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>5. Linux 上跑过的命令</h2>
+      <h3>Preflight</h3>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --output runs/habitat_usability/detector_category_qualification_1280x720_preflight --noise-levels clean --detector yolo_world --memory-ablation on --episodes-per-category 1 --sensor-width 1280 --sensor-height 720 --preflight-only'</code></pre>
+
+      <h3>1 episode/category，启用 stop-on-trust</h3>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/detector_category_qualification_1280x720_epc1 --noise-levels clean --detector yolo_world --memory-ablation on --episodes-per-category 1 --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --stop-on-trust --seed 313'</code></pre>
+
+      <h3>2 episodes/category，full trace，无 early stop</h3>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/detector_category_qualification_1280x720_epc2_fulltrace --noise-levels clean --detector yolo_world --memory-ablation on --episodes-per-category 2 --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
+
+      <h3>Chair / tv-monitor 追加 probe</h3>
+      <pre><code>ssh badger@100.88.131.52 \
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav &amp;&amp; HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/detector_category_qualification_1280x720_chair_tv_probe --noise-levels clean --detector yolo_world --memory-ablation on --episodes-per-category 7 --target-categories chair,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
+    </section>
+
+    <section>
+      <h2>6. 实验结果</h2>
+      <h3>Stop-on-trust pass：每类 1 个 episode</h3>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Episodes</th>
+              <th>Oracle-stop successes</th>
+              <th>结论</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>bed</code></td><td>1</td><td>1</td><td class="good">Detector-ready first pass</td></tr>
+            <tr><td><code>chair</code></td><td>1</td><td>0</td><td class="warn">不可评价：target-visible rows = 0</td></tr>
+            <tr><td><code>plant</code></td><td>1</td><td>0</td><td class="bad">Detector failure</td></tr>
+            <tr><td><code>sofa</code></td><td>1</td><td>1</td><td class="good">Detector-ready first pass</td></tr>
+            <tr><td><code>toilet</code></td><td>1</td><td>1</td><td class="good">Detector-ready first pass</td></tr>
+            <tr><td><code>tv_monitor</code></td><td>1</td><td>0</td><td class="bad">Detector failure / weak visibility</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <table>
+        <tbody>
+          <tr><th>Episodes completed</th><td>6</td></tr>
+          <tr><th>Trace rows</th><td>59</td></tr>
+          <tr><th>Oracle-stop success rows</th><td>3</td></tr>
+          <tr><th>Evidence counts</th><td><code>positive=10</code>, <code>non_confirmation=8</code>, <code>unknown=41</code></td></tr>
+          <tr><th>Mean oracle recall</th><td><code>0.188542</code></td></tr>
+          <tr><th>Mean detector precision</th><td><code>0.156807</code></td></tr>
+          <tr><th>Mean final p_valid</th><td><code>0.652526</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Full-trace pass：每类 2 个 episode</h3>
+      <div class="wide">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Episodes</th>
+              <th>Visible rows</th>
+              <th>Positive rows</th>
+              <th>Trust rows</th>
+              <th>Success rows</th>
+              <th>Max conf</th>
+              <th>Mean visible recall</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>bed</code></td><td>2</td><td>30</td><td>28</td><td>27</td><td>27</td><td>0.6005</td><td>0.4272</td><td class="good">Detector-ready</td></tr>
+            <tr><td><code>chair</code></td><td>2</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0.0</td><td>0.0</td><td class="warn">first two episodes 不可评价</td></tr>
+            <tr><td><code>plant</code></td><td>2</td><td>14</td><td>0</td><td>0</td><td>0</td><td>0.0</td><td>0.0</td><td class="bad">Detector blocker</td></tr>
+            <tr><td><code>sofa</code></td><td>2</td><td>30</td><td>27</td><td>23</td><td>23</td><td>0.9773</td><td>0.9585</td><td class="good">Detector-ready</td></tr>
+            <tr><td><code>toilet</code></td><td>2</td><td>28</td><td>8</td><td>2</td><td>2</td><td>0.7709</td><td>0.3571</td><td class="warn">可用但视角敏感</td></tr>
+            <tr><td><code>tv_monitor</code></td><td>2</td><td>4</td><td>0</td><td>0</td><td>0</td><td>0.0</td><td>0.0</td><td class="bad">Detector blocker / sparse visibility</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <table>
+        <tbody>
+          <tr><th>Episodes completed</th><td>12</td></tr>
+          <tr><th>Trace rows</th><td>180</td></tr>
+          <tr><th>Oracle-stop success rows</th><td>52</td></tr>
+          <tr><th>Evidence counts</th><td><code>positive=63</code>, <code>non_confirmation=33</code>, <code>unknown=84</code></td></tr>
+          <tr><th>Mean oracle recall</th><td><code>0.286505</code></td></tr>
+          <tr><th>Mean detector precision</th><td><code>0.211355</code></td></tr>
+          <tr><th>Mean final p_valid</th><td><code>0.486492</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Chair / tv-monitor probe</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Episodes</th>
+            <th>Visible rows pattern</th>
+            <th>Positive rows</th>
+            <th>解释</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>chair</code></td>
+            <td>7</td>
+            <td>前 3 个 episode 为 0；后 4 个只有每集 1 行可见</td>
+            <td>0</td>
+            <td class="warn">当前采样不提供稳定可见 chair 视角，需要 visibility-aware selection。</td>
+          </tr>
+          <tr>
+            <td><code>tv_monitor</code></td>
+            <td>3</td>
+            <td>每个 episode 只有 2 行可见</td>
+            <td>0</td>
+            <td class="bad">可见样本稀疏，且 detector 没有确认目标。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7. 我怎么看这个结果</h2>
+      <ol>
+        <li>
+          <strong>分辨率问题已经基本排除。</strong>
+          本轮不再是 320 px smoke，<code>1280x720</code> 下仍然有明确类别差异：
+          <code>bed</code>/<code>sofa</code>/<code>toilet</code> 能工作，
+          <code>plant</code>/<code>tv_monitor</code> 不能。
+        </li>
+        <li>
+          <strong>memory 算法链路没有被 perception 完全卡死。</strong>
+          detector positive 出现时，policy 会进入 <code>TRUST</code>，
+          stop-on-trust 能形成 ObjectNav 风格成功行。
+        </li>
+        <li>
+          <strong>不能把 plant/tv/chair 的失败写成算法失败。</strong>
+          它们现在分别混有 detector category gap、目标过小/稀疏可见、episode 采样不可评价的问题。
+        </li>
+        <li>
+          <strong>下一步实验应该收窄类别。</strong>
+          第一版主矩阵先跑 detector-ready 类别，才能更干净地看 RGB noise 和 memory ablation 的关系。
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>8. 验证记录</h2>
+      <ul>
+        <li>本地代码测试：相关 29 个 pytest 通过。</li>
+        <li>本地 preflight：<code>sensor_resolution=1280x720</code>、<code>episodes_per_category=1</code> 被正确写入 summary。</li>
+        <li>Linux focused tests：<code>test_habitat_objectnav_rgb_noise_stress.py</code> 与 <code>test_yolo_world_adapter.py</code> 共 11 个测试通过。</li>
+        <li>Linux preflight：确认 <code>1280x720</code> 配置能在 <code>conda habitat</code> 环境解析。</li>
+        <li>Linux qualification：三个输出目录均生成完整 summary/trace。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>9. 产物位置</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>类型</th>
+            <th>路径</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Markdown 实验报告</td>
+            <td><code>docs/experiments/2026-05-28-detector-category-qualification-1280x720.md</code></td>
+          </tr>
+          <tr>
+            <td>HTML 实验报告</td>
+            <td><code>docs/experiments/2026-05-28-detector-category-qualification-1280x720.zh.html</code></td>
+          </tr>
+          <tr>
+            <td>Linux stop-on-trust 输出</td>
+            <td><code>runs/habitat_usability/detector_category_qualification_1280x720_epc1</code></td>
+          </tr>
+          <tr>
+            <td>Linux full-trace 输出</td>
+            <td><code>runs/habitat_usability/detector_category_qualification_1280x720_epc2_fulltrace</code></td>
+          </tr>
+          <tr>
+            <td>Linux chair/tv probe 输出</td>
+            <td><code>runs/habitat_usability/detector_category_qualification_1280x720_chair_tv_probe</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>10. 还没做的事</h2>
+      <ul>
+        <li>还没实现 visibility-aware episode selector。</li>
+        <li>还没导出 plant、tv_monitor、chair 失败帧的 debug PNG。</li>
+        <li>还没尝试更大的 YOLO-World 权重或替代 open-vocabulary detector。</li>
+        <li>还没跑 <code>clean/mild/heavy x memory on/off</code> 主矩阵。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>11. 下一步建议</h2>
+      <ol>
+        <li>把 full matrix 的类别先限制到 <code>bed</code>、<code>sofa</code>、<code>toilet</code>。</li>
+        <li>实现 qualification 的可见性筛选：每类选至少 N 个 reset/goal-viewpoint 上 oracle-visible 的 episode。</li>
+        <li>给 <code>plant</code>、<code>tv_monitor</code>、<code>chair</code> 输出 RGB + oracle mask + detector boxes PNG。</li>
+        <li>再决定是修 prompt/threshold，还是换更强 detector，然后重新 qualification。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
