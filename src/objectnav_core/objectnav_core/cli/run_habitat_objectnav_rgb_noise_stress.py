@@ -4,7 +4,8 @@ import argparse
 import json
 
 from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
-    DEFAULT_SENSOR_SIZE,
+    DEFAULT_SENSOR_HEIGHT,
+    DEFAULT_SENSOR_WIDTH,
     DEFAULT_STOP_ON_TRUST,
     DEFAULT_YOLO_PROMPT_MODE,
     SUPPORTED_YOLO_PROMPT_MODES,
@@ -73,11 +74,29 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=313)
     parser.add_argument("--max-episodes", type=int, default=None)
     parser.add_argument(
+        "--episodes-per-category",
+        type=int,
+        default=None,
+        help="Select up to this many episodes per target category.",
+    )
+    parser.add_argument(
+        "--target-categories",
+        default="bed,chair,plant,sofa,toilet,tv_monitor",
+        help="Comma-separated ObjectNav categories to include.",
+    )
+    parser.add_argument(
         "--start-source",
         choices=("episode_start", "goal_viewpoint"),
         default="goal_viewpoint",
     )
-    parser.add_argument("--sensor-size", type=int, default=DEFAULT_SENSOR_SIZE)
+    parser.add_argument(
+        "--sensor-size",
+        type=int,
+        default=None,
+        help="Square sensor override, kept for old smoke commands.",
+    )
+    parser.add_argument("--sensor-width", type=int, default=DEFAULT_SENSOR_WIDTH)
+    parser.add_argument("--sensor-height", type=int, default=DEFAULT_SENSOR_HEIGHT)
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
     parser.add_argument(
@@ -109,6 +128,11 @@ def main() -> None:
             seed=args.seed,
             yolo_prompt_mode=args.yolo_prompt_mode,
             stop_on_trust=args.stop_on_trust,
+            sensor_size=args.sensor_size,
+            sensor_width=args.sensor_width,
+            sensor_height=args.sensor_height,
+            target_categories=_split_csv(args.target_categories),
+            episodes_per_category=args.episodes_per_category,
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -126,10 +150,14 @@ def main() -> None:
             start_source=args.start_source,
             seed=args.seed,
             sensor_size=args.sensor_size,
+            sensor_width=args.sensor_width,
+            sensor_height=args.sensor_height,
             min_target_pixels=args.min_target_pixels,
             min_detector_pixels=args.min_detector_pixels,
             yolo_prompt_mode=args.yolo_prompt_mode,
             stop_on_trust=args.stop_on_trust,
+            target_categories=_split_csv(args.target_categories),
+            episodes_per_category=args.episodes_per_category,
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

@@ -62,6 +62,8 @@ SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
     "target_aliases",
 )
 DEFAULT_SENSOR_SIZE = 320
+DEFAULT_SENSOR_WIDTH = 640
+DEFAULT_SENSOR_HEIGHT = 480
 DEFAULT_YOLO_PROMPT_MODE = "target"
 DEFAULT_STOP_ON_TRUST = True
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
@@ -93,22 +95,31 @@ def run_habitat_objectnav_rgb_noise_stress(
     max_episodes: int | None = None,
     start_source: str = "goal_viewpoint",
     seed: int = 313,
-    sensor_size: int = DEFAULT_SENSOR_SIZE,
+    sensor_size: int | None = None,
+    sensor_width: int = DEFAULT_SENSOR_WIDTH,
+    sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
+    target_categories: Sequence[str] = TARGET_CATEGORIES,
+    episodes_per_category: int | None = None,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
     if max_episodes is not None and max_episodes <= 0:
         raise ValueError("max_episodes must be positive when provided")
-    if sensor_size <= 0:
-        raise ValueError("sensor_size must be positive")
+    sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
+        sensor_size=sensor_size,
+        sensor_width=sensor_width,
+        sensor_height=sensor_height,
+    )
     if start_source not in VALID_START_SOURCES:
         raise ValueError(
             f"start_source must be one of: {', '.join(VALID_START_SOURCES)}"
         )
+    if episodes_per_category is not None and episodes_per_category <= 0:
+        raise ValueError("episodes_per_category must be positive when provided")
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -124,6 +135,11 @@ def run_habitat_objectnav_rgb_noise_stress(
         seed=seed,
         yolo_prompt_mode=yolo_prompt_mode,
         stop_on_trust=stop_on_trust,
+        sensor_size=sensor_size,
+        sensor_width=sensor_width,
+        sensor_height=sensor_height,
+        target_categories=target_categories,
+        episodes_per_category=episodes_per_category,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
@@ -135,7 +151,12 @@ def run_habitat_objectnav_rgb_noise_stress(
     dataset_path = Path(dataset_dir).expanduser().resolve()
     scene_root_path = Path(scene_root).expanduser().resolve()
     episodes = _load_valmini_episodes(dataset_path, scene_root=scene_root_path)
-    selected_episodes = episodes[:max_episodes] if max_episodes is not None else episodes
+    selected_episodes = _select_episodes(
+        episodes,
+        target_categories=target_categories,
+        episodes_per_category=episodes_per_category,
+        max_episodes=max_episodes,
+    )
     if not selected_episodes:
         raise ValueError(f"No ObjectNav episodes found under {dataset_path}")
     scene_config_path = output_path / "hm3d_rgb_noise_annotated_basis.scene_dataset_config.json"
@@ -158,7 +179,7 @@ def run_habitat_objectnav_rgb_noise_stress(
             habitat_sim=habitat_sim,
             scene=scene,
             scene_dataset_config=scene_config_path,
-            sensor_size=sensor_size,
+            sensor_size=(sensor_height_resolved, sensor_width_resolved),
         )
         try:
             sim.seed(seed + scene_index * 1000)
@@ -214,7 +235,8 @@ def run_habitat_objectnav_rgb_noise_stress(
         scene_root=scene_root_path,
         scene_dataset_config=scene_config_path,
         start_source=start_source,
-        sensor_size=sensor_size,
+        sensor_height=sensor_height_resolved,
+        sensor_width=sensor_width_resolved,
         max_episodes=max_episodes,
         rows=trace_rows,
         episode_summaries=episode_summaries,
@@ -236,6 +258,11 @@ def run_rgb_noise_stress_preflight(
     seed: int,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
+    sensor_size: int | None = None,
+    sensor_width: int = DEFAULT_SENSOR_WIDTH,
+    sensor_height: int = DEFAULT_SENSOR_HEIGHT,
+    target_categories: Sequence[str] = TARGET_CATEGORIES,
+    episodes_per_category: int | None = None,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -247,6 +274,13 @@ def run_rgb_noise_stress_preflight(
     _validate_detector(detector, detector_conf)
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
+    sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
+        sensor_size=sensor_size,
+        sensor_width=sensor_width,
+        sensor_height=sensor_height,
+    )
+    if episodes_per_category is not None and episodes_per_category <= 0:
+        raise ValueError("episodes_per_category must be positive when provided")
     controller = OutAndBackController()
     actions = controller.actions_for_episode(
         start_pose=(0.0, 0.0, 0.0),
@@ -267,7 +301,15 @@ def run_rgb_noise_stress_preflight(
         "detector_conf": detector_conf,
         "yolo_prompt_mode": yolo_prompt_mode,
         "stop_on_trust": bool(stop_on_trust),
+        "sensor_size": sensor_size,
+        "sensor_width": sensor_width_resolved,
+        "sensor_height": sensor_height_resolved,
+        "sensor_resolution": (
+            f"{sensor_width_resolved}x{sensor_height_resolved}"
+        ),
         "target_categories": list(TARGET_CATEGORIES),
+        "category_filter": list(target_categories),
+        "episodes_per_category": episodes_per_category,
         "memory_ablation": list(memory_ablation),
         "revisit_strategy": "out_and_back",
         "out_and_back_actions": list(actions),
@@ -663,6 +705,65 @@ def _first_goal_position(episode: Any) -> tuple[float, float, float] | None:
     return tuple(float(value) for value in position)
 
 
+def _resolve_sensor_resolution(
+    *,
+    sensor_size: int | None,
+    sensor_width: int,
+    sensor_height: int,
+) -> tuple[int, int]:
+    if sensor_size is not None:
+        if sensor_size <= 0:
+            raise ValueError("sensor_size must be positive")
+        return int(sensor_size), int(sensor_size)
+    if sensor_width <= 0:
+        raise ValueError("sensor_width must be positive")
+    if sensor_height <= 0:
+        raise ValueError("sensor_height must be positive")
+    return int(sensor_height), int(sensor_width)
+
+
+def _select_episodes(
+    episodes: Sequence[Any],
+    *,
+    target_categories: Sequence[str],
+    episodes_per_category: int | None,
+    max_episodes: int | None,
+) -> list[Any]:
+    if not target_categories:
+        raise ValueError("At least one target category is required")
+    category_filter = {_normalize_yolo_label(category) for category in target_categories}
+    filtered = [
+        episode
+        for episode in episodes
+        if _normalize_yolo_label(episode.object_category) in category_filter
+    ]
+    if episodes_per_category is None:
+        selected = filtered
+    else:
+        counts: dict[str, int] = {}
+        selected = []
+        for episode in filtered:
+            category = _normalize_yolo_label(episode.object_category)
+            if counts.get(category, 0) >= episodes_per_category:
+                continue
+            selected.append(episode)
+            counts[category] = counts.get(category, 0) + 1
+            if all(counts.get(category, 0) >= episodes_per_category for category in category_filter):
+                break
+    return selected[:max_episodes] if max_episodes is not None else selected
+
+
+def _category_counts(episodes: Sequence[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for episode in episodes:
+        if isinstance(episode, dict):
+            category = str(episode["object_category"])
+        else:
+            category = str(episode.object_category)
+        counts[category] = counts.get(category, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _summarize_rgb_noise_run(
     *,
     output_path: Path,
@@ -671,7 +772,8 @@ def _summarize_rgb_noise_run(
     scene_root: Path,
     scene_dataset_config: Path,
     start_source: str,
-    sensor_size: int,
+    sensor_height: int,
+    sensor_width: int,
     max_episodes: int | None,
     rows: Sequence[dict[str, Any]],
     episode_summaries: Sequence[dict[str, Any]],
@@ -685,9 +787,13 @@ def _summarize_rgb_noise_run(
             "scene_root": str(scene_root),
             "scene_dataset_config": str(scene_dataset_config),
             "start_source": start_source,
-            "sensor_size": sensor_size,
+            "sensor_size": sensor_width if sensor_width == sensor_height else None,
+            "sensor_width": sensor_width,
+            "sensor_height": sensor_height,
+            "sensor_resolution": f"{sensor_width}x{sensor_height}",
             "max_episodes": max_episodes,
             "episodes_completed": len(episode_summaries),
+            "episode_category_counts": _category_counts(episode_summaries),
             "trace_rows": len(rows),
             "evidence_counts": _count_values(rows, "evidence_type"),
             "decision_counts": _count_values(rows, "decision"),

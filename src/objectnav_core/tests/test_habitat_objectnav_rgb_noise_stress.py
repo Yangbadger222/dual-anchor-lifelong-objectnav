@@ -29,6 +29,18 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
     assert summary["detector"] == "yolo_world"
     assert summary["yolo_prompt_mode"] == "target"
     assert summary["stop_on_trust"] is True
+    assert summary["sensor_width"] == 640
+    assert summary["sensor_height"] == 480
+    assert summary["sensor_resolution"] == "640x480"
+    assert summary["episodes_per_category"] is None
+    assert summary["category_filter"] == [
+        "bed",
+        "chair",
+        "plant",
+        "sofa",
+        "toilet",
+        "tv_monitor",
+    ]
     assert summary["target_categories"] == [
         "bed",
         "chair",
@@ -45,7 +57,8 @@ def test_preflight_writes_summary_for_rgb_noise_stress(tmp_path: Path) -> None:
 
 
 def test_default_yolo_prompting_is_target_conditioned() -> None:
-    assert stress.DEFAULT_SENSOR_SIZE == 320
+    assert stress.DEFAULT_SENSOR_WIDTH == 640
+    assert stress.DEFAULT_SENSOR_HEIGHT == 480
     assert stress.DEFAULT_YOLO_PROMPT_MODE == "target"
     assert stress.DEFAULT_STOP_ON_TRUST is True
     assert stress._yolo_prompt_categories("toilet", "target") == ("toilet",)
@@ -62,6 +75,40 @@ def test_default_yolo_prompting_is_target_conditioned() -> None:
         "toilet",
         "target_aliases",
     )
+
+
+def test_sensor_resolution_prefers_explicit_rectangular_dimensions() -> None:
+    assert stress._resolve_sensor_resolution(
+        sensor_size=None,
+        sensor_width=1280,
+        sensor_height=720,
+    ) == (720, 1280)
+    assert stress._resolve_sensor_resolution(
+        sensor_size=320,
+        sensor_width=1280,
+        sensor_height=720,
+    ) == (320, 320)
+
+
+def test_select_episodes_balances_by_category() -> None:
+    episodes = [
+        _Episode("p1", "plant"),
+        _Episode("t1", "toilet"),
+        _Episode("p2", "plant"),
+        _Episode("c1", "chair"),
+        _Episode("t2", "toilet"),
+        _Episode("c2", "chair"),
+    ]
+
+    selected = stress._select_episodes(
+        episodes,
+        target_categories=("toilet", "plant"),
+        episodes_per_category=1,
+        max_episodes=None,
+    )
+
+    assert [episode.episode_id for episode in selected] == ["p1", "t1"]
+    assert stress._category_counts(selected) == {"plant": 1, "toilet": 1}
 
 
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
@@ -166,3 +213,9 @@ def _mask_with_box(
     x1, y1, x2, y2 = bbox
     mask[y1:y2, x1:x2] = True
     return mask
+
+
+class _Episode:
+    def __init__(self, episode_id: str, object_category: str) -> None:
+        self.episode_id = episode_id
+        self.object_category = object_category

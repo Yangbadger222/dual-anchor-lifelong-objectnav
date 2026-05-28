@@ -170,13 +170,18 @@ def _make_simulator(
     habitat_sim: Any,
     scene: Path,
     scene_dataset_config: Path | None,
-    sensor_size: int,
+    sensor_size: int | tuple[int, int],
 ) -> Any:
     sim_cfg = habitat_sim.SimulatorConfiguration()
     sim_cfg.scene_id = str(scene)
     sim_cfg.enable_physics = False
     if scene_dataset_config is not None:
         sim_cfg.scene_dataset_config_file = str(scene_dataset_config)
+
+    if isinstance(sensor_size, tuple):
+        resolution = [int(sensor_size[0]), int(sensor_size[1])]
+    else:
+        resolution = [int(sensor_size), int(sensor_size)]
 
     sensor_specs = []
     for uuid, sensor_type in (
@@ -187,7 +192,7 @@ def _make_simulator(
         spec = habitat_sim.CameraSensorSpec()
         spec.uuid = uuid
         spec.sensor_type = sensor_type
-        spec.resolution = [sensor_size, sensor_size]
+        spec.resolution = resolution
         spec.position = [0.0, 0.88, 0.0]
         spec.hfov = 79
         sensor_specs.append(spec)

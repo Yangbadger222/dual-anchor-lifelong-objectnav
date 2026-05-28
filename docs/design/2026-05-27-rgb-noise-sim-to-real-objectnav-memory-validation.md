@@ -177,6 +177,28 @@ python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
   --lifelong persistent_per_scene \
   --memory-ablation on,off \
   --max-episodes 30 \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --stop-on-trust \
+  --seed 313
+```
+
+Detector category qualification should run before the full noise-memory
+matrix. It uses clean RGB, target-conditioned prompts, balanced category
+sampling, and a real-camera-like render resolution:
+
+```bash
+python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_usability/detector_category_qualification_1280x720 \
+  --noise-levels clean \
+  --detector yolo_world \
+  --memory-ablation on \
+  --episodes-per-category 1 \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --yolo-prompt-mode target \
   --stop-on-trust \
   --seed 313
 ```
@@ -428,6 +450,16 @@ for episode in val_mini:
   - Memory `on` produces ≥1 confirmed positive when target is visible.
   - Memory `off` produces no persistent state between steps.
   - Trace JSONL parses; debug PNGs render.
+- Detector qualification:
+  - Clean RGB only, target-conditioned YOLO-World prompts.
+  - Run at real-camera-like rectangular resolution, starting with
+    `1280x720` because it matches the D435 depth stream maximum and is much
+    closer to deployed RGB-D operation than the old square smoke renders.
+  - Select balanced episodes with `--episodes-per-category` so early dataset
+    ordering cannot hide unsupported categories.
+  - Categories with repeated clean failures are detector limitations, not
+    memory-algorithm failures, and should be fixed or explicitly scoped before
+    the full noise-memory matrix.
 
 ### Experiment-level
 
