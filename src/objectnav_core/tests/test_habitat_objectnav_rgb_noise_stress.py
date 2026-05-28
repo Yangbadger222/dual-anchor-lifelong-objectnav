@@ -543,6 +543,60 @@ def test_memory_geometry_gate_can_run_fov_without_distance_radius() -> None:
     assert distance is not None
 
 
+def test_memory_geometry_gate_can_defer_fov_during_anchor_acquisition() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=-2.0)
+
+    _, evidence_type, strength, quarantined, reason, distance = (
+        stress._apply_memory_geometry_gate(
+            state=state,
+            memory_mode="on",
+            evidence_type=EvidenceType.POSITIVE,
+            evidence_strength=1.0,
+            quarantined=False,
+            evidence_reason="detector_positive_mask",
+            observation_anchor_xz=(0.1, -1.8),
+            gate_radius_m=None,
+            gate_fov=True,
+            fov_gate_active=False,
+            agent_pose=((0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)),
+            hfov_degrees=90.0,
+        )
+    )
+
+    assert evidence_type is EvidenceType.POSITIVE
+    assert strength == 1.0
+    assert quarantined is False
+    assert reason == "detector_positive_mask"
+    assert distance is not None
+
+
+def test_memory_geometry_gate_can_turn_expected_empty_out_of_fov_positive_negative() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=-2.0)
+
+    _, evidence_type, strength, quarantined, reason, distance = (
+        stress._apply_memory_geometry_gate(
+            state=state,
+            memory_mode="on",
+            evidence_type=EvidenceType.POSITIVE,
+            evidence_strength=1.0,
+            quarantined=False,
+            evidence_reason="detector_positive_mask",
+            observation_anchor_xz=(0.1, -1.8),
+            gate_radius_m=None,
+            gate_fov=True,
+            fov_rejection_evidence_type=EvidenceType.NON_CONFIRMATION,
+            agent_pose=((0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)),
+            hfov_degrees=90.0,
+        )
+    )
+
+    assert evidence_type is EvidenceType.NON_CONFIRMATION
+    assert strength == 1.0
+    assert quarantined is False
+    assert reason == "geometry_anchor_out_of_view_positive"
+    assert distance is not None
+
+
 def test_anchor_in_camera_fov_uses_agent_yaw_and_hfov() -> None:
     pose = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
 

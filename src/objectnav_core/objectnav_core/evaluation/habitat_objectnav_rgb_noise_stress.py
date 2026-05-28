@@ -736,6 +736,12 @@ def _run_rgb_noise_episode(
             observation_anchor_xz=detection_anchor_xz,
             gate_radius_m=memory_geometry_gate_radius_m,
             gate_fov=memory_geometry_gate_fov,
+            fov_gate_active=replay_phase in {"expected_empty", "revisit"},
+            fov_rejection_evidence_type=(
+                EvidenceType.NON_CONFIRMATION
+                if replay_step.expected_target_absent
+                else EvidenceType.UNKNOWN
+            ),
             agent_pose=pose,
         )
         if evidence_reason == "geometry_inconsistent_positive":
@@ -2216,6 +2222,8 @@ def _apply_memory_geometry_gate(
     observation_anchor_xz: tuple[float, float] | None,
     gate_radius_m: float | None,
     gate_fov: bool = DEFAULT_MEMORY_GEOMETRY_GATE_FOV,
+    fov_gate_active: bool = True,
+    fov_rejection_evidence_type: EvidenceType = EvidenceType.UNKNOWN,
     agent_pose: (
         tuple[tuple[float, float, float], tuple[float, float, float, float]] | None
     ) = None,
@@ -2246,11 +2254,25 @@ def _apply_memory_geometry_gate(
             None,
         )
     distance_m = float(np.hypot(obs_x - state.anchor_x, obs_z - state.anchor_z))
-    if gate_fov and agent_pose is not None and not _anchor_in_camera_fov(
-        anchor_xz=(state.anchor_x, state.anchor_z),
-        agent_pose=agent_pose,
-        hfov_degrees=hfov_degrees,
+    if (
+        gate_fov
+        and fov_gate_active
+        and agent_pose is not None
+        and not _anchor_in_camera_fov(
+            anchor_xz=(state.anchor_x, state.anchor_z),
+            agent_pose=agent_pose,
+            hfov_degrees=hfov_degrees,
+        )
     ):
+        if fov_rejection_evidence_type is EvidenceType.NON_CONFIRMATION:
+            return (
+                state,
+                EvidenceType.NON_CONFIRMATION,
+                1.0,
+                False,
+                "geometry_anchor_out_of_view_positive",
+                round(distance_m, 6),
+            )
         return (
             state,
             EvidenceType.UNKNOWN,
@@ -2266,6 +2288,15 @@ def _apply_memory_geometry_gate(
             0.35,
             True,
             "geometry_inconsistent_positive",
+            round(distance_m, 6),
+        )
+    if not fov_gate_active:
+        return (
+            MemoryGeometryState(anchor_x=obs_x, anchor_z=obs_z),
+            evidence_type,
+            evidence_strength,
+            quarantined,
+            evidence_reason,
             round(distance_m, 6),
         )
     return (

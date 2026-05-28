@@ -429,6 +429,23 @@ episodes. It is intended to test whether spatial consistency helps reject
 detector false positives before investing in a full object-instance memory
 schema with anchor covariance and multi-object association.
 
+The first long-range `geodesic_expected_empty_challenge` smoke exposed an
+anchor-birth failure mode: early approach detections can create a poor anchor,
+then the FOV gate rejects later true goal-viewpoint positives. The FOV gate is
+therefore scoped to explicit memory verification phases:
+
+- `approach` and `confirm` can update the per-replay anchor from accepted
+  positives while the system is still acquiring the object;
+- `expected_empty` and `revisit` use the remembered anchor for FOV
+  consistency;
+- when an expected-empty view produces a same-category detection while the
+  remembered anchor is outside the current camera FOV, that row becomes
+  `NON_CONFIRMATION` for the remembered anchor rather than a neutral unknown.
+
+This keeps the bed false-positive protection in the expected-empty interval
+without letting the first long-range approach detection permanently poison the
+anchor.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so
