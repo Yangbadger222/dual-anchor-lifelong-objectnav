@@ -203,3 +203,19 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
     assert summary["mode_metrics"]["memory_guided"]["stale_check_count"] == 1
     assert summary["mode_metrics"]["memory_guided"]["detector_miss_count"] == 1
     assert summary["comparison"]["memory_guided_vs_no_memory_path_reduction_ratio"] > 0.2
+
+
+def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:
+    result = plan_lifecycle_query(
+        mode="no_memory",
+        memory_path_cost_m=5.0,
+        fallback_path_cost_m=21.0,
+        memory_verification=_verification(EvidenceType.POSITIVE, target_visible=True),
+        fallback_verifications=(
+            _verification(EvidenceType.POSITIVE, target_visible=True),
+        ),
+    )
+
+    assert result.total_path_length_m == 21.0
+    assert result.route == ("fallback",)
+    assert result.total_path_length_m > 5.0

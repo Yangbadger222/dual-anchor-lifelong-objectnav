@@ -7,6 +7,7 @@ from typing import Sequence
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     DEFAULT_SENSOR_HEIGHT,
     DEFAULT_SENSOR_WIDTH,
+    DEFAULT_SEARCH_PROXY_WAYPOINTS,
     DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
@@ -90,6 +91,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--min-target-pixels", type=int, default=24)
     parser.add_argument("--min-detector-pixels", type=int, default=20)
     parser.add_argument(
+        "--search-proxy-waypoints",
+        type=int,
+        default=DEFAULT_SEARCH_PROXY_WAYPOINTS,
+        help=(
+            "Number of deterministic random navigable waypoints charged before "
+            "fallback goal verification. This models no-memory search effort; "
+            "set 0 to use the oracle shortest-path lower bound."
+        ),
+    )
+    parser.add_argument(
         "--structured-min-goal-viewpoints",
         type=int,
         default=DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -140,6 +151,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "structured_min_goal_viewpoints": args.structured_min_goal_viewpoints,
                 "structured_min_geodesic_distance": args.structured_min_geodesic_distance,
                 "structured_min_path_complexity_ratio": args.structured_min_path_complexity_ratio,
+                "search_proxy_waypoints": args.search_proxy_waypoints,
             }
         ),
         seed=args.seed,

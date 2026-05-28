@@ -43,6 +43,8 @@ DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS = 2
 DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE = 2.0
 DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
+DEFAULT_SEARCH_PROXY_WAYPOINTS = 3
+DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS = 48
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 
 
@@ -291,6 +293,7 @@ def run_habitat_memory_lifecycle_objectnav(
     structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    search_proxy_waypoints: int = DEFAULT_SEARCH_PROXY_WAYPOINTS,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -323,6 +326,8 @@ def run_habitat_memory_lifecycle_objectnav(
         raise ValueError("structured_min_geodesic_distance must be non-negative")
     if structured_min_path_complexity_ratio < 0.0:
         raise ValueError("structured_min_path_complexity_ratio must be non-negative")
+    if search_proxy_waypoints < 0:
+        raise ValueError("search_proxy_waypoints must be non-negative")
 
     from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
         _accepted_yolo_detection_labels,
@@ -420,12 +425,19 @@ def run_habitat_memory_lifecycle_objectnav(
                         end=group.memory_position,
                     )
                 )
-                fallback_path_cost = _path_distance(
+                oracle_goal_path_cost = _path_distance(
                     _shortest_path_points(
                         sim=sim,
                         start=group.query_episode.start_position,
                         end=fallback_candidate.position,
                     )
+                )
+                fallback_path_cost, search_proxy_waypoint_count = _search_proxy_path_distance(
+                    sim=sim,
+                    start=group.query_episode.start_position,
+                    goal=fallback_candidate.position,
+                    seed=seed + scene_index * 1000 + group_index,
+                    waypoint_count=search_proxy_waypoints,
                 )
                 for noise_level in noise_levels:
                     for mode in modes:
@@ -525,14 +537,16 @@ def run_habitat_memory_lifecycle_objectnav(
                                 noise_level=noise_level,
                                 detector=detector,
                                 detector_prompt_categories=_yolo_prompt_categories(
-                                    group.category,
-                                    "target",
-                                ),
-                                memory_path_cost=memory_path_cost,
-                                fallback_path_cost=fallback_path_cost,
-                                memory_verification=memory_verification,
-                                fallback_verification=fallback_verification,
-                                result=result,
+                                group.category,
+                                "target",
+                            ),
+                            memory_path_cost=memory_path_cost,
+                            fallback_path_cost=fallback_path_cost,
+                            oracle_goal_path_cost=oracle_goal_path_cost,
+                            search_proxy_waypoint_count=search_proxy_waypoint_count,
+                            memory_verification=memory_verification,
+                            fallback_verification=fallback_verification,
+                            result=result,
                                 normalized_category=_normalize_yolo_label(group.category),
                             )
                         )
@@ -553,6 +567,7 @@ def run_habitat_memory_lifecycle_objectnav(
             "structured_min_path_complexity_ratio": float(
                 structured_min_path_complexity_ratio
             ),
+            "search_proxy_waypoints": int(search_proxy_waypoints),
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -579,6 +594,7 @@ def run_habitat_memory_lifecycle_objectnav(
             },
             "limits": [
                 "This is a Habitat geodesic lifecycle protocol, not official Habitat SPL.",
+                "Fallback uses a search_proxy navmesh route, while oracle_goal_path_cost_m is kept only as a shortest-path lower bound.",
                 "The agent teleports to verification poses for measurement; action-level closed loop remains next.",
                 "naive_count is positive-only and shares the same memory route/fallback gate.",
             ],
@@ -781,6 +797,8 @@ def _lifecycle_row(
     detector_prompt_categories: Sequence[str],
     memory_path_cost: float,
     fallback_path_cost: float,
+    oracle_goal_path_cost: float,
+    search_proxy_waypoint_count: int,
     memory_verification: LifecycleVerification,
     fallback_verification: LifecycleVerification,
     result: LifecyclePlanResult,
@@ -806,6 +824,8 @@ def _lifecycle_row(
         "path_length_m": result.total_path_length_m,
         "memory_path_cost_m": round(memory_path_cost, 6),
         "fallback_path_cost_m": round(fallback_path_cost, 6),
+        "oracle_goal_path_cost_m": round(oracle_goal_path_cost, 6),
+        "search_proxy_waypoint_count": int(search_proxy_waypoint_count),
         "route": "|".join(result.route),
         "memory_attempted": result.memory_attempted,
         "memory_reused": result.memory_reused,
@@ -857,6 +877,63 @@ def _path_distance(points: Sequence[tuple[float, float, float]]) -> float:
         sum(_distance3(first, second) for first, second in zip(points, points[1:])),
         6,
     )
+
+
+def _search_proxy_path_distance(
+    *,
+    sim: Any,
+    start: tuple[float, float, float],
+    goal: tuple[float, float, float],
+    seed: int,
+    waypoint_count: int,
+) -> tuple[float, int]:
+    from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+        _shortest_path_points,
+    )
+
+    if waypoint_count <= 0:
+        return _path_distance(_shortest_path_points(sim=sim, start=start, end=goal)), 0
+    rng = np.random.default_rng(seed)
+    waypoints = _sample_search_proxy_waypoints(
+        sim=sim,
+        rng=rng,
+        waypoint_count=waypoint_count,
+        attempts=DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS,
+    )
+    current = start
+    total = 0.0
+    used = 0
+    for waypoint in waypoints:
+        try:
+            total += _path_distance(
+                _shortest_path_points(sim=sim, start=current, end=waypoint)
+            )
+        except ValueError:
+            continue
+        current = waypoint
+        used += 1
+    total += _path_distance(_shortest_path_points(sim=sim, start=current, end=goal))
+    return round(total, 6), used
+
+
+def _sample_search_proxy_waypoints(
+    *,
+    sim: Any,
+    rng: np.random.Generator,
+    waypoint_count: int,
+    attempts: int,
+) -> list[tuple[float, float, float]]:
+    waypoints: list[tuple[float, float, float]] = []
+    for _ in range(attempts):
+        if len(waypoints) >= waypoint_count:
+            break
+        point = _tuple3(sim.pathfinder.get_random_navigable_point())
+        if point is None:
+            continue
+        if any(_distance3(point, existing) < 1.0 for existing in waypoints):
+            continue
+        waypoints.append(point)
+    return waypoints
 
 
 def _distance3(
