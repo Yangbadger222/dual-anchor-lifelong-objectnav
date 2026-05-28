@@ -335,6 +335,38 @@ After detector setup:
     rows
   - protocol report:
     `docs/experiments/2026-05-28-visibility-challenge-replay-smoke.md`
+- Ran larger `1280x720` Grounding-DINO visibility-challenge replay:
+  - output:
+    `runs/habitat_usability/visibility_challenge_grounding_dino_replay_1280x720_epc2_cap384`
+  - config: `bed,toilet,plant`, two structured episodes per category,
+    `clean,mild,heavy`, `on,naive_count,off`, `--no-stop-on-trust`
+  - trace rows: `702`
+  - replay summaries: `54`
+  - selected episodes: `3,33,55,39,62,84`
+  - phase visibility:
+    - `confirm`: `162/162` target-visible rows
+    - `depart`: `0/108` target-visible rows
+    - `non_confirm`: `0/216` target-visible rows
+    - `revisit`: `216/216` target-visible rows
+  - memory metrics:
+    - `on`: `215` raw trust, `93` gated trust / success, `122` gate rejections
+    - `naive_count`: `197` raw trust, `86` gated trust / success, `111` gate
+      rejections
+    - `off`: `0` trust / success
+  - hidden-phase positives are all `bed`: `108` hidden positive rows with zero
+    oracle target-visible rows; `plant` and `toilet` have zero hidden positives
+  - this is the first Habitat real-detector replay in this sequence where
+    memory `on` beats `naive_count` on gated success, but it remains diagnostic
+    because hidden-phase bed detector false positives dominate the result.
+- Ran bed-only hidden debug export:
+  - output:
+    `runs/habitat_usability/visibility_challenge_hidden_bed_debug_1280x720_cap384`
+  - exported `79` bed PNGs, including all `72` hidden-phase gate rejections
+  - local contact sheet:
+    `/tmp/dual_anchor_hidden_bed_debug/contact_sheet.png`
+  - visual read: Grounding-DINO repeatedly boxes door/furniture regions in the
+    turned-around hidden view. This looks like detector false positives under
+    the `bed` prompt rather than Habitat GT being too strict on a visible bed.
 
 Still not run:
 
@@ -343,9 +375,9 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Larger `1280x720` Grounding-DINO memory comparison using
-  `--replay-protocol visibility_challenge`.
-- PNG export for hidden-phase Grounding-DINO positives.
+- Trace-filtered PNG export for hidden-phase positives. Current debug export
+  can capture them through gate rejections, but it is not phase/evidence
+  selective.
 - Full planner-backed Habitat action protocol. The new visibility challenge
   teleports between measured viewpoints; it is still a memory/evidence stress
   test, not a navigation metric.
@@ -387,17 +419,15 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Run a larger `1280x720` Grounding-DINO memory comparison with
-   `--replay-protocol visibility_challenge`.
-4. Export hidden-phase Grounding-DINO positive rows to PNG before making a
-   false-trust claim.
-5. Decide whether hidden-view `unknown` is enough for the next memory claim or
+3. Add a trace-filtered debug export for hidden-phase positives so detector
+   false positives can be inspected without exporting broad gate rejections.
+4. Decide whether hidden-view `unknown` is enough for the next memory claim or
    whether the harness needs an explicit expected-location-empty evidence
    context to produce true `NON_CONFIRMATION`.
-6. Add visibility-aware episode selection and reintroduce `chair`.
-7. Add a fallback selection mode so categories with zero structured candidates
+5. Add visibility-aware episode selection and reintroduce `chair`.
+6. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-8. Then connect the replay harness to a real navigation policy or Habitat
+7. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor
