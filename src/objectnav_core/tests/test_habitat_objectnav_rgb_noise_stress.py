@@ -217,6 +217,32 @@ def test_detector_mask_keeps_over_broad_boxes_when_filter_disabled() -> None:
     assert np.array_equal(mask, large_mask)
 
 
+def test_detector_mask_drops_frame_when_union_area_is_over_broad() -> None:
+    upper_mask = np.zeros((20, 30), dtype=bool)
+    upper_mask[:12, :] = True
+    lower_mask = np.zeros((20, 30), dtype=bool)
+    lower_mask[8:, :] = True
+    detections = [
+        Detection("tv monitor", (0, 0, 30, 12), 0.42, upper_mask),
+        Detection("tv monitor", (0, 8, 30, 20), 0.39, lower_mask),
+    ]
+    adapter = _StaticDetector(detections)
+
+    mask, kept, filtered_count = stress._detector_mask(
+        detector="grounding_dino",
+        detector_adapter=adapter,
+        noisy_rgb=np.zeros((20, 30, 3), dtype=np.uint8),
+        oracle_mask=np.zeros((20, 30), dtype=bool),
+        target_category="tv_monitor",
+        accepted_detection_labels={"tv monitor"},
+        max_detection_area_ratio=0.7,
+    )
+
+    assert kept == []
+    assert filtered_count == 2
+    assert not mask.any()
+
+
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
     state = stress.NaiveCountState()
 

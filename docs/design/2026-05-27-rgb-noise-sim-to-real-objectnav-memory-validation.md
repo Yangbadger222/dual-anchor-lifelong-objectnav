@@ -108,12 +108,15 @@ most or all of the `1280x720` image while Habitat GT has zero target pixels.
 Those boxes are not useful evidence for memory and should be rejected before
 the detector mask enters the evidence classifier.
 
-The replay runner therefore applies a shared detector-side maximum box-area
-filter before OR-ing detections into the detector mask:
+The replay runner therefore applies a shared detector-side maximum area filter
+before the detector mask enters the evidence classifier:
 
 - default `max_detection_area_ratio=0.70`;
 - `None` / CLI value `<=0` disables the filter for ablations;
-- the rule uses only detector bbox geometry and image size, never Habitat GT;
+- the first pass rejects individual detector boxes above the threshold;
+- the second pass rejects the whole detector mask when the union of remaining
+  boxes still covers more than the same threshold;
+- the rule uses only detector geometry and image size, never Habitat GT;
 - the filter is applied before all memory modes, so `on`, `naive_count`, and
   `off` see the same filtered detector evidence;
 - trace rows record `detection_filtered_count`, and summaries report the total

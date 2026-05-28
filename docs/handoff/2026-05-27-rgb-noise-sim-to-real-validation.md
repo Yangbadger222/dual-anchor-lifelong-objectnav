@@ -215,6 +215,7 @@ After detector setup:
 - Added a detector-side max-area filter:
   - default `--max-detection-area-ratio 0.7`
   - set `--max-detection-area-ratio 0` to disable for ablations
+  - rejects both individual over-broad boxes and over-broad union masks
   - trace rows include `detection_filtered_count`
   - summaries include total `detection_filtered_count`
   - the filter uses only detector bbox geometry and image size, not Habitat GT

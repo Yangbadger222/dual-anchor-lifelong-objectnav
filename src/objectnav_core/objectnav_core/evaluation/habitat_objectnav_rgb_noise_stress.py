@@ -727,6 +727,10 @@ def _detector_mask(
     mask = np.zeros(noisy_rgb.shape[:2], dtype=bool)
     for detection in detections:
         mask |= detection.mask
+    if _mask_area_ratio(mask) > (max_detection_area_ratio or 1.0):
+        filtered_count += len(detections)
+        detections = []
+        mask = np.zeros(noisy_rgb.shape[:2], dtype=bool)
     return mask, detections, filtered_count
 
 
@@ -750,6 +754,11 @@ def _filter_detections_by_area(
             continue
         kept.append(detection)
     return kept, filtered_count
+
+
+def _mask_area_ratio(mask: np.ndarray) -> float:
+    mask_bool = np.asarray(mask, dtype=bool)
+    return float(mask_bool.sum()) / max(1, mask_bool.size)
 
 
 def _detector_for_target(
