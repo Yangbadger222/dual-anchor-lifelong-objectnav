@@ -168,7 +168,9 @@ After detector setup:
   - it ignores non-confirmation and unknown observations
   - it does not use delayed birth, geometry, negative evidence handling, or
     cross-episode persistence
-  - the first positive observation creates the naive belief
+  - the first positive observation increments the count but stays below the
+    trust threshold
+  - the current trust threshold is two positive observations
 - Added a shared decision-side current-positive gate for all memory modes:
   - raw `TRUST` only remains gated `TRUST` when the current frame has target
     visibility and positive detector evidence
@@ -208,6 +210,8 @@ Still not run:
 - `naive_count` is intentionally weak and positive-only. Do not add
   non-confirmation, unknown handling, delayed birth, geometry, or persistence to
   it, because those are algorithm contributions.
+- Do not reduce `naive_count` to a one-positive trust baseline; that makes it a
+  single-frame strawman again.
 - The current-positive gate is shared by all memory modes. Keep it on the
   decision path, not as a post-hoc metric-only filter.
 

@@ -54,9 +54,10 @@ validation matrix uses a fixed replay protocol rather than a planner:
   observation updates `INITIAL_BELIEF` and then discards that belief before the
   next row.
 - `memory=naive_count` is the main non-memory accumulating baseline. It only
-  counts positive detector evidence inside the current replay. It must not use
-  non-confirmation, unknown, delayed birth, geometric consistency, or
-  cross-episode persistence because those are algorithm contributions.
+  counts positive detector evidence inside the current replay and trusts after
+  a fixed positive-count threshold. It must not use non-confirmation, unknown,
+  delayed birth, geometric consistency, or cross-episode persistence because
+  those are algorithm contributions.
 - A shared decision-side current-view gate is applied to all memory ablations
   before `TRUST` is allowed to become a stop/success decision. The gate must be
   independent of memory mode so the comparison stays fair.

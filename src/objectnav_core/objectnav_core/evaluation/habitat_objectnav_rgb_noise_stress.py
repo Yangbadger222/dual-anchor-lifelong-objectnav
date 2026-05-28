@@ -79,6 +79,7 @@ INITIAL_BELIEF = MemoryBelief(
     p_usable=0.85,
 )
 NAIVE_COUNT_TRUST_P_VALID = 0.9
+NAIVE_COUNT_POSITIVES_TO_TRUST = 2
 YOLO_WORLD_PROMPT_ALIASES: dict[str, tuple[str, ...]] = {
     "plant": ("plant", "potted plant", "houseplant"),
     "sofa": ("sofa", "couch"),
@@ -786,11 +787,17 @@ def _naive_count_belief(
     positive_count = state.positive_count
     if evidence_type is EvidenceType.POSITIVE:
         positive_count += 1
-    if positive_count > 0:
+    if positive_count >= NAIVE_COUNT_POSITIVES_TO_TRUST:
         belief = MemoryBelief(
             p_existence=0.98,
             p_location_valid=0.98,
             p_usable=0.98,
+        )
+    elif positive_count > 0:
+        belief = MemoryBelief(
+            p_existence=0.93,
+            p_location_valid=0.88,
+            p_usable=0.88,
         )
     else:
         belief = INITIAL_BELIEF

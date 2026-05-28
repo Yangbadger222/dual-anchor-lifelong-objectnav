@@ -80,7 +80,7 @@ def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
 
     state, belief = stress._naive_count_belief(state, EvidenceType.POSITIVE)
     assert state.positive_count == 1
-    assert belief.p_valid >= stress.NAIVE_COUNT_TRUST_P_VALID
+    assert belief.p_valid < stress.NAIVE_COUNT_TRUST_P_VALID
     first_positive_p_valid = belief.p_valid
 
     state, belief = stress._naive_count_belief(state, EvidenceType.UNKNOWN)
