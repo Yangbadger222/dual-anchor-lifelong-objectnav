@@ -72,6 +72,35 @@ The next ablation needed before a stronger lifelong-memory claim is this
 from Dual-Anchor / Lifelong behavior without borrowing the algorithm's
 negative-evidence handling or birth logic.
 
+## Update: Gate-Rejection Visual Diagnostics (2026-05-28)
+
+The shared current-positive gate revealed many rejected raw `TRUST` rows for
+`plant` and `tv_monitor`. These rows cannot be interpreted from scalar metrics
+alone because two different failure modes look similar in the trace:
+
+- Grounding-DINO may be drawing a plausible target prompt box on the wrong
+  visible object or region.
+- Habitat's semantic ground-truth mask may be very small, missing, clipped, or
+  otherwise stricter than the visual object humans would judge as visible.
+
+The RGB-noise replay runner therefore supports an optional debug export for
+gate rejections. When enabled, each exported PNG contains:
+
+- clean RGB with the Habitat target bounding box;
+- noisy RGB with detector boxes;
+- noisy RGB plus Habitat GT mask;
+- noisy RGB plus detector box-mask;
+- a combined overlay where GT is green, detector-only pixels are red, and
+  overlap is yellow;
+- per-frame metadata including category, memory mode, noise level, step,
+  gate reason, oracle pixels, detector pixels, precision, recall, and detector
+  confidence.
+
+This export is diagnostic only. It must not change metrics, gate behavior,
+memory updates, or detector outputs. The trace records a `debug_png` path only
+for exported rows so reviewers can jump from aggregate false-trust counts to
+the exact image evidence.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

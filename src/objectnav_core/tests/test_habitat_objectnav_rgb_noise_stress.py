@@ -2,9 +2,12 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from objectnav_core.evaluation import habitat_objectnav_rgb_noise_stress as stress
 from objectnav_core.memory.usability import EvidenceType
 from objectnav_core.memory.usability import DecisionType
+from objectnav_core.perception.yolo_world_adapter import Detection
 
 
 def test_importing_rgb_noise_stress_does_not_import_habitat_or_ultralytics() -> None:
@@ -73,6 +76,100 @@ def test_preflight_accepts_naive_count_memory_baseline(tmp_path: Path) -> None:
 
     assert "naive_count" in stress.SUPPORTED_MEMORY_ABLATIONS
     assert summary["memory_ablation"] == ["naive_count"]
+
+
+def test_preflight_records_gate_rejection_debug_export_config(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        debug_export_gate_rejections=True,
+        debug_export_categories=("plant", "tv_monitor"),
+        debug_export_limit_per_category=12,
+    )
+
+    assert summary["debug_export_gate_rejections"] is True
+    assert summary["debug_export_categories"] == ["plant", "tv_monitor"]
+    assert summary["debug_export_limit_per_category"] == 12
+
+
+def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
+    categories = {"plant", "tv_monitor"}
+
+    assert stress._should_export_gate_rejection_debug(
+        object_category="tv_monitor",
+        decision=DecisionType.TRUST,
+        gated_decision=DecisionType.VERIFY,
+        debug_categories=categories,
+    )
+    assert not stress._should_export_gate_rejection_debug(
+        object_category="toilet",
+        decision=DecisionType.TRUST,
+        gated_decision=DecisionType.VERIFY,
+        debug_categories=categories,
+    )
+    assert not stress._should_export_gate_rejection_debug(
+        object_category="plant",
+        decision=DecisionType.VERIFY,
+        gated_decision=DecisionType.VERIFY,
+        debug_categories=categories,
+    )
+
+
+def test_write_gate_rejection_debug_png_creates_visual_artifact(tmp_path: Path) -> None:
+    rgb = np.zeros((24, 32, 3), dtype=np.uint8)
+    rgb[:, :, 1] = 120
+    noisy_rgb = rgb.copy()
+    oracle_mask = np.zeros((24, 32), dtype=bool)
+    oracle_mask[6:16, 4:14] = True
+    detector_mask = np.zeros((24, 32), dtype=bool)
+    detector_mask[5:18, 12:28] = True
+    detection = Detection(
+        category="plant",
+        bbox=(12, 5, 28, 18),
+        confidence=0.77,
+        mask=detector_mask,
+    )
+
+    png_path = stress._write_gate_rejection_debug_png(
+        output_dir=tmp_path,
+        rgb=rgb,
+        noisy_rgb=noisy_rgb,
+        oracle_mask=oracle_mask,
+        detector_mask=detector_mask,
+        detections=[detection],
+        metadata={
+            "object_category": "plant",
+            "memory_mode": "on",
+            "noise_level": "clean",
+            "episode_index": 3,
+            "episode_id": "episode-3",
+            "step_index": 4,
+            "action": "turn_left",
+            "decision_gate_reason": "target_not_currently_visible",
+            "raw_decision": "trust",
+            "decision": "verify",
+            "target_visible": False,
+            "evidence_type": "unknown",
+            "oracle_target_pixels": 100,
+            "detector_target_pixels": 208,
+            "detector_precision": 0.1,
+            "oracle_recall": 0.2,
+            "oracle_bbox": "4,6,14,16",
+            "detection_conf_max": 0.77,
+        },
+        sequence_id=0,
+    )
+
+    assert png_path.exists()
+    assert png_path.suffix == ".png"
+    assert png_path.stat().st_size > 0
 
 
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:

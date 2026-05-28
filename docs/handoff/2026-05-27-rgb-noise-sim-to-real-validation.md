@@ -189,10 +189,21 @@ After detector setup:
   - memory `off`: 0 trust and 0 success
   - result: accumulation matters, but this replay matrix does not show
     Dual-Anchor / Lifelong memory beating naive positive counting
+- Added gate-rejection PNG export for visual diagnostics:
+  - CLI flags:
+    `--debug-export-gate-rejections`,
+    `--debug-export-categories plant,tv_monitor`,
+    `--debug-export-limit-per-category 256`
+  - trace rows now include `debug_png`
+  - summaries include `debug_png_counts` and `debug_png_skipped_counts`
+  - each PNG shows clean/noisy RGB, Grounding-DINO boxes, Habitat GT mask,
+    detector mask, overlap, gate reason, detector confidence, oracle pixels,
+    detector pixels, precision, and recall
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
+- A Linux replay with the new gate-rejection PNG export.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
 - A task designed to separate Dual-Anchor / Lifelong memory from naive positive
@@ -229,10 +240,11 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Pull the naive-count/shared-gate commit on `badger-linux`.
-2. Add a task where naive count should fail: cross-episode persistence,
+1. Pull the debug-PNG commit on `badger-linux`.
+2. Run the `plant,tv_monitor` replay subset with
+   `--debug-export-gate-rejections` and inspect the exported PNGs.
+3. Add a task where naive count should fail: cross-episode persistence,
    scene-change handling, negative evidence, or geometry consistency.
-3. Generate debug PNGs for `plant` and `tv_monitor` gate rejections.
 4. Add visibility-aware episode selection and reintroduce `chair`.
 5. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.

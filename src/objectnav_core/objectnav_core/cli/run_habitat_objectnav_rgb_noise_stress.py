@@ -8,6 +8,8 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_SENSOR_WIDTH,
     DEFAULT_STOP_ON_TRUST,
     DEFAULT_YOLO_PROMPT_MODE,
+    DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     SUPPORTED_DETECTORS,
     SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
@@ -123,6 +125,28 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--debug-export-gate-rejections",
+        action="store_true",
+        help=(
+            "Export side-by-side PNG diagnostics when raw TRUST is rejected by "
+            "the shared current-view gate."
+        ),
+    )
+    parser.add_argument(
+        "--debug-export-categories",
+        default=",".join(DEFAULT_DEBUG_EXPORT_CATEGORIES),
+        help=(
+            "Comma-separated category filter for gate-rejection PNG export. "
+            "Use an empty value to export every category."
+        ),
+    )
+    parser.add_argument(
+        "--debug-export-limit-per-category",
+        type=int,
+        default=DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+        help="Maximum number of debug PNGs to write per category.",
+    )
+    parser.add_argument(
         "--preflight-only",
         action="store_true",
         help="Validate config and write summary without loading Habitat or YOLO.",
@@ -149,6 +173,9 @@ def main() -> None:
             sensor_height=args.sensor_height,
             target_categories=_split_csv(args.target_categories),
             episodes_per_category=args.episodes_per_category,
+            debug_export_gate_rejections=args.debug_export_gate_rejections,
+            debug_export_categories=_split_csv(args.debug_export_categories),
+            debug_export_limit_per_category=args.debug_export_limit_per_category,
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -176,6 +203,9 @@ def main() -> None:
             stop_on_trust=args.stop_on_trust,
             target_categories=_split_csv(args.target_categories),
             episodes_per_category=args.episodes_per_category,
+            debug_export_gate_rejections=args.debug_export_gate_rejections,
+            debug_export_categories=_split_csv(args.debug_export_categories),
+            debug_export_limit_per_category=args.debug_export_limit_per_category,
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

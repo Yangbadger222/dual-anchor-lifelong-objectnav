@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -72,6 +73,9 @@ DEFAULT_SENSOR_WIDTH = 640
 DEFAULT_SENSOR_HEIGHT = 480
 DEFAULT_YOLO_PROMPT_MODE = "target"
 DEFAULT_STOP_ON_TRUST = True
+DEFAULT_DEBUG_EXPORT_CATEGORIES: tuple[str, ...] = ("plant", "tv_monitor")
+DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
+DEBUG_PANEL_MAX_WIDTH = 640
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 INITIAL_BELIEF = MemoryBelief(
     p_existence=0.9,
@@ -119,6 +123,9 @@ def run_habitat_objectnav_rgb_noise_stress(
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     episodes_per_category: int | None = None,
+    debug_export_gate_rejections: bool = False,
+    debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
@@ -157,6 +164,9 @@ def run_habitat_objectnav_rgb_noise_stress(
         sensor_height=sensor_height,
         target_categories=target_categories,
         episodes_per_category=episodes_per_category,
+        debug_export_gate_rejections=debug_export_gate_rejections,
+        debug_export_categories=debug_export_categories,
+        debug_export_limit_per_category=debug_export_limit_per_category,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
@@ -186,6 +196,14 @@ def run_habitat_objectnav_rgb_noise_stress(
     memory = LifelongMemoryHarness(output_path / "lifelong_memory.sqlite")
     trace_rows: list[dict[str, Any]] = []
     episode_summaries: list[dict[str, Any]] = []
+    debug_categories = _debug_category_filter(debug_export_categories)
+    debug_export_dir = (
+        output_path / "debug_gate_rejections"
+        if debug_export_gate_rejections
+        else None
+    )
+    debug_png_counts: dict[str, int] = {}
+    debug_png_skipped_counts: dict[str, int] = {}
     for scene_index, scene in enumerate(
         sorted({episode.resolved_scene_path for episode in selected_episodes})
     ):
@@ -240,6 +258,13 @@ def run_habitat_objectnav_rgb_noise_stress(
                             min_target_pixels=min_target_pixels,
                             min_detector_pixels=min_detector_pixels,
                             stop_on_trust=stop_on_trust,
+                            debug_export_gate_rejections=debug_export_gate_rejections,
+                            debug_export_categories=debug_categories,
+                            debug_export_dir=debug_export_dir,
+                            debug_export_counts=debug_png_counts,
+                            debug_export_skipped_counts=debug_png_skipped_counts,
+                            debug_export_limit_per_category=debug_export_limit_per_category,
+                            output_path=output_path,
                         )
                         trace_rows.extend(rows)
                         episode_summaries.append(episode_summary)
@@ -259,6 +284,8 @@ def run_habitat_objectnav_rgb_noise_stress(
         max_episodes=max_episodes,
         rows=trace_rows,
         episode_summaries=episode_summaries,
+        debug_png_counts=debug_png_counts,
+        debug_png_skipped_counts=debug_png_skipped_counts,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -284,6 +311,9 @@ def run_rgb_noise_stress_preflight(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     episodes_per_category: int | None = None,
+    debug_export_gate_rejections: bool = False,
+    debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
+    debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -297,6 +327,7 @@ def run_rgb_noise_stress_preflight(
     _validate_grounding_dino_max_image_side(grounding_dino_max_image_side)
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
+    _validate_debug_export_limit(debug_export_limit_per_category)
     sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
         sensor_size=sensor_size,
         sensor_width=sensor_width,
@@ -336,6 +367,9 @@ def run_rgb_noise_stress_preflight(
         "category_filter": list(target_categories),
         "episodes_per_category": episodes_per_category,
         "memory_ablation": list(memory_ablation),
+        "debug_export_gate_rejections": bool(debug_export_gate_rejections),
+        "debug_export_categories": sorted(_debug_category_filter(debug_export_categories)),
+        "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "revisit_strategy": "out_and_back",
         "out_and_back_actions": list(actions),
         "out_and_back_action_count": len(actions),
@@ -370,6 +404,13 @@ def _run_rgb_noise_episode(
     min_target_pixels: int,
     min_detector_pixels: int,
     stop_on_trust: bool,
+    debug_export_gate_rejections: bool = False,
+    debug_export_categories: set[str] | None = None,
+    debug_export_dir: Path | None = None,
+    debug_export_counts: dict[str, int] | None = None,
+    debug_export_skipped_counts: dict[str, int] | None = None,
+    debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
+    output_path: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     agent = sim.initialize_agent(0)
     start = _select_episode_start(episode, start_source=start_source)
@@ -487,6 +528,12 @@ def _run_rgb_noise_episode(
             target_visible=target_visible,
             evidence_type=evidence_type,
         )
+        decision_gate_reason = _decision_gate_reason(
+            decision=decision.decision,
+            gated_decision=gated_decision,
+            target_visible=target_visible,
+            evidence_type=evidence_type,
+        )
         oracle_stop_success = (
             gated_decision is DecisionType.TRUST
             and target_visible
@@ -497,6 +544,66 @@ def _run_rgb_noise_episode(
             target_visible=target_visible,
             stop_on_trust=stop_on_trust,
         )
+        debug_png = ""
+        if (
+            debug_export_gate_rejections
+            and debug_export_dir is not None
+            and debug_export_counts is not None
+            and debug_export_skipped_counts is not None
+            and _should_export_gate_rejection_debug(
+                object_category=episode.object_category,
+                decision=decision.decision,
+                gated_decision=gated_decision,
+                debug_categories=debug_export_categories,
+            )
+        ):
+            debug_key = _debug_category_token(episode.object_category)
+            debug_index = debug_export_counts.get(debug_key, 0)
+            if debug_index < debug_export_limit_per_category:
+                debug_path = _write_gate_rejection_debug_png(
+                    output_dir=debug_export_dir,
+                    rgb=rgb,
+                    noisy_rgb=noisy_rgb,
+                    oracle_mask=oracle_mask,
+                    detector_mask=detector_mask,
+                    detections=detections,
+                    metadata={
+                        "episode_index": episode_index,
+                        "episode_id": episode.episode_id,
+                        "original_scene_id": episode.original_scene_id,
+                        "object_category": episode.object_category,
+                        "noise_level": level,
+                        "memory_mode": memory_mode,
+                        "detector": detector,
+                        "step_index": step_index,
+                        "action": action,
+                        "target_visible": target_visible,
+                        "evidence_type": evidence_type.value,
+                        "evidence_reason": evidence_reason,
+                        "raw_decision": decision.decision.value,
+                        "decision": gated_decision.value,
+                        "decision_gate_reason": decision_gate_reason,
+                        "naive_positive_count": naive_count_state.positive_count,
+                        "p_valid": round(decision.p_valid, 6),
+                        "detection_count": len(detections),
+                        "detection_conf_max": round(
+                            max((d.confidence for d in detections), default=0.0),
+                            6,
+                        ),
+                        **metrics,
+                        **view_metrics,
+                    },
+                    sequence_id=debug_index,
+                )
+                debug_export_counts[debug_key] = debug_index + 1
+                if output_path is not None:
+                    debug_png = str(debug_path.relative_to(output_path))
+                else:
+                    debug_png = str(debug_path)
+            else:
+                debug_export_skipped_counts[debug_key] = (
+                    debug_export_skipped_counts.get(debug_key, 0) + 1
+                )
         rows.append(
             {
                 "episode_index": episode_index,
@@ -533,13 +640,9 @@ def _run_rgb_noise_episode(
                 "p_valid": round(decision.p_valid, 6),
                 "raw_decision": decision.decision.value,
                 "decision": gated_decision.value,
-                "decision_gate_reason": _decision_gate_reason(
-                    decision=decision.decision,
-                    gated_decision=gated_decision,
-                    target_visible=target_visible,
-                    evidence_type=evidence_type,
-                ),
+                "decision_gate_reason": decision_gate_reason,
                 "naive_positive_count": naive_count_state.positive_count,
+                "debug_png": debug_png,
                 "oracle_stop_success": oracle_stop_success,
                 "stopped_on_trust": stopped_on_trust,
             }
@@ -572,7 +675,7 @@ def _run_rgb_noise_episode(
 def _detector_mask(
     *,
     detector: str,
-    detector_adapter: YoloWorldDetector | None,
+    detector_adapter: YoloWorldDetector | GroundingDinoDetector | None,
     noisy_rgb: np.ndarray,
     oracle_mask: np.ndarray,
     target_category: str,
@@ -780,6 +883,288 @@ def _decision_gate_reason(
     return "trust_rejected"
 
 
+def _should_export_gate_rejection_debug(
+    *,
+    object_category: str,
+    decision: DecisionType,
+    gated_decision: DecisionType,
+    debug_categories: set[str] | None,
+) -> bool:
+    if decision is not DecisionType.TRUST or gated_decision is DecisionType.TRUST:
+        return False
+    normalized_categories = {
+        _debug_category_token(category) for category in (debug_categories or set())
+    }
+    return not normalized_categories or (
+        _debug_category_token(object_category) in normalized_categories
+    )
+
+
+def _write_gate_rejection_debug_png(
+    *,
+    output_dir: Path,
+    rgb: np.ndarray,
+    noisy_rgb: np.ndarray,
+    oracle_mask: np.ndarray,
+    detector_mask: np.ndarray,
+    detections: Sequence[Detection],
+    metadata: dict[str, Any],
+    sequence_id: int,
+) -> Path:
+    try:
+        from PIL import Image, ImageDraw
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Pillow is required for debug PNG export. Install pillow or disable "
+            "--debug-export-gate-rejections."
+        ) from exc
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rgb_image = Image.fromarray(_rgb3(rgb)).convert("RGB")
+    noisy_image = Image.fromarray(_rgb3(noisy_rgb)).convert("RGB")
+    oracle_bool = np.asarray(oracle_mask, dtype=bool)
+    detector_bool = np.asarray(detector_mask, dtype=bool)
+
+    clean_panel = rgb_image.copy()
+    oracle_bbox = _mask_bbox(oracle_bool)
+    if oracle_bbox is not None:
+        _draw_bbox(clean_panel, oracle_bbox, color=(0, 190, 80), label="Habitat GT")
+
+    dino_panel = noisy_image.copy()
+    for detection in detections:
+        _draw_bbox(
+            dino_panel,
+            detection.bbox,
+            color=(235, 60, 45),
+            label=f"{detection.category} {detection.confidence:.2f}",
+        )
+
+    detector_panel = _mask_overlay(
+        noisy_image,
+        detector_bool,
+        color=(235, 60, 45),
+        alpha=110,
+    )
+    oracle_panel = _mask_overlay(
+        noisy_image,
+        oracle_bool,
+        color=(0, 190, 80),
+        alpha=110,
+    )
+    overlap_panel = _overlap_overlay(noisy_image, oracle_bool, detector_bool)
+    if oracle_bbox is not None:
+        _draw_bbox(overlap_panel, oracle_bbox, color=(0, 190, 80), label="GT")
+    for detection in detections:
+        _draw_bbox(
+            overlap_panel,
+            detection.bbox,
+            color=(235, 60, 45),
+            label=f"DINO {detection.confidence:.2f}",
+        )
+
+    panels = [
+        _fit_debug_panel(clean_panel, "clean RGB + GT bbox"),
+        _fit_debug_panel(dino_panel, "noisy RGB + DINO boxes"),
+        _fit_debug_panel(oracle_panel, "Habitat GT mask"),
+        _fit_debug_panel(detector_panel, "DINO box mask"),
+        _fit_debug_panel(overlap_panel, "GT green / DINO red / overlap yellow"),
+    ]
+    panel_width = max(panel.width for panel in panels)
+    panel_height = max(panel.height for panel in panels)
+    text_height = 150
+    canvas = Image.new(
+        "RGB",
+        (panel_width * 2, panel_height * 3 + text_height),
+        (245, 245, 245),
+    )
+    positions = [
+        (0, 0),
+        (panel_width, 0),
+        (0, panel_height),
+        (panel_width, panel_height),
+        (0, panel_height * 2),
+    ]
+    for panel, position in zip(panels, positions):
+        canvas.paste(panel, position)
+
+    draw = ImageDraw.Draw(canvas)
+    info_x = panel_width
+    info_y = panel_height * 2
+    draw.rectangle(
+        (info_x, info_y, panel_width * 2, panel_height * 3),
+        fill=(255, 255, 255),
+    )
+    y = info_y + 8
+    for line in _debug_metadata_lines(metadata, detections):
+        draw.text((info_x + 10, y), line, fill=(20, 20, 20))
+        y += 16
+
+    footer_y = panel_height * 3
+    draw.rectangle(
+        (0, footer_y, panel_width * 2, footer_y + text_height),
+        fill=(255, 255, 255),
+    )
+    y = footer_y + 10
+    for line in _debug_interpretation_lines(metadata):
+        draw.text((10, y), line, fill=(20, 20, 20))
+        y += 18
+
+    path = output_dir / _debug_png_filename(metadata, sequence_id)
+    canvas.save(path)
+    return path
+
+
+def _draw_bbox(
+    image: Any,
+    bbox: tuple[int, int, int, int],
+    *,
+    color: tuple[int, int, int],
+    label: str,
+) -> None:
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image)
+    width = max(2, image.width // 320)
+    x1, y1, x2, y2 = bbox
+    draw.rectangle((x1, y1, x2, y2), outline=color, width=width)
+    text_y = max(0, y1 - 15)
+    draw.rectangle((x1, text_y, min(image.width, x1 + 180), text_y + 14), fill=color)
+    draw.text((x1 + 3, text_y + 2), label[:28], fill=(255, 255, 255))
+
+
+def _mask_overlay(
+    image: Any,
+    mask: np.ndarray,
+    *,
+    color: tuple[int, int, int],
+    alpha: int,
+) -> Any:
+    from PIL import Image
+
+    base = image.convert("RGBA")
+    overlay = np.zeros((image.height, image.width, 4), dtype=np.uint8)
+    overlay[np.asarray(mask, dtype=bool)] = (*color, alpha)
+    return Image.alpha_composite(base, Image.fromarray(overlay, mode="RGBA")).convert(
+        "RGB"
+    )
+
+
+def _overlap_overlay(image: Any, oracle_mask: np.ndarray, detector_mask: np.ndarray) -> Any:
+    from PIL import Image
+
+    base = image.convert("RGBA")
+    oracle_bool = np.asarray(oracle_mask, dtype=bool)
+    detector_bool = np.asarray(detector_mask, dtype=bool)
+    overlay = np.zeros((image.height, image.width, 4), dtype=np.uint8)
+    overlay[oracle_bool & ~detector_bool] = (0, 190, 80, 115)
+    overlay[detector_bool & ~oracle_bool] = (235, 60, 45, 115)
+    overlay[oracle_bool & detector_bool] = (255, 210, 0, 145)
+    return Image.alpha_composite(base, Image.fromarray(overlay, mode="RGBA")).convert(
+        "RGB"
+    )
+
+
+def _fit_debug_panel(image: Any, title: str) -> Any:
+    from PIL import ImageDraw
+
+    if image.width > DEBUG_PANEL_MAX_WIDTH:
+        ratio = DEBUG_PANEL_MAX_WIDTH / float(image.width)
+        image = image.resize(
+            (DEBUG_PANEL_MAX_WIDTH, max(1, int(round(image.height * ratio))))
+        )
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, image.width, 24), fill=(0, 0, 0))
+    draw.text((8, 6), title, fill=(255, 255, 255))
+    return image
+
+
+def _debug_metadata_lines(
+    metadata: dict[str, Any],
+    detections: Sequence[Detection],
+) -> list[str]:
+    detector_pixels = metadata.get(
+        "detector_pixels",
+        metadata.get("detector_target_pixels"),
+    )
+    detection_text = "; ".join(
+        f"{det.category}:{det.confidence:.2f}@{det.bbox}" for det in detections[:4]
+    )
+    if len(detections) > 4:
+        detection_text += f"; +{len(detections) - 4} more"
+    return [
+        (
+            f"category={metadata.get('object_category')} "
+            f"memory={metadata.get('memory_mode')} noise={metadata.get('noise_level')}"
+        ),
+        (
+            f"episode={metadata.get('episode_index')} id={metadata.get('episode_id')} "
+            f"step={metadata.get('step_index')} action={metadata.get('action')}"
+        ),
+        (
+            f"raw={metadata.get('raw_decision')} gated={metadata.get('decision')} "
+            f"reason={metadata.get('decision_gate_reason')}"
+        ),
+        (
+            f"target_visible={metadata.get('target_visible')} "
+            f"evidence={metadata.get('evidence_type')} "
+            f"p_valid={metadata.get('p_valid')}"
+        ),
+        (
+            f"oracle_px={metadata.get('oracle_target_pixels')} "
+            f"detector_px={detector_pixels} "
+            f"precision={metadata.get('detector_precision')} "
+            f"recall={metadata.get('oracle_recall')}"
+        ),
+        (
+            f"oracle_bbox={metadata.get('oracle_bbox')} "
+            f"max_conf={metadata.get('detection_conf_max')} "
+            f"detections={metadata.get('detection_count')}"
+        ),
+        f"boxes={detection_text or 'none'}",
+    ]
+
+
+def _debug_interpretation_lines(metadata: dict[str, Any]) -> list[str]:
+    return [
+        "How to inspect: red is detector box-mask, green is Habitat semantic GT, yellow is overlap.",
+        "If red boxes cover a visually wrong object, blame detector false positives.",
+        "If red boxes cover the object but green GT is tiny/missing, blame strict or sparse Habitat GT.",
+        (
+            f"evidence_reason={metadata.get('evidence_reason')} "
+            f"naive_positive_count={metadata.get('naive_positive_count')}"
+        ),
+        f"scene={metadata.get('original_scene_id')}",
+    ]
+
+
+def _debug_png_filename(metadata: dict[str, Any], sequence_id: int) -> str:
+    category = _debug_category_token(str(metadata.get("object_category", "unknown")))
+    memory = _sanitize_debug_token(str(metadata.get("memory_mode", "unknown")))
+    noise = _sanitize_debug_token(str(metadata.get("noise_level", "unknown")))
+    reason = _sanitize_debug_token(
+        str(metadata.get("decision_gate_reason", "trust_rejected"))
+    )
+    episode = _sanitize_debug_token(str(metadata.get("episode_index", "unknown")))
+    step = _sanitize_debug_token(str(metadata.get("step_index", "unknown")))
+    return (
+        f"{sequence_id:03d}_{category}_{memory}_{noise}_"
+        f"ep{episode}_step{step}_{reason}.png"
+    )
+
+
+def _debug_category_filter(categories: Sequence[str]) -> set[str]:
+    return {_debug_category_token(category) for category in categories}
+
+
+def _debug_category_token(category: str) -> str:
+    return _normalize_yolo_label(category).replace(" ", "_")
+
+
+def _sanitize_debug_token(value: str) -> str:
+    token = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value.strip())
+    return token.strip("-") or "unknown"
+
+
 def _naive_count_belief(
     state: NaiveCountState,
     evidence_type: EvidenceType,
@@ -899,7 +1284,17 @@ def _summarize_rgb_noise_run(
     max_episodes: int | None,
     rows: Sequence[dict[str, Any]],
     episode_summaries: Sequence[dict[str, Any]],
+    debug_png_counts: dict[str, int] | None = None,
+    debug_png_skipped_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    artifact_files = {
+        "trace": "rgb_noise_trace.csv",
+        "summary": "summary.json",
+        "memory": "lifelong_memory.sqlite",
+        "scene_dataset_config": scene_dataset_config.name,
+    }
+    if debug_png_counts:
+        artifact_files["debug_gate_rejections"] = "debug_gate_rejections/"
     summary = dict(config_summary)
     summary.update(
         {
@@ -930,13 +1325,12 @@ def _summarize_rgb_noise_run(
             "mean_detector_precision": _mean(rows, "detector_precision"),
             "mean_oracle_recall": _mean(rows, "oracle_recall"),
             "mean_final_p_valid": _mean(episode_summaries, "final_p_valid"),
+            "debug_png_counts": dict(sorted((debug_png_counts or {}).items())),
+            "debug_png_skipped_counts": dict(
+                sorted((debug_png_skipped_counts or {}).items())
+            ),
             "episode_summaries": list(episode_summaries),
-            "artifact_files": {
-                "trace": "rgb_noise_trace.csv",
-                "summary": "summary.json",
-                "memory": "lifelong_memory.sqlite",
-                "scene_dataset_config": scene_dataset_config.name,
-            },
+            "artifact_files": artifact_files,
             "artifact_dir": str(output_path),
             "limits": [
                 "V1 reports oracle-stop success rows, not official Habitat SPL.",
@@ -1005,6 +1399,11 @@ def _validate_yolo_prompt_mode(yolo_prompt_mode: str) -> None:
             "yolo_prompt_mode must be one of: "
             f"{', '.join(SUPPORTED_YOLO_PROMPT_MODES)}"
         )
+
+
+def _validate_debug_export_limit(limit: int) -> None:
+    if limit <= 0:
+        raise ValueError("debug_export_limit_per_category must be positive")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
