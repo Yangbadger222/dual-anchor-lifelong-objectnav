@@ -592,8 +592,10 @@ def _run_rgb_noise_episode(
             category=episode.object_category,
             default=INITIAL_BELIEF,
         )
+        candidate_born = belief != INITIAL_BELIEF
     else:
         belief = INITIAL_BELIEF
+        candidate_born = False
     rows: list[dict[str, Any]] = []
     negative_streak = 0
     previous_pose = _initial_replay_pose_from_steps(replay_steps) or _agent_pose(agent)
@@ -677,7 +679,12 @@ def _run_rgb_noise_episode(
                 evidence_type,
             )
         else:
-            belief = updater.apply(belief, event)
+            candidate_born, belief = _memory_on_belief_update(
+                candidate_born=candidate_born,
+                belief=belief,
+                event=event,
+                updater=updater,
+            )
         decision = policy.choose(
             belief,
             _decision_context(
@@ -1876,6 +1883,18 @@ def _naive_count_belief(
     else:
         belief = INITIAL_BELIEF
     return NaiveCountState(positive_count=positive_count), belief
+
+
+def _memory_on_belief_update(
+    *,
+    candidate_born: bool,
+    belief: MemoryBelief,
+    event: EvidenceEvent,
+    updater: UsabilityUpdater,
+) -> tuple[bool, MemoryBelief]:
+    if not candidate_born and event.evidence_type is not EvidenceType.POSITIVE:
+        return False, belief
+    return True, updater.apply(belief, event)
 
 
 def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:

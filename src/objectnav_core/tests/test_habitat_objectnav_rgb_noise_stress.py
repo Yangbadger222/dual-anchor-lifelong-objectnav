@@ -415,6 +415,58 @@ def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
     assert belief.p_valid >= first_positive_p_valid
 
 
+def test_memory_on_delays_birth_until_first_positive_evidence() -> None:
+    updater = stress.UsabilityUpdater()
+    belief = stress.INITIAL_BELIEF
+    candidate_born = False
+
+    for evidence_type in (
+        EvidenceType.UNKNOWN,
+        EvidenceType.NON_CONFIRMATION,
+        EvidenceType.FREE,
+    ):
+        candidate_born, belief = stress._memory_on_belief_update(
+            candidate_born=candidate_born,
+            belief=belief,
+            event=stress.EvidenceEvent(evidence_type),
+            updater=updater,
+        )
+
+    assert candidate_born is False
+    assert belief == stress.INITIAL_BELIEF
+
+    candidate_born, belief = stress._memory_on_belief_update(
+        candidate_born=candidate_born,
+        belief=belief,
+        event=stress.EvidenceEvent(EvidenceType.POSITIVE),
+        updater=updater,
+    )
+
+    assert candidate_born is True
+    assert belief.p_valid > stress.INITIAL_BELIEF.p_valid
+
+
+def test_memory_on_applies_negative_evidence_after_birth() -> None:
+    updater = stress.UsabilityUpdater()
+    belief = stress.MemoryBelief(
+        p_existence=0.98,
+        p_location_valid=0.95,
+        p_usable=0.95,
+    )
+
+    candidate_born, updated = stress._memory_on_belief_update(
+        candidate_born=True,
+        belief=belief,
+        event=stress.EvidenceEvent(EvidenceType.NON_CONFIRMATION),
+        updater=updater,
+    )
+
+    assert candidate_born is True
+    assert updated.p_existence == belief.p_existence
+    assert updated.p_location_valid < belief.p_location_valid
+    assert updated.p_usable < belief.p_usable
+
+
 def test_preflight_accepts_grounding_dino_detector(tmp_path: Path) -> None:
     summary = stress.run_rgb_noise_stress_preflight(
         output_dir=tmp_path,

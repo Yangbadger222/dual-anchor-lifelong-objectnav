@@ -275,6 +275,39 @@ counts and still ignores non-confirmation/unknown evidence. The shortcut only
 removes unnecessary extra verification when the current frame itself is already
 positive and the mode's own belief state is high enough.
 
+## Update: Delayed Birth For Long-Range Replay (2026-05-28)
+
+The first long-range `geodesic_path` replay exposed an implementation mismatch
+with the intended memory semantics. When the agent starts from the official
+ObjectNav episode start, many approach frames occur before the target has ever
+been detected. Feeding these pre-birth `UNKNOWN`, `NON_CONFIRMATION`, or
+`FREE` events into `memory=on` decays the default belief before a candidate
+memory exists. The positive-only `naive_count` baseline does not suffer that
+penalty, so the comparison unintentionally rewards the baseline for ignoring
+all non-positive evidence.
+
+The RGB-noise harness therefore treats candidate birth explicitly for
+`memory=on`:
+
+- a fresh category-scene belief loaded from the default state is considered
+  not yet born;
+- before birth, only `POSITIVE` evidence creates the candidate and updates the
+  belief;
+- pre-birth `UNKNOWN`, `NON_CONFIRMATION`, `FREE`, `OCCLUDED`,
+  `ACCESS_BLOCKED`, and `SCENE_CHANGED` leave the default belief unchanged;
+- once a candidate is born, all evidence types are applied normally, so stale,
+  moved, blocked, or repeatedly unconfirmed memory can still decay and retire;
+- beliefs loaded from SQLite that differ from the default are treated as
+  already born, preserving lifelong persistence across episodes;
+- `naive_count` remains unchanged: it only counts positive observations and
+  does not receive delayed birth, non-confirmation handling, geometry, or
+  persistence.
+
+This is an algorithm-boundary fix, not a metric-only change. It aligns the
+long-range replay with the original delayed-birth contribution while keeping
+the shared current-positive gate and the shared current-positive trust shortcut
+unchanged.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

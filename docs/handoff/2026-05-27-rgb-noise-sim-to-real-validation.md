@@ -421,6 +421,33 @@ After detector setup:
   - this does not change detector outputs, evidence classification, the shared
     current-positive gate, or `naive_count` counting behavior
   - local focused tests passed: `49` tests
+- Reran the same Grounding-DINO `geodesic_path` smoke on `badger-linux` after
+  pulling commit `07ef48b`:
+  - output:
+    `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_current_positive`
+  - selected episodes: `3` (`bed`), `55` (`toilet`), `62` (`plant`)
+  - trace rows: `114`
+  - `memory=on`: `24` raw trust, `11` gated success, `13` gate rejections
+  - `naive_count`: `28` raw trust, `13` gated success, `15` gate rejections
+  - `memory=off`: `0` trust / success
+  - category result:
+    - `bed`: memory `on` improved from `3` to `4` success rows, matching
+      `naive_count`
+    - `toilet`: memory `on` matched `naive_count` at `5` success rows
+    - `plant`: memory `on` remained behind `naive_count` at `2` vs `4`
+  - conclusion: current-positive trust is a small improvement, not enough for
+    a strong algorithm claim.
+- Added local delayed-birth handling for `memory=on` in the RGB-noise replay:
+  - fresh default memory ignores pre-birth non-positive evidence until the
+    first positive detector observation creates a candidate
+  - beliefs loaded from SQLite that differ from the default are treated as
+    already born
+  - after birth, negative and weak evidence still updates memory normally
+  - `naive_count` remains positive-only and unchanged
+  - local focused tests passed: `49` tests
+  - compileall passed
+  - geodesic-path preflight wrote
+    `runs/habitat_usability/geodesic_delayed_birth_preflight/summary.json`
 
 Still not run:
 
@@ -436,6 +463,7 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
+- Linux rerun of the `geodesic_path` Grounding-DINO smoke after delayed birth.
 
 ## Known Risks
 
@@ -467,6 +495,9 @@ Still not run:
 - The current-positive opportunistic trust rule is also shared by all memory
   modes. Keep it tied to current positive evidence and the mode's own `p_valid`;
   do not use it as a post-hoc metric override.
+- Delayed birth is an algorithm contribution for `memory=on`, not a baseline
+  feature. Keep `naive_count` positive-only: no delayed birth state,
+  non-confirmation handling, geometry, or persistence.
 
 ## Next Recommended Step
 
@@ -484,10 +515,14 @@ Still not run:
 5. Add visibility-aware episode selection and reintroduce `chair`.
 6. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-7. Pull the `geodesic_path` commit on `badger-linux`, run oracle and
-   Grounding-DINO long-range smokes from `episode_start`, then connect the
-   replay harness to a real action-level Habitat follower and report
-   navigation metrics.
+7. Pull the delayed-birth commit on `badger-linux` and rerun the
+   Grounding-DINO `geodesic_path` smoke from `episode_start`; compare
+   `summary.json["episode_selection"]`, `memory=on`, and `naive_count`.
+8. If delayed birth helps the smoke, scale to a larger `bed,toilet,plant`
+   matrix with `clean,mild,heavy`; if it still does not help, implement an
+   explicit expected-location-empty context before running a larger matrix.
+9. Connect the replay harness to a real action-level Habitat follower and
+   report navigation metrics.
 
 ## Context for Next Contributor
 
