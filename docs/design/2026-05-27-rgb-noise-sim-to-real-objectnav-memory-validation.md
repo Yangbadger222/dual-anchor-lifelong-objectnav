@@ -252,6 +252,29 @@ It must not be reported as official Habitat success/SPL. The next step after a
 successful geodesic replay is an action-level Habitat follower or policy that
 executes navigational actions and reports path-efficiency metrics.
 
+## Update: Current-Positive Opportunistic Trust (2026-05-28)
+
+The first Grounding-DINO `geodesic_path` smoke showed that memory `on` can be
+too conservative after repeated positive observations: it reduces raw false
+trust compared with `naive_count`, but sometimes misses gated success rows
+because the cost policy asks for one more `VERIFY` even while the current frame
+already confirms the target.
+
+The decision policy therefore gets a shared current-positive shortcut:
+
+- the evidence classifier remains unchanged;
+- the shared current-positive gate remains unchanged;
+- `DecisionContext` records whether the current frame has positive evidence;
+- if `p_valid` is already above a high threshold and the current frame is
+  positive, the policy may choose `TRUST` immediately instead of another
+  `VERIFY`;
+- the rule is shared by `memory=on`, `memory=naive_count`, and `memory=off`.
+
+This is not a baseline handicap. `naive_count` still only accumulates positive
+counts and still ignores non-confirmation/unknown evidence. The shortcut only
+removes unnecessary extra verification when the current frame itself is already
+positive and the mode's own belief state is high enough.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

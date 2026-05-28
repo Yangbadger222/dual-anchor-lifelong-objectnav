@@ -685,6 +685,7 @@ def _run_rgb_noise_episode(
                 total_steps=total_steps,
                 negative_streak=negative_streak,
                 metrics=metrics,
+                current_positive_evidence=evidence_type is EvidenceType.POSITIVE,
             ),
         )
         target_visible = metrics["oracle_target_pixels"] >= min_target_pixels

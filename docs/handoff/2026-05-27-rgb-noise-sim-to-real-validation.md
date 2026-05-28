@@ -412,6 +412,15 @@ After detector setup:
   - local focused tests passed: `39` tests
   - CLI preflight recorded `replay_protocol=geodesic_path`,
     `geodesic_path_max_steps=12`, and replay phase `approach`
+- Added local current-positive opportunistic trust:
+  - `DecisionContext.current_positive_evidence`
+  - shared policy shortcut trusts when current evidence is positive and the
+    mode's own `p_valid >= 0.88`
+  - Habitat RGB-noise runner now passes current positive evidence into the
+    shared decision context
+  - this does not change detector outputs, evidence classification, the shared
+    current-positive gate, or `naive_count` counting behavior
+  - local focused tests passed: `49` tests
 
 Still not run:
 
@@ -455,6 +464,9 @@ Still not run:
   single-frame strawman again.
 - The current-positive gate is shared by all memory modes. Keep it on the
   decision path, not as a post-hoc metric-only filter.
+- The current-positive opportunistic trust rule is also shared by all memory
+  modes. Keep it tied to current positive evidence and the mode's own `p_valid`;
+  do not use it as a post-hoc metric override.
 
 ## Next Recommended Step
 

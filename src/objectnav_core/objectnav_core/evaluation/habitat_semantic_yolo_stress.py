@@ -557,6 +557,7 @@ def _decision_context(
     total_steps: int,
     negative_streak: int,
     metrics: dict[str, Any],
+    current_positive_evidence: bool = False,
 ) -> DecisionContext:
     detector_pixels = int(metrics["detector_pixels"])
     d_nav = 2.0 + min(8.0, negative_streak * 1.25)
@@ -569,6 +570,7 @@ def _decision_context(
         c_search=c_search,
         b_remaining=max(0.0, float(total_steps - step_index - 1)),
         verification_repeatedly_failed=negative_streak >= 4,
+        current_positive_evidence=current_positive_evidence,
     )
 
 

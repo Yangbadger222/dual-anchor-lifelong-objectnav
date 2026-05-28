@@ -65,6 +65,7 @@ class DecisionContext:
     b_remaining: float
     user_requested_specific_instance: bool = False
     verification_repeatedly_failed: bool = False
+    current_positive_evidence: bool = False
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -143,10 +144,17 @@ class UsabilityUpdater:
 
 
 class UsabilityDecisionPolicy:
-    def __init__(self, retire_threshold: float = 0.2) -> None:
+    def __init__(
+        self,
+        retire_threshold: float = 0.2,
+        current_positive_trust_threshold: float = 0.88,
+    ) -> None:
         if not 0.0 <= retire_threshold <= 1.0:
             raise ValueError("retire_threshold must be in [0, 1]")
+        if not 0.0 <= current_positive_trust_threshold <= 1.0:
+            raise ValueError("current_positive_trust_threshold must be in [0, 1]")
         self.retire_threshold = retire_threshold
+        self.current_positive_trust_threshold = current_positive_trust_threshold
 
     def choose(
         self,
@@ -184,6 +192,17 @@ class UsabilityDecisionPolicy:
         ):
             return DecisionResult(
                 decision=DecisionType.RETIRE,
+                p_valid=p_valid,
+                expected_costs=costs,
+            )
+
+        if (
+            context.current_positive_evidence
+            and p_valid >= self.current_positive_trust_threshold
+            and belief.p_usable >= self.retire_threshold
+        ):
+            return DecisionResult(
+                decision=DecisionType.TRUST,
                 p_valid=p_valid,
                 expected_costs=costs,
             )

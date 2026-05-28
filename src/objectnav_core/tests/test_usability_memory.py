@@ -177,3 +177,35 @@ def test_decision_policy_trusts_high_validity_memory() -> None:
     )
 
     assert result.decision is DecisionType.TRUST
+
+
+def test_decision_policy_trusts_current_positive_high_validity_memory() -> None:
+    policy = UsabilityDecisionPolicy()
+    belief = MemoryBelief(
+        p_existence=0.9550671035882778,
+        p_location_valid=0.9644608361976817,
+        p_usable=0.9741932704265424,
+    )
+    context = DecisionContext(
+        d_nav=2.0,
+        d_verify=1.5,
+        c_fail=14.0,
+        c_search=18.0,
+        b_remaining=10.0,
+    )
+
+    assert policy.choose(belief, context).decision is DecisionType.VERIFY
+    assert (
+        policy.choose(
+            belief,
+            DecisionContext(
+                d_nav=2.0,
+                d_verify=1.5,
+                c_fail=14.0,
+                c_search=18.0,
+                b_remaining=10.0,
+                current_positive_evidence=True,
+            ),
+        ).decision
+        is DecisionType.TRUST
+    )
