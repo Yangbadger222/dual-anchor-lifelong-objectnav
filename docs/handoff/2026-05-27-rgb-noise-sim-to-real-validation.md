@@ -666,6 +666,30 @@ After detector setup:
       with `clean,mild` confirmed cross-replay reuse: the first
       `mild`/`memory=on` row loaded `memory_anchor_x=-1.329567`,
       `memory_anchor_z=-9.573214` from the previous clean replay
+- Ran the first unguarded instance-anchor EPC2 matrix:
+  `runs/habitat_usability/geodesic_expected_empty_grounding_dino_matrix_1280x720_epc2_cap384_instance_anchor`
+  - selected episodes: `3,33,55,39,62,84`
+  - `memory=on`: `18/18` successful episodes, `126` success rows,
+    `251` raw trust, `125` gate rejections, mean first success step
+    `8.388889`, mean path to first success `13.646640 m`
+  - `naive_count`: `18/18` successful episodes, `147` success rows,
+    `268` raw trust, `121` gate rejections, mean first success step
+    `8.333333`, mean path to first success `13.766439 m`
+  - persisted anchors were written for bed, toilet, and plant instances
+  - read: this closes the episode-success gap but still does not beat
+    `naive_count` on success rows
+  - issue found: loaded persisted anchors could still be overwritten by
+    `approach`-phase positives before goal confirmation
+- Fixed persisted-anchor refresh:
+  - loaded anchors are marked persisted
+  - `approach` positives do not overwrite persisted anchors
+  - explicit `confirm` / `revisit` positives can still refresh the anchor
+  - local focused tests passed: `84` tests
+  - remote Grounding-DINO bed refresh-guard smoke:
+    `runs/habitat_usability/object_instance_anchor_grounding_dino_bed_persistence_smoke_1280x720_cap384_refresh_guard`
+    confirmed that the first `mild`/`memory=on` rows retained
+    `memory_anchor_x=-1.329567`, `memory_anchor_z=-9.573214` despite approach
+    positives with different observation anchors
 
 Still not run:
 
@@ -685,9 +709,9 @@ Still not run:
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
 - Long-range Grounding-DINO replay rerun after object-instance geometry anchor
-  persistence for the full `bed,toilet,plant` EPC2 matrix. The bed-only
-  Grounding-DINO smoke verifies detector-path persistence but is not a final
-  algorithm result.
+  persistence plus the refresh guard for the full `bed,toilet,plant` EPC2
+  matrix. The unguarded instance-anchor matrix is informative but not the final
+  post-fix comparison.
 - Instance-scoped belief persistence. Current belief persistence is still
   scene/category-level; the new instance scope currently applies only to the
   geometry anchor.

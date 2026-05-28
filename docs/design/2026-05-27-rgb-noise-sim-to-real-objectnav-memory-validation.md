@@ -473,6 +473,11 @@ Scope:
   expose an object id, keeping the key conservative rather than over-sharing;
 - initialize `memory=on` geometry state from the persisted anchor before a
   replay and save the final anchor after the replay;
+- treat loaded anchors as persisted state: approach frames may use the anchor
+  for trace/debug context, but do not overwrite it with opportunistic
+  same-category detections on the path;
+- refresh persisted anchors only from explicit confirmation/revisit phases,
+  where the replay is intentionally looking at the remembered object location;
 - leave `naive_count` and `off` geometry-free and persistence-free.
 
 Non-goals:
