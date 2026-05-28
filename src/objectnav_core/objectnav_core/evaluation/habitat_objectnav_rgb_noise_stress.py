@@ -2818,6 +2818,10 @@ def _summarize_rgb_noise_run(
                 rows,
                 "decision_gate_reason",
             ),
+            "memory_geometry_gate_reason_counts": _count_nonempty_values(
+                rows,
+                "memory_geometry_gate_reason",
+            ),
             "replay_phase_counts": _count_values(rows, "replay_phase"),
             "replay_phase_evidence_counts": _nested_count_values(
                 rows,
@@ -3015,6 +3019,18 @@ def _nested_count_values(
         outer: dict(sorted(inner_counts.items()))
         for outer, inner_counts in sorted(counts.items())
     }
+
+
+def _count_nonempty_values(
+    rows: Sequence[dict[str, Any]],
+    key: str,
+) -> dict[str, int]:
+    values = [
+        row
+        for row in rows
+        if row.get(key) is not None and str(row.get(key)).strip()
+    ]
+    return _count_values(values, key)
 
 
 def _mean(rows: Sequence[dict[str, Any]], key: str) -> float | None:

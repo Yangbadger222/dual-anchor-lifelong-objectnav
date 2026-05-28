@@ -1390,6 +1390,7 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision": "trust",
                 "raw_decision": "trust",
                 "decision_gate_reason": "current_positive_confirmation",
+                "memory_geometry_gate_reason": "",
                 "replay_phase": "confirm",
                 "oracle_stop_success": True,
                 "memory_mode": "on",
@@ -1402,6 +1403,7 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision": "verify",
                 "raw_decision": "trust",
                 "decision_gate_reason": "target_not_currently_visible",
+                "memory_geometry_gate_reason": "geometry_anchor_out_of_view_positive",
                 "replay_phase": "non_confirm",
                 "oracle_stop_success": False,
                 "memory_mode": "on",
@@ -1428,6 +1430,9 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
     assert summary["decision_gate_reason_counts"] == {
         "current_positive_confirmation": 1,
         "target_not_currently_visible": 1,
+    }
+    assert summary["memory_geometry_gate_reason_counts"] == {
+        "geometry_anchor_out_of_view_positive": 1,
     }
     assert summary["replay_phase_counts"] == {"confirm": 1, "non_confirm": 1}
     assert summary["replay_phase_evidence_counts"] == {

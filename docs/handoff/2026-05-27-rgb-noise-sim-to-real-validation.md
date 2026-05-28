@@ -690,6 +690,28 @@ After detector setup:
     confirmed that the first `mild`/`memory=on` rows retained
     `memory_anchor_x=-1.329567`, `memory_anchor_z=-9.573214` despite approach
     positives with different observation anchors
+- Ran the guarded instance-anchor EPC2 matrix:
+  `runs/habitat_usability/geodesic_expected_empty_grounding_dino_matrix_1280x720_epc2_cap384_instance_anchor_guarded`
+  - selected episodes: `3,33,55,39,62,84`
+  - replay summaries: `54`; trace rows: `1152`
+  - `memory=on`: `18/18` successful episodes, `126` success rows,
+    `251` raw trust, `125` gate rejections, mean first-success step
+    `8.388889`, mean path to first success `13.646640 m`,
+    mean final `p_valid=0.915774`
+  - `naive_count`: `18/18` successful episodes, `147` success rows,
+    `268` raw trust, `121` gate rejections, mean first-success step
+    `8.333333`, mean path to first success `13.766439 m`,
+    mean final `p_valid=0.941192`
+  - `off`: `0/18` successful episodes
+  - category counts:
+    - `bed`: memory `53` success rows / `71` raw / `18` gate; naive `57`
+      success rows / `88` raw / `31` gate
+    - `plant`: memory `29` success rows / `80` raw / `51` gate; naive `40`
+      success rows / `88` raw / `48` gate
+    - `toilet`: memory `44` success rows / `100` raw / `56` gate; naive
+      `50` success rows / `92` raw / `42` gate
+  - read: guarded instance anchors close the episode-success gap and reduce
+    raw trust, but still do not beat `naive_count` on gated success rows
 
 Still not run:
 
@@ -708,13 +730,8 @@ Still not run:
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant` with
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
-- Long-range Grounding-DINO replay rerun after object-instance geometry anchor
-  persistence plus the refresh guard for the full `bed,toilet,plant` EPC2
-  matrix. The unguarded instance-anchor matrix is informative but not the final
-  post-fix comparison.
 - Instance-scoped belief persistence. Current belief persistence is still
-  scene/category-level; the new instance scope currently applies only to the
-  geometry anchor.
+  scene/category-level; geometry anchors are instance-scoped.
 
 ## Known Risks
 
