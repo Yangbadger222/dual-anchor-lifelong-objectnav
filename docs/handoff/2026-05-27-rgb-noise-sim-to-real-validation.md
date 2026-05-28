@@ -134,6 +134,17 @@ After detector setup:
   `docs/experiments/2026-05-28-detector-category-qualification-1280x720.md`.
 - Wrote a detailed local HTML report:
   - `docs/experiments/2026-05-28-detector-category-qualification-1280x720.zh.html`
+- Added Grounding-DINO as a detector backend and ran clean `1280x720`
+  qualification with detector-side cap `384`:
+  - output: `runs/habitat_usability/grounding_dino_category_qualification_1280x720_epc1_cap384`
+  - output: `runs/habitat_usability/grounding_dino_category_qualification_1280x720_epc2_fulltrace_cap384`
+  - output: `runs/habitat_usability/grounding_dino_category_qualification_1280x720_chair_probe_cap384`
+  - `bed`, `sofa`, `toilet`, and `plant` are ready in the main full-trace pass
+  - `tv_monitor` is usable but sparse-view sensitive
+  - `chair` succeeds in later sparse-visible probe episodes but remains blocked
+    by first-N episode visibility
+- Recorded this in
+  `docs/experiments/2026-05-28-grounding-dino-category-qualification-1280x720.md`.
 
 Still not run:
 
@@ -148,24 +159,25 @@ Still not run:
 - YOLO-World misses the first visible `toilet` episode under 64/96/224 px
   renders. At 320 px with target-conditioned prompting and stop-on-trust,
   toilet smoke succeeds.
-- Plant remains a detector/category bottleneck. Raw low-threshold probes with
-  `plant`, `potted plant`, `houseplant`, `indoor plant`, and
-  `decorative plant` did not produce target-overlapping boxes above 0.25.
-- `tv_monitor` is also a detector/visibility blocker at 1280x720 under current
-  prompts and sampled views.
+- Plant remains a YOLO-World detector/category bottleneck, but Grounding-DINO
+  clears it in the clean `1280x720` qualification.
+- `tv_monitor` remains sparse-view sensitive, but Grounding-DINO produced
+  success rows in the second full-trace tv-monitor episode.
 - `chair` cannot be evaluated from the current early sampled goal viewpoints;
-  semantic chair IDs exist, but sampled episodes have zero or sparse visible
-  target rows.
+  semantic chair IDs exist, and Grounding-DINO succeeds on later sparse-visible
+  chair samples.
+- Grounding-DINO uncapped / large-cap inference OOMs on the 4070 Laptop GPU.
+  Use `--grounding-dino-max-image-side 384` unless running on a larger GPU.
 - The out-and-back controller is a deterministic action retrace helper, not a navmesh-aware `ShortestPathFollower` integration yet.
 - The success metric is oracle-stop row count, not official Habitat SPL.
 
 ## Next Recommended Step
 
 1. Add visibility-aware episode selection for detector qualification.
-2. Generate debug PNGs for `plant`, `tv_monitor`, and sparse `chair` views.
-3. Fix or explicitly scope `plant` / `tv_monitor` detector limitations.
-4. Run the first full matrix only on detector-ready categories (`bed`, `sofa`,
-   `toilet`) unless blockers are fixed.
+2. Re-run Grounding-DINO qualification with visible samples per category.
+3. Generate debug PNGs for `tv_monitor` and sparse `chair` views.
+4. Then run the first full matrix on visibility-qualified Grounding-DINO
+   categories.
 
 ## Context for Next Contributor
 
