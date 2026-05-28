@@ -712,6 +712,13 @@ After detector setup:
       `50` success rows / `92` raw / `42` gate
   - read: guarded instance anchors close the episode-success gap and reduce
     raw trust, but still do not beat `naive_count` on gated success rows
+- Implemented instance-scoped usability belief persistence locally:
+  - `usability_beliefs` now includes `instance_id`
+  - legacy belief rows migrate to `instance_id='category:*'`
+  - `memory=on` replay load/save uses the same `goal_object:*` key as geometry
+    anchors when `closest_goal_object_id` is available
+  - category-level belief behavior remains as fallback for old callers
+  - local focused tests passed: `86` tests, compileall, and `git diff --check`
 
 Still not run:
 
@@ -730,8 +737,8 @@ Still not run:
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant` with
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
-- Instance-scoped belief persistence. Current belief persistence is still
-  scene/category-level; geometry anchors are instance-scoped.
+- Linux pull/test for instance-scoped belief persistence.
+- Grounding-DINO smoke after instance-scoped belief persistence.
 
 ## Known Risks
 
@@ -769,10 +776,9 @@ Still not run:
 - Delayed birth is an algorithm contribution for `memory=on`, not a baseline
   feature. Keep `naive_count` positive-only: no delayed birth state,
   non-confirmation handling, geometry, or persistence.
-- The geometry gate now has a persisted object-instance anchor path for
-  `memory=on`, but the belief table is still scene/category-level. Do not claim
-  full object-instance lifelong memory until belief state is also instance
-  scoped or the claim is explicitly limited to geometry anchors.
+- Geometry anchors and usability beliefs are now both object-instance scoped
+  when Habitat exposes `closest_goal_object_id`; old category-level belief rows
+  remain as a fallback migration path.
 - The radius-only geometry gate is not strong enough by itself; keep the FOV
   consistency run separate in the report so the ablation remains interpretable.
 - Prefer FOV-only geometry gating for the next run; radius gating caused

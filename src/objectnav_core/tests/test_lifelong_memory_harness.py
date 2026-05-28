@@ -35,6 +35,54 @@ def test_lifelong_harness_persists_belief_by_scene_dataset_and_category(
     ) == MemoryBelief(0.1, 0.1, 0.1)
 
 
+def test_lifelong_harness_persists_belief_by_object_instance_when_available(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "memory.sqlite"
+    store = LifelongMemoryHarness(db_path)
+    belief_a = MemoryBelief(p_existence=0.8, p_location_valid=0.7, p_usable=0.6)
+    belief_b = MemoryBelief(p_existence=0.6, p_location_valid=0.5, p_usable=0.4)
+
+    store.save_belief(
+        scene_id="scene-a",
+        episode_dataset_version="objectnav_hm3d_v1/val_mini",
+        category="plant",
+        belief=belief_a,
+        instance_id="goal_object:183",
+    )
+    store.save_belief(
+        scene_id="scene-a",
+        episode_dataset_version="objectnav_hm3d_v1/val_mini",
+        category="plant",
+        belief=belief_b,
+        instance_id="goal_object:184",
+    )
+
+    reopened = LifelongMemoryHarness(db_path)
+
+    assert reopened.load_belief(
+        scene_id="scene-a",
+        episode_dataset_version="objectnav_hm3d_v1/val_mini",
+        category="plant",
+        default=MemoryBelief(0.1, 0.1, 0.1),
+        instance_id="goal_object:183",
+    ) == belief_a
+    assert reopened.load_belief(
+        scene_id="scene-a",
+        episode_dataset_version="objectnav_hm3d_v1/val_mini",
+        category="plant",
+        default=MemoryBelief(0.1, 0.1, 0.1),
+        instance_id="goal_object:184",
+    ) == belief_b
+    assert reopened.load_belief(
+        scene_id="scene-a",
+        episode_dataset_version="objectnav_hm3d_v1/val_mini",
+        category="plant",
+        default=MemoryBelief(0.1, 0.1, 0.1),
+        instance_id="goal_object:999",
+    ) == MemoryBelief(0.1, 0.1, 0.1)
+
+
 def test_lifelong_harness_persists_geometry_anchor_by_object_instance(
     tmp_path: Path,
 ) -> None:

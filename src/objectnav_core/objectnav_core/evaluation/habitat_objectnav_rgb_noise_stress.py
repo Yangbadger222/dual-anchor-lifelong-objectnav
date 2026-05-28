@@ -630,10 +630,9 @@ def _run_rgb_noise_episode(
     policy = UsabilityDecisionPolicy()
     naive_count_state = NaiveCountState()
     if memory_mode == "on":
-        belief = memory.load_belief(
-            scene_id=episode.original_scene_id,
-            episode_dataset_version=DATASET_VERSION,
-            category=episode.object_category,
+        belief = _load_memory_belief(
+            memory=memory,
+            episode=episode,
             default=INITIAL_BELIEF,
         )
         candidate_born = belief != INITIAL_BELIEF
@@ -960,10 +959,9 @@ def _run_rgb_noise_episode(
         if stopped_on_trust:
             break
     if memory_mode == "on":
-        memory.save_belief(
-            scene_id=episode.original_scene_id,
-            episode_dataset_version=DATASET_VERSION,
-            category=episode.object_category,
+        _save_memory_belief(
+            memory=memory,
+            episode=episode,
             belief=belief,
         )
         _save_memory_geometry_state(
@@ -2349,6 +2347,36 @@ def _load_memory_geometry_state(
         return MemoryGeometryState()
     anchor_x, anchor_z = anchor
     return MemoryGeometryState(anchor_x=anchor_x, anchor_z=anchor_z, persisted=True)
+
+
+def _load_memory_belief(
+    *,
+    memory: LifelongMemoryHarness,
+    episode: Any,
+    default: MemoryBelief,
+) -> MemoryBelief:
+    return memory.load_belief(
+        scene_id=episode.original_scene_id,
+        episode_dataset_version=DATASET_VERSION,
+        category=episode.object_category,
+        default=default,
+        instance_id=_memory_object_instance_id(episode),
+    )
+
+
+def _save_memory_belief(
+    *,
+    memory: LifelongMemoryHarness,
+    episode: Any,
+    belief: MemoryBelief,
+) -> None:
+    memory.save_belief(
+        scene_id=episode.original_scene_id,
+        episode_dataset_version=DATASET_VERSION,
+        category=episode.object_category,
+        belief=belief,
+        instance_id=_memory_object_instance_id(episode),
+    )
 
 
 def _save_memory_geometry_state(

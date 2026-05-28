@@ -743,6 +743,34 @@ def test_memory_geometry_state_loads_and_saves_only_for_memory_on(tmp_path: Path
     ) == (2.0, -3.0)
 
 
+def test_memory_belief_loads_and_saves_by_object_instance(tmp_path: Path) -> None:
+    memory = stress.LifelongMemoryHarness(tmp_path / "memory.sqlite")
+    episode_a = _Episode("39", "toilet")
+    episode_a.original_scene_id = "scene-a"
+    episode_a.info = {"closest_goal_object_id": 51}
+    episode_b = _Episode("40", "toilet")
+    episode_b.original_scene_id = "scene-a"
+    episode_b.info = {"closest_goal_object_id": 52}
+    belief = stress.MemoryBelief(0.8, 0.7, 0.6)
+
+    stress._save_memory_belief(
+        memory=memory,
+        episode=episode_a,
+        belief=belief,
+    )
+
+    assert stress._load_memory_belief(
+        memory=memory,
+        episode=episode_a,
+        default=stress.INITIAL_BELIEF,
+    ) == belief
+    assert stress._load_memory_belief(
+        memory=memory,
+        episode=episode_b,
+        default=stress.INITIAL_BELIEF,
+    ) == stress.INITIAL_BELIEF
+
+
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
     state = stress.NaiveCountState()
 

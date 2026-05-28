@@ -7,6 +7,9 @@ from pathlib import Path
 from objectnav_core.memory.usability import MemoryBelief
 
 
+DEFAULT_BELIEF_INSTANCE_ID = "category:*"
+
+
 class LifelongMemoryHarness:
     """Persist compact usability beliefs across Habitat episodes.
 
@@ -29,11 +32,17 @@ class LifelongMemoryHarness:
               scene_id TEXT NOT NULL,
               episode_dataset_version TEXT NOT NULL,
               category TEXT NOT NULL,
+              instance_id TEXT NOT NULL DEFAULT 'category:*',
               p_existence REAL NOT NULL,
               p_location_valid REAL NOT NULL,
               p_usable REAL NOT NULL,
               updated_at REAL NOT NULL,
-              PRIMARY KEY (scene_id, episode_dataset_version, category)
+              PRIMARY KEY (
+                scene_id,
+                episode_dataset_version,
+                category,
+                instance_id
+              )
             );
 
             CREATE TABLE IF NOT EXISTS object_instance_anchors (
@@ -53,7 +62,50 @@ class LifelongMemoryHarness:
             );
             """
         )
+        self._migrate_usability_beliefs_schema()
         self.connection.commit()
+
+    def _migrate_usability_beliefs_schema(self) -> None:
+        columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(usability_beliefs)")
+        }
+        if "instance_id" in columns:
+            return
+        self.connection.executescript(
+            """
+            ALTER TABLE usability_beliefs
+            RENAME TO usability_beliefs_legacy;
+
+            CREATE TABLE usability_beliefs (
+              scene_id TEXT NOT NULL,
+              episode_dataset_version TEXT NOT NULL,
+              category TEXT NOT NULL,
+              instance_id TEXT NOT NULL DEFAULT 'category:*',
+              p_existence REAL NOT NULL,
+              p_location_valid REAL NOT NULL,
+              p_usable REAL NOT NULL,
+              updated_at REAL NOT NULL,
+              PRIMARY KEY (
+                scene_id,
+                episode_dataset_version,
+                category,
+                instance_id
+              )
+            );
+
+            INSERT INTO usability_beliefs (
+              scene_id, episode_dataset_version, category, instance_id,
+              p_existence, p_location_valid, p_usable, updated_at
+            )
+            SELECT
+              scene_id, episode_dataset_version, category, 'category:*',
+              p_existence, p_location_valid, p_usable, updated_at
+            FROM usability_beliefs_legacy;
+
+            DROP TABLE usability_beliefs_legacy;
+            """
+        )
 
     def load_belief(
         self,
@@ -62,6 +114,7 @@ class LifelongMemoryHarness:
         episode_dataset_version: str,
         category: str,
         default: MemoryBelief,
+        instance_id: str = DEFAULT_BELIEF_INSTANCE_ID,
     ) -> MemoryBelief:
         row = self.connection.execute(
             """
@@ -70,8 +123,9 @@ class LifelongMemoryHarness:
             WHERE scene_id = ?
               AND episode_dataset_version = ?
               AND category = ?
+              AND instance_id = ?
             """,
-            (scene_id, episode_dataset_version, category),
+            (scene_id, episode_dataset_version, category, instance_id),
         ).fetchone()
         if row is None:
             return default
@@ -88,15 +142,16 @@ class LifelongMemoryHarness:
         episode_dataset_version: str,
         category: str,
         belief: MemoryBelief,
+        instance_id: str = DEFAULT_BELIEF_INSTANCE_ID,
     ) -> None:
         self.connection.execute(
             """
             INSERT INTO usability_beliefs (
-              scene_id, episode_dataset_version, category, p_existence,
+              scene_id, episode_dataset_version, category, instance_id, p_existence,
               p_location_valid, p_usable, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(scene_id, episode_dataset_version, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scene_id, episode_dataset_version, category, instance_id)
             DO UPDATE SET
               p_existence = excluded.p_existence,
               p_location_valid = excluded.p_location_valid,
@@ -107,6 +162,7 @@ class LifelongMemoryHarness:
                 scene_id,
                 episode_dataset_version,
                 category,
+                instance_id,
                 belief.p_existence,
                 belief.p_location_valid,
                 belief.p_usable,

@@ -466,6 +466,9 @@ Scope:
 
 - persist `anchor_x/anchor_z` in `lifelong_memory.sqlite` under
   `(scene_id, episode_dataset_version, category, instance_id)`;
+- persist usability belief under the same object-instance key when an
+  instance id is available, falling back to the old category-level key only
+  when no object-instance id can be formed;
 - prefer Habitat ObjectNav `info.closest_goal_object_id` as `instance_id`
   when available, because category-only persistence would merge distinct
   same-category objects;
