@@ -454,6 +454,38 @@ allow cached memory to stop by itself: the shared decision gate still requires
 current target visibility and positive detector evidence before any raw
 `TRUST` becomes a stop/success row.
 
+## Update: Object-Instance Geometry Anchor Persistence (2026-05-28)
+
+The long-range expected-empty replay now shows the limit of per-replay geometry
+anchors: they can reject same-replay false positives, but they do not yet prove
+that object memory survives across ObjectNav episodes. The next increment is
+therefore to persist the lightweight geometry anchor in SQLite for
+`memory=on`.
+
+Scope:
+
+- persist `anchor_x/anchor_z` in `lifelong_memory.sqlite` under
+  `(scene_id, episode_dataset_version, category, instance_id)`;
+- prefer Habitat ObjectNav `info.closest_goal_object_id` as `instance_id`
+  when available, because category-only persistence would merge distinct
+  same-category objects;
+- fall back to an episode-scoped provisional id when the dataset does not
+  expose an object id, keeping the key conservative rather than over-sharing;
+- initialize `memory=on` geometry state from the persisted anchor before a
+  replay and save the final anchor after the replay;
+- leave `naive_count` and `off` geometry-free and persistence-free.
+
+Non-goals:
+
+- no multi-object association search yet;
+- no covariance, anchor-health score, or ROS/map-frame transform schema yet;
+- no action-level follower or SPL claim.
+
+This is deliberately a bridge from diagnostic replay to real lifelong memory.
+It lets the next run test whether the same object instance can be remembered
+across repeated noisy replays, while preserving the fairness boundary around
+the positive-only `naive_count` baseline.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

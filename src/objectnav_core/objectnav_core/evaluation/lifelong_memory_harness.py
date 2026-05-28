@@ -23,7 +23,7 @@ class LifelongMemoryHarness:
         self._create_schema()
 
     def _create_schema(self) -> None:
-        self.connection.execute(
+        self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS usability_beliefs (
               scene_id TEXT NOT NULL,
@@ -34,7 +34,23 @@ class LifelongMemoryHarness:
               p_usable REAL NOT NULL,
               updated_at REAL NOT NULL,
               PRIMARY KEY (scene_id, episode_dataset_version, category)
-            )
+            );
+
+            CREATE TABLE IF NOT EXISTS object_instance_anchors (
+              scene_id TEXT NOT NULL,
+              episode_dataset_version TEXT NOT NULL,
+              category TEXT NOT NULL,
+              instance_id TEXT NOT NULL,
+              anchor_x REAL NOT NULL,
+              anchor_z REAL NOT NULL,
+              updated_at REAL NOT NULL,
+              PRIMARY KEY (
+                scene_id,
+                episode_dataset_version,
+                category,
+                instance_id
+              )
+            );
             """
         )
         self.connection.commit()
@@ -94,6 +110,64 @@ class LifelongMemoryHarness:
                 belief.p_existence,
                 belief.p_location_valid,
                 belief.p_usable,
+                time.time(),
+            ),
+        )
+        self.connection.commit()
+
+    def load_object_instance_anchor(
+        self,
+        *,
+        scene_id: str,
+        episode_dataset_version: str,
+        category: str,
+        instance_id: str,
+    ) -> tuple[float, float] | None:
+        row = self.connection.execute(
+            """
+            SELECT anchor_x, anchor_z
+            FROM object_instance_anchors
+            WHERE scene_id = ?
+              AND episode_dataset_version = ?
+              AND category = ?
+              AND instance_id = ?
+            """,
+            (scene_id, episode_dataset_version, category, instance_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return float(row["anchor_x"]), float(row["anchor_z"])
+
+    def save_object_instance_anchor(
+        self,
+        *,
+        scene_id: str,
+        episode_dataset_version: str,
+        category: str,
+        instance_id: str,
+        anchor_x: float,
+        anchor_z: float,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO object_instance_anchors (
+              scene_id, episode_dataset_version, category, instance_id,
+              anchor_x, anchor_z, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scene_id, episode_dataset_version, category, instance_id)
+            DO UPDATE SET
+              anchor_x = excluded.anchor_x,
+              anchor_z = excluded.anchor_z,
+              updated_at = excluded.updated_at
+            """,
+            (
+                scene_id,
+                episode_dataset_version,
+                category,
+                instance_id,
+                float(anchor_x),
+                float(anchor_z),
                 time.time(),
             ),
         )

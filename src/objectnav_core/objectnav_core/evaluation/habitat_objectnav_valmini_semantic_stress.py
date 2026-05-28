@@ -4,7 +4,7 @@ import csv
 import gzip
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 from typing import Any, Sequence
@@ -56,6 +56,7 @@ class ObjectNavValMiniEpisode:
     goal_viewpoints: tuple[dict[str, Any], ...]
     geodesic_distance: float | None
     euclidean_distance: float | None
+    info: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -293,12 +294,11 @@ def _load_content_file(
         scene_path = _resolve_hm3d_scene_path(original_scene_id, scene_root=scene_root)
         scene_filename = Path(original_scene_id).name
         goal_key = f"{scene_filename}_{object_category}"
-        goal_viewpoints = tuple(
-            viewpoint
-            for goal in goals_by_category.get(goal_key, [])
-            for viewpoint in goal.get("view_points", [])
-        )
         info = raw_episode.get("info", {}) or {}
+        goal_viewpoints = _goal_viewpoints_for_episode(
+            goals_by_category.get(goal_key, []),
+            closest_goal_object_id=info.get("closest_goal_object_id"),
+        )
         episodes.append(
             ObjectNavValMiniEpisode(
                 episode_id=str(raw_episode["episode_id"]),
@@ -311,9 +311,31 @@ def _load_content_file(
                 goal_viewpoints=goal_viewpoints,
                 geodesic_distance=_optional_float(info.get("geodesic_distance")),
                 euclidean_distance=_optional_float(info.get("euclidean_distance")),
+                info=info,
             )
         )
     return episodes
+
+
+def _goal_viewpoints_for_episode(
+    goals: Sequence[dict[str, Any]],
+    *,
+    closest_goal_object_id: Any,
+) -> tuple[dict[str, Any], ...]:
+    selected_goals = list(goals)
+    if closest_goal_object_id is not None:
+        matching_goals = [
+            goal
+            for goal in selected_goals
+            if str(goal.get("object_id")) == str(closest_goal_object_id)
+        ]
+        if matching_goals:
+            selected_goals = matching_goals
+    return tuple(
+        viewpoint
+        for goal in selected_goals
+        for viewpoint in goal.get("view_points", [])
+    )
 
 
 def _resolve_hm3d_scene_path(scene_id: str, *, scene_root: Path) -> Path:

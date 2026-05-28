@@ -641,7 +641,11 @@ def _run_rgb_noise_episode(
         candidate_born = False
     rows: list[dict[str, Any]] = []
     negative_streak = 0
-    memory_geometry_state = MemoryGeometryState()
+    memory_geometry_state = _load_memory_geometry_state(
+        memory=memory,
+        episode=episode,
+        memory_mode=memory_mode,
+    )
     previous_pose = _initial_replay_pose_from_steps(replay_steps) or _agent_pose(agent)
     total_steps = len(replay_steps)
     for step_index, replay_step in enumerate(replay_steps):
@@ -959,6 +963,12 @@ def _run_rgb_noise_episode(
             episode_dataset_version=DATASET_VERSION,
             category=episode.object_category,
             belief=belief,
+        )
+        _save_memory_geometry_state(
+            memory=memory,
+            episode=episode,
+            memory_mode=memory_mode,
+            state=memory_geometry_state,
         )
     return rows, {
         "episode_index": episode_index,
@@ -2307,6 +2317,53 @@ def _apply_memory_geometry_gate(
         evidence_reason,
         round(distance_m, 6),
     )
+
+
+def _load_memory_geometry_state(
+    *,
+    memory: LifelongMemoryHarness,
+    episode: Any,
+    memory_mode: str,
+) -> MemoryGeometryState:
+    if memory_mode != "on":
+        return MemoryGeometryState()
+    anchor = memory.load_object_instance_anchor(
+        scene_id=episode.original_scene_id,
+        episode_dataset_version=DATASET_VERSION,
+        category=episode.object_category,
+        instance_id=_memory_object_instance_id(episode),
+    )
+    if anchor is None:
+        return MemoryGeometryState()
+    anchor_x, anchor_z = anchor
+    return MemoryGeometryState(anchor_x=anchor_x, anchor_z=anchor_z)
+
+
+def _save_memory_geometry_state(
+    *,
+    memory: LifelongMemoryHarness,
+    episode: Any,
+    memory_mode: str,
+    state: MemoryGeometryState,
+) -> None:
+    if memory_mode != "on" or state.anchor_x is None or state.anchor_z is None:
+        return
+    memory.save_object_instance_anchor(
+        scene_id=episode.original_scene_id,
+        episode_dataset_version=DATASET_VERSION,
+        category=episode.object_category,
+        instance_id=_memory_object_instance_id(episode),
+        anchor_x=state.anchor_x,
+        anchor_z=state.anchor_z,
+    )
+
+
+def _memory_object_instance_id(episode: Any) -> str:
+    info = getattr(episode, "info", {}) or {}
+    closest_goal_object_id = info.get("closest_goal_object_id")
+    if closest_goal_object_id is not None:
+        return f"goal_object:{closest_goal_object_id}"
+    return f"episode:{getattr(episode, 'episode_id')}"
 
 
 def _anchor_in_camera_fov(

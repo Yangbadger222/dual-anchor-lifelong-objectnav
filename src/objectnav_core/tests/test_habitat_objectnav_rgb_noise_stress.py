@@ -640,6 +640,80 @@ def test_memory_geometry_gate_does_not_change_naive_count_or_disabled_runs() -> 
         assert distance is None
 
 
+def test_memory_object_instance_key_prefers_closest_goal_object_id() -> None:
+    episode = _Episode("39", "toilet")
+    episode.info = {"closest_goal_object_id": 51}
+
+    assert (
+        stress._memory_object_instance_id(episode)
+        == "goal_object:51"
+    )
+
+
+def test_memory_object_instance_key_falls_back_to_episode_id() -> None:
+    episode = _Episode("synthetic-episode", "plant")
+    episode.info = {}
+
+    assert (
+        stress._memory_object_instance_id(episode)
+        == "episode:synthetic-episode"
+    )
+
+
+def test_memory_geometry_state_loads_and_saves_only_for_memory_on(tmp_path: Path) -> None:
+    memory = stress.LifelongMemoryHarness(tmp_path / "memory.sqlite")
+    episode = _Episode("39", "toilet")
+    episode.original_scene_id = "scene-a"
+    episode.info = {"closest_goal_object_id": 51}
+
+    memory.save_object_instance_anchor(
+        scene_id="scene-a",
+        episode_dataset_version=stress.DATASET_VERSION,
+        category="toilet",
+        instance_id="goal_object:51",
+        anchor_x=0.5,
+        anchor_z=-1.5,
+    )
+
+    assert stress._load_memory_geometry_state(
+        memory=memory,
+        episode=episode,
+        memory_mode="on",
+    ) == stress.MemoryGeometryState(anchor_x=0.5, anchor_z=-1.5)
+    assert stress._load_memory_geometry_state(
+        memory=memory,
+        episode=episode,
+        memory_mode="naive_count",
+    ) == stress.MemoryGeometryState()
+
+    updated = stress.MemoryGeometryState(anchor_x=2.0, anchor_z=-3.0)
+    stress._save_memory_geometry_state(
+        memory=memory,
+        episode=episode,
+        memory_mode="naive_count",
+        state=updated,
+    )
+    assert memory.load_object_instance_anchor(
+        scene_id="scene-a",
+        episode_dataset_version=stress.DATASET_VERSION,
+        category="toilet",
+        instance_id="goal_object:51",
+    ) == (0.5, -1.5)
+
+    stress._save_memory_geometry_state(
+        memory=memory,
+        episode=episode,
+        memory_mode="on",
+        state=updated,
+    )
+    assert memory.load_object_instance_anchor(
+        scene_id="scene-a",
+        episode_dataset_version=stress.DATASET_VERSION,
+        category="toilet",
+        instance_id="goal_object:51",
+    ) == (2.0, -3.0)
+
+
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
     state = stress.NaiveCountState()
 

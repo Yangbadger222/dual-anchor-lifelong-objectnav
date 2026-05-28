@@ -639,6 +639,19 @@ After detector setup:
 - Wrote final long-range replay reports:
   - `docs/experiments/2026-05-28-geodesic-expected-empty-grounding-dino-replay.md`
   - `docs/experiments/2026-05-28-geodesic-expected-empty-grounding-dino-replay.zh.html`
+- Implemented object-instance geometry anchor persistence locally:
+  - `lifelong_memory.sqlite` now has an `object_instance_anchors` table keyed
+    by `(scene_id, episode_dataset_version, category, instance_id)`
+  - `memory=on` loads the persisted geometry anchor before replay and saves
+    the final anchor after replay
+  - `naive_count` and `off` do not load or save geometry anchors
+  - Habitat ObjectNav episode `info` metadata is preserved, and
+    `info.closest_goal_object_id` is preferred as `instance_id`
+  - goal viewpoints are filtered to `closest_goal_object_id` when available,
+    preventing same-category object viewpoint mixing
+  - local focused tests passed after the implementation:
+    `71` memory/RGB-noise tests, `16` val-mini tests, and compileall
+  - this has not yet been pulled or tested on `badger-linux`
 
 Still not run:
 
@@ -657,7 +670,11 @@ Still not run:
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant` with
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
-- SQLite persistence of object-instance geometry anchors across episodes.
+- Linux pull/test for the object-instance geometry anchor persistence commit.
+- Long-range replay rerun after object-instance geometry anchor persistence.
+- Instance-scoped belief persistence. Current belief persistence is still
+  scene/category-level; the new instance scope currently applies only to the
+  geometry anchor.
 
 ## Known Risks
 
@@ -695,9 +712,10 @@ Still not run:
 - Delayed birth is an algorithm contribution for `memory=on`, not a baseline
   feature. Keep `naive_count` positive-only: no delayed birth state,
   non-confirmation handling, geometry, or persistence.
-- The new geometry gate is currently per replay and optional. It is a
-  candidate-association prototype, not yet the final Dual-Anchor lifelong
-  object store.
+- The geometry gate now has a persisted object-instance anchor path for
+  `memory=on`, but the belief table is still scene/category-level. Do not claim
+  full object-instance lifelong memory until belief state is also instance
+  scoped or the claim is explicitly limited to geometry anchors.
 - The radius-only geometry gate is not strong enough by itself; keep the FOV
   consistency run separate in the report so the ablation remains interpretable.
 - Prefer FOV-only geometry gating for the next run; radius gating caused
@@ -708,24 +726,27 @@ Still not run:
 
 ## Next Recommended Step
 
-1. Implement object-instance anchor persistence in SQLite. The current geometry
-   anchor is still per replay; this is the next real Dual-Anchor memory step.
-2. Build a true lifecycle scenario: confirm object, leave through multiple
+1. Pull the object-instance geometry anchor persistence commit on
+   `badger-linux` and run focused tests in `conda habitat`.
+2. Rerun a small `geodesic_expected_empty_challenge` smoke with the same
+   Grounding-DINO settings and inspect whether `lifelong_memory.sqlite`
+   contains `object_instance_anchors`.
+3. Build a true lifecycle scenario: confirm object, leave through multiple
    rooms/corridors, verify expected-empty, then search/reacquire or retire.
-3. Add action-level Habitat follower / planner integration and report path
+4. Add action-level Habitat follower / planner integration and report path
    length, stop action, and SPL-like metrics. The current result is replay
    evidence only.
-4. Manually review the full
+5. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-5. If broader detector/GT evidence is needed, run trace-filtered hidden-positive
+6. If broader detector/GT evidence is needed, run trace-filtered hidden-positive
    PNG export across all selected categories at a controlled cap.
-6. Add visibility-aware episode selection and reintroduce `chair`.
-7. Add a fallback selection mode so categories with zero structured candidates
+7. Add visibility-aware episode selection and reintroduce `chair`.
+8. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-8. Export expected-empty detector-positive PNGs at a controlled cap to
+9. Export expected-empty detector-positive PNGs at a controlled cap to
    understand Grounding-DINO false positives in the hidden interval.
-9. For paper-facing experiments, scale the long-range expected-empty matrix
+10. For paper-facing experiments, scale the long-range expected-empty matrix
    only after object-instance anchors and action-level replay/follower metrics
    are in place.
 

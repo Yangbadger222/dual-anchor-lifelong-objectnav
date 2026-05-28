@@ -91,6 +91,72 @@ def test_load_valmini_episode_content_maps_goal_viewpoints(tmp_path: Path) -> No
     assert episodes[0].resolved_scene_path == scene.resolve()
     assert episodes[0].goal_viewpoints[0]["iou"] == 1.0
     assert episodes[0].geodesic_distance == 9.5
+    assert episodes[0].info == {"geodesic_distance": 9.5, "euclidean_distance": 3.25}
+
+
+def test_load_valmini_episode_content_prefers_closest_goal_object_viewpoints(
+    tmp_path: Path,
+) -> None:
+    scene = tmp_path / "scenes" / "habitat" / "00800-TEEsavR23oF" / "TEEsavR23oF.basis.glb"
+    scene.parent.mkdir(parents=True)
+    scene.write_text("fake glb", encoding="utf-8")
+    content_dir = tmp_path / "dataset" / "content"
+    content_dir.mkdir(parents=True)
+    content_file = content_dir / "TEEsavR23oF.json.gz"
+    payload = {
+        "goals_by_category": {
+            "TEEsavR23oF.basis.glb_bed": [
+                {
+                    "object_id": 16,
+                    "view_points": [
+                        {
+                            "agent_state": {
+                                "position": [1, 0, 0],
+                                "rotation": [0, 0, 0, 1],
+                            },
+                            "iou": 1.0,
+                        }
+                    ],
+                },
+                {
+                    "object_id": 17,
+                    "view_points": [
+                        {
+                            "agent_state": {
+                                "position": [2, 0, 0],
+                                "rotation": [0, 0, 0, 1],
+                            },
+                            "iou": 2.0,
+                        }
+                    ],
+                },
+            ]
+        },
+        "episodes": [
+            {
+                "episode_id": "8",
+                "scene_id": "hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb",
+                "start_position": [4, 5, 6],
+                "start_rotation": [0, 1, 0, 0],
+                "object_category": "bed",
+                "info": {
+                    "geodesic_distance": 9.5,
+                    "euclidean_distance": 3.25,
+                    "closest_goal_object_id": 17,
+                },
+            }
+        ],
+    }
+    with gzip.open(content_file, "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+    episodes = stress._load_valmini_episodes(
+        tmp_path / "dataset",
+        scene_root=tmp_path / "scenes",
+    )
+
+    assert len(episodes[0].goal_viewpoints) == 1
+    assert episodes[0].goal_viewpoints[0]["iou"] == 2.0
 
 
 def test_goal_viewpoint_start_falls_back_to_episode_start_when_missing(tmp_path: Path) -> None:
