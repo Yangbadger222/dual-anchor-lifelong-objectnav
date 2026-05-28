@@ -24,6 +24,8 @@ class _FakeInputs(dict):
 
 
 class _FakeProcessor:
+    expected_target_sizes = [(8, 8)]
+
     def __init__(self) -> None:
         self.text: str | None = None
         self.images_seen = 0
@@ -49,7 +51,7 @@ class _FakeProcessor:
     ) -> list[dict[str, object]]:
         assert box_threshold == 0.25
         assert text_threshold == 0.2
-        assert target_sizes == [(8, 8)]
+        assert target_sizes == self.expected_target_sizes
         return [
             {
                 "boxes": _FakeTensor(
@@ -160,3 +162,31 @@ def test_grounding_dino_adapter_supports_new_transformers_threshold_name() -> No
             mask=detections[0].mask,
         )
     ]
+
+
+def test_grounding_dino_adapter_rescales_boxes_from_detector_image() -> None:
+    processor = _FakeProcessor()
+    processor.expected_target_sizes = [(4, 4)]
+    detector = GroundingDinoDetector(
+        model_id="unused",
+        categories=["chair"],
+        conf=0.25,
+        text_threshold=0.2,
+        device="cpu",
+        max_image_side=4,
+        processor=processor,
+        model=_FakeModel(),
+    )
+
+    detections = detector.detect(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert detections == [
+        Detection(
+            category="chair",
+            bbox=(2, 4, 8, 8),
+            confidence=0.91,
+            mask=detections[0].mask,
+        )
+    ]
+    assert detections[0].mask.shape == (8, 8)
+    assert detections[0].mask[4:8, 2:8].all()

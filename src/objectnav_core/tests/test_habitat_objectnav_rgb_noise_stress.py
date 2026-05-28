@@ -69,12 +69,14 @@ def test_preflight_accepts_grounding_dino_detector(tmp_path: Path) -> None:
         memory_ablation=("on",),
         seed=313,
         grounding_dino_text_threshold=0.2,
+        grounding_dino_max_image_side=640,
     )
 
     assert "grounding_dino" in stress.SUPPORTED_DETECTORS
     assert summary["detector"] == "grounding_dino"
     assert summary["detector_weights"] == "IDEA-Research/grounding-dino-tiny"
     assert summary["grounding_dino_text_threshold"] == 0.2
+    assert summary["grounding_dino_max_image_side"] == 640
 
 
 def test_default_yolo_prompting_is_target_conditioned() -> None:
@@ -107,6 +109,7 @@ def test_detector_adapter_cache_supports_grounding_dino() -> None:
         detector_weights="IDEA-Research/grounding-dino-tiny",
         detector_conf=0.25,
         grounding_dino_text_threshold=0.2,
+        grounding_dino_max_image_side=640,
         target_category="tv_monitor",
         yolo_prompt_mode="target",
         detector_factory=lambda **kwargs: kwargs,
@@ -117,6 +120,7 @@ def test_detector_adapter_cache_supports_grounding_dino() -> None:
         "categories": ["tv monitor"],
         "conf": 0.25,
         "text_threshold": 0.2,
+        "max_image_side": 640,
         "device": "auto",
     }
     assert list(cache) == [("grounding_dino", ("tv monitor",))]

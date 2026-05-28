@@ -26,6 +26,7 @@ class GroundingDinoDetector:
         categories: list[str],
         conf: float = 0.25,
         text_threshold: float = 0.25,
+        max_image_side: int | None = None,
         device: str = "auto",
         processor: Any | None = None,
         model: Any | None = None,
@@ -36,10 +37,13 @@ class GroundingDinoDetector:
             raise ValueError("conf must be in [0, 1]")
         if not 0.0 <= text_threshold <= 1.0:
             raise ValueError("text_threshold must be in [0, 1]")
+        if max_image_side is not None and max_image_side <= 0:
+            raise ValueError("max_image_side must be positive when provided")
         self.model_id = model_id
         self.categories = list(categories)
         self.conf = float(conf)
         self.text_threshold = float(text_threshold)
+        self.max_image_side = max_image_side
         self.device = _resolve_device(device)
         if processor is None or model is None:
             loaded_processor, loaded_model = self._load_backend(model_id)
@@ -54,8 +58,12 @@ class GroundingDinoDetector:
 
     def detect(self, rgb: np.ndarray) -> list[Detection]:
         image = _validate_rgb(rgb)
+        detector_image, scale_x, scale_y = _resize_for_detector(
+            image,
+            max_image_side=self.max_image_side,
+        )
         inputs = self.processor(
-            images=Image.fromarray(image),
+            images=Image.fromarray(detector_image),
             text=_prompt_text(self.categories),
             return_tensors="pt",
         )
@@ -69,13 +77,15 @@ class GroundingDinoDetector:
             input_ids=input_ids,
             conf=self.conf,
             text_threshold=self.text_threshold,
-            target_sizes=[image.shape[:2]],
+            target_sizes=[detector_image.shape[:2]],
         )
         return _detections_from_grounding_result(
-            results[0] if results else {},
-            image.shape[:2],
-            self.categories,
-            self.conf,
+            result=results[0] if results else {},
+            image_shape=image.shape[:2],
+            scale_x=scale_x,
+            scale_y=scale_y,
+            categories=self.categories,
+            conf=self.conf,
         )
 
     @staticmethod
@@ -110,6 +120,9 @@ def _prompt_text(categories: list[str]) -> str:
 def _detections_from_grounding_result(
     result: dict[str, Any],
     image_shape: tuple[int, int],
+    *,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
     categories: list[str],
     conf: float,
 ) -> list[Detection]:
@@ -123,7 +136,8 @@ def _detections_from_grounding_result(
         category = str(label).strip().lower()
         if confidence < conf or category not in accepted:
             continue
-        bbox = _clip_bbox(xyxy, image_shape)
+        scaled_xyxy = _scale_xyxy(xyxy, scale_x=scale_x, scale_y=scale_y)
+        bbox = _clip_bbox(scaled_xyxy, image_shape)
         if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
             continue
         detections.append(
@@ -135,6 +149,39 @@ def _detections_from_grounding_result(
             )
         )
     return detections
+
+
+def _resize_for_detector(
+    image: np.ndarray,
+    *,
+    max_image_side: int | None,
+) -> tuple[np.ndarray, float, float]:
+    if max_image_side is None:
+        return image, 1.0, 1.0
+    height, width = image.shape[:2]
+    longest = max(height, width)
+    if longest <= max_image_side:
+        return image, 1.0, 1.0
+    ratio = float(max_image_side) / float(longest)
+    resized_width = max(1, int(round(width * ratio)))
+    resized_height = max(1, int(round(height * ratio)))
+    resized = np.asarray(
+        Image.fromarray(image).resize(
+            (resized_width, resized_height),
+            resample=Image.Resampling.BILINEAR,
+        )
+    )
+    return resized, width / resized_width, height / resized_height
+
+
+def _scale_xyxy(
+    xyxy: Any,
+    *,
+    scale_x: float,
+    scale_y: float,
+) -> tuple[float, float, float, float]:
+    x1, y1, x2, y2 = [float(value) for value in xyxy]
+    return x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y
 
 
 def _post_process_grounded_object_detection(

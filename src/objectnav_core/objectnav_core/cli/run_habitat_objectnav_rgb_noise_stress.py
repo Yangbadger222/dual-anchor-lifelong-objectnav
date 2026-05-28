@@ -62,6 +62,15 @@ def main() -> None:
     parser.add_argument("--detector-conf", type=float, default=0.25)
     parser.add_argument("--grounding-dino-text-threshold", type=float, default=0.25)
     parser.add_argument(
+        "--grounding-dino-max-image-side",
+        type=int,
+        default=None,
+        help=(
+            "Optional detector-only resize cap for Grounding-DINO. Habitat still "
+            "renders at the requested sensor resolution; boxes are scaled back."
+        ),
+    )
+    parser.add_argument(
         "--yolo-prompt-mode",
         default=DEFAULT_YOLO_PROMPT_MODE,
         choices=SUPPORTED_YOLO_PROMPT_MODES,
@@ -130,6 +139,7 @@ def main() -> None:
             detector_weights=args.detector_weights,
             detector_conf=args.detector_conf,
             grounding_dino_text_threshold=args.grounding_dino_text_threshold,
+            grounding_dino_max_image_side=args.grounding_dino_max_image_side,
             memory_ablation=_split_csv(args.memory_ablation),
             seed=args.seed,
             yolo_prompt_mode=args.yolo_prompt_mode,
@@ -152,6 +162,7 @@ def main() -> None:
             detector_weights=args.detector_weights,
             detector_conf=args.detector_conf,
             grounding_dino_text_threshold=args.grounding_dino_text_threshold,
+            grounding_dino_max_image_side=args.grounding_dino_max_image_side,
             memory_ablation=_split_csv(args.memory_ablation),
             max_episodes=args.max_episodes,
             start_source=args.start_source,

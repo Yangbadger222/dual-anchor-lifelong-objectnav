@@ -106,6 +106,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     grounding_dino_text_threshold: float = 0.25,
+    grounding_dino_max_image_side: int | None = None,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
     target_categories: Sequence[str] = TARGET_CATEGORIES,
@@ -138,6 +139,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         detector_weights=detector_weights,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
+        grounding_dino_max_image_side=grounding_dino_max_image_side,
         memory_ablation=memory_ablation,
         seed=seed,
         yolo_prompt_mode=yolo_prompt_mode,
@@ -212,6 +214,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                                 detector_weights=detector_weights,
                                 detector_conf=detector_conf,
                                 grounding_dino_text_threshold=grounding_dino_text_threshold,
+                                grounding_dino_max_image_side=grounding_dino_max_image_side,
                                 target_category=episode.object_category,
                                 yolo_prompt_mode=yolo_prompt_mode,
                             ),
@@ -265,6 +268,7 @@ def run_rgb_noise_stress_preflight(
     memory_ablation: Sequence[str],
     seed: int,
     grounding_dino_text_threshold: float = 0.25,
+    grounding_dino_max_image_side: int | None = None,
     yolo_prompt_mode: str = DEFAULT_YOLO_PROMPT_MODE,
     stop_on_trust: bool = DEFAULT_STOP_ON_TRUST,
     sensor_size: int | None = None,
@@ -282,6 +286,7 @@ def run_rgb_noise_stress_preflight(
     _validate_noise_levels(noise_levels, rgb_profile, depth_profile)
     _validate_detector(detector, detector_conf)
     _validate_grounding_dino_text_threshold(grounding_dino_text_threshold)
+    _validate_grounding_dino_max_image_side(grounding_dino_max_image_side)
     _validate_memory_ablation(memory_ablation)
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
@@ -310,6 +315,7 @@ def run_rgb_noise_stress_preflight(
         "detector_weights": detector_weights,
         "detector_conf": detector_conf,
         "grounding_dino_text_threshold": grounding_dino_text_threshold,
+        "grounding_dino_max_image_side": grounding_dino_max_image_side,
         "yolo_prompt_mode": yolo_prompt_mode,
         "stop_on_trust": bool(stop_on_trust),
         "sensor_size": sensor_size,
@@ -579,6 +585,7 @@ def _detector_for_target(
     detector_weights: str,
     detector_conf: float,
     grounding_dino_text_threshold: float,
+    grounding_dino_max_image_side: int | None,
     target_category: str,
     yolo_prompt_mode: str,
     detector_factory: Any | None = None,
@@ -603,6 +610,7 @@ def _detector_for_target(
                 categories=list(prompt_categories),
                 conf=detector_conf,
                 text_threshold=grounding_dino_text_threshold,
+                max_image_side=grounding_dino_max_image_side,
                 device="auto",
             )
     return detector_cache[cache_key]
@@ -879,6 +887,11 @@ def _validate_detector(detector: str, detector_conf: float) -> None:
 def _validate_grounding_dino_text_threshold(text_threshold: float) -> None:
     if not 0.0 <= text_threshold <= 1.0:
         raise ValueError("grounding_dino_text_threshold must be in [0, 1]")
+
+
+def _validate_grounding_dino_max_image_side(max_image_side: int | None) -> None:
+    if max_image_side is not None and max_image_side <= 0:
+        raise ValueError("grounding_dino_max_image_side must be positive when provided")
 
 
 def _validate_memory_ablation(memory_ablation: Sequence[str]) -> None:
