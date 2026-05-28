@@ -178,13 +178,25 @@ After detector setup:
     `decision_gate_reason`, and `naive_positive_count`
   - summaries now include `raw_decision_counts` and
     `decision_gate_reason_counts`
+- Re-ran the full replay matrix with `on,naive_count,off`:
+  - output:
+    `runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384_naive_count_gate`
+  - completed 90 replay-runs and 1350 trace rows
+  - summary: 694 raw trust rows, 488 gated trust / success rows, 206 gate
+    rejections
+  - memory `on`: 372 raw trust, 246 gated success, 126 gate rejections
+  - `naive_count`: 322 raw trust, 242 gated success, 80 gate rejections
+  - memory `off`: 0 trust and 0 success
+  - result: accumulation matters, but this replay matrix does not show
+    Dual-Anchor / Lifelong memory beating naive positive counting
 
 Still not run:
 
 - Full test suite in `conda habitat`, because that env is Python 3.9 while the repo declares Python `>=3.13`, and full tests need `pydantic`.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Post-change Linux Grounding-DINO replay matrix with `on,naive_count,off`.
+- A task designed to separate Dual-Anchor / Lifelong memory from naive positive
+  accumulation.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -218,12 +230,11 @@ Still not run:
 ## Next Recommended Step
 
 1. Pull the naive-count/shared-gate commit on `badger-linux`.
-2. Run focused tests and a Grounding-DINO replay smoke with
-   `--memory-ablation on,naive_count,off`.
-3. Re-run the full memory-only replay matrix and update the experiment report.
-4. Generate debug PNGs for `plant` and `tv_monitor` gate rejections.
-5. Add visibility-aware episode selection and reintroduce `chair`.
-6. Then connect the replay harness to a real navigation policy or Habitat
+2. Add a task where naive count should fail: cross-episode persistence,
+   scene-change handling, negative evidence, or geometry consistency.
+3. Generate debug PNGs for `plant` and `tv_monitor` gate rejections.
+4. Add visibility-aware episode selection and reintroduce `chair`.
+5. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.
 
 ## Context for Next Contributor

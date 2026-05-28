@@ -135,11 +135,12 @@
     <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-28 · 本地 HTML 实验报告</p>
     <h1>Memory-Only / Replay Grounding-DINO 仿真报告</h1>
     <p>
-      这次按“没有导航系统也先验证记忆系统”的边界来跑：固定 out-and-back 轨迹，
-      Grounding-DINO 检测器，RGB/depth noise，memory <code>on/off</code> 对照。
+      固定 out-and-back 轨迹，Grounding-DINO，RGB/depth noise，
+      三档 memory：<code>on</code>、<code>naive_count</code>、<code>off</code>。
+      本版加入了 shared decision-side current-positive gate。
     </p>
     <p>
-      <span class="tag">code: 7ae7de8</span>
+      <span class="tag">code: df8a3e2</span>
       <span class="tag">host: badger@100.88.131.52</span>
       <span class="tag">conda env: habitat</span>
       <span class="tag">dataset: HM3D ObjectNav val_mini</span>
@@ -152,51 +153,50 @@
     <section>
       <h2>1. 一句话结论</h2>
       <div class="callout">
-        <strong>跑完了。</strong>
-        在固定 replay 轨迹上，memory <code>on</code> 能把重复检测证据累积成
-        <code>TRUST</code>，产生 268 个 oracle-stop success row；
-        memory <code>off</code> 是单帧基线，永远停在 <code>VERIFY</code>，
-        success row 为 0。
+        <strong>新矩阵跑完了。</strong>
+        shared gate 把 raw <code>TRUST</code> 从 694 行压到 gated <code>TRUST</code>
+        488 行，主要拦掉了 <code>tv_monitor</code> 和 <code>plant</code>
+        的 out-of-view false-trust。但当前 fixed replay 还没有证明
+        Dual-Anchor/Lifelong memory 优于朴素 <code>naive_count</code>。
       </div>
       <p>
-        这说明当前记忆更新和决策链路在 Habitat replay 里是通的，而且对
-        <code>bed</code>、<code>sofa</code>、<code>toilet</code> 很明显有用。
-        但它还不是完整导航结果，也不能直接写成 SPL 或 ObjectNav success。
+        当前最准确的结论是：正证据累积很有用，shared gate 是必要的；
+        但这个 replay 任务太容易被朴素 positive-count baseline 解释掉。
+        下一步要设计一个 naive-count 会失败、而 Dual-Anchor 应该赢的任务。
       </p>
     </section>
 
     <section>
-      <h2>2. 这次到底跑了什么</h2>
+      <h2>2. 这次跑了什么</h2>
       <div class="grid">
         <div class="box">
           <h3>轨迹</h3>
           <p>
             固定 <code>out_and_back</code>：reset + 14 个 Habitat action，
-            每个 replay 产生 15 行 trace。使用 <code>--no-stop-on-trust</code>，
-            即使已经 trust 也继续走完轨迹。
+            每个 replay 15 行 trace。使用 <code>--no-stop-on-trust</code>，
+            让 trust 后的 gate 行为也能被看到。
           </p>
         </div>
         <div class="box">
           <h3>检测器</h3>
           <p>
-            Grounding-DINO <code>IDEA-Research/grounding-dino-tiny</code>，
+            Grounding-DINO <code>IDEA-Research/grounding-dino-tiny</code>。
             Habitat render 是 <code>1280x720</code>，检测器侧 resize cap 是
-            <code>384</code>，这是 RTX 4070 Laptop GPU 上当前能稳定跑的配置。
+            <code>384</code>。
           </p>
         </div>
         <div class="box">
           <h3>矩阵</h3>
           <p>
-            5 类别 x 2 episode x 3 noise level x 2 memory mode =
-            60 个 replay-run，900 行 trace。
+            5 类别 x 2 episode x 3 noise level x 3 memory mode =
+            90 个 replay-run，1350 行 trace。
           </p>
         </div>
       </div>
       <p>
-        本轮类别是 <code>bed</code>、<code>sofa</code>、<code>toilet</code>、
+        类别仍是 <code>bed</code>、<code>sofa</code>、<code>toilet</code>、
         <code>plant</code>、<code>tv_monitor</code>。<code>chair</code>
-        暂时没放进主矩阵，因为前一轮 qualification 显示 first-N chair episode
-        主要卡在目标不可见，不适合拿来评价 memory。
+        继续等待 visibility-aware sampling。
       </p>
     </section>
 
@@ -212,12 +212,13 @@
             </tr>
           </thead>
           <tbody>
-            <tr><td>Replay-runs</td><td>60</td><td>5 类别 x 2 episode x 3 noise x 2 memory</td></tr>
-            <tr><td>Trace rows</td><td>900</td><td>每个 replay 15 行</td></tr>
-            <tr><td>Target-visible rows</td><td>636</td><td>memory on/off 各 318 行</td></tr>
-            <tr><td>Positive evidence rows</td><td>696</td><td>memory on/off 共享同一检测器观测</td></tr>
-            <tr><td>Trust decisions</td><td>372</td><td>全部来自 memory on</td></tr>
-            <tr><td>Oracle-stop success rows</td><td>268</td><td>全部来自 memory on</td></tr>
+            <tr><td>Replay-runs</td><td>90</td><td>5 类别 x 2 episode x 3 noise x 3 memory</td></tr>
+            <tr><td>Trace rows</td><td>1350</td><td>每个 replay 15 行</td></tr>
+            <tr><td>Target-visible rows</td><td>954</td><td>每个 memory mode 各 318 行</td></tr>
+            <tr><td>Positive evidence rows</td><td>1044</td><td>每个 memory mode 各 348 行</td></tr>
+            <tr><td>Raw trust rows</td><td>694</td><td>shared gate 前</td></tr>
+            <tr><td>Gated trust / success rows</td><td>488</td><td>shared gate 后</td></tr>
+            <tr><td>Gate rejections</td><td>206</td><td>raw trust 被改成 verify</td></tr>
             <tr><td>Mean detector precision</td><td>0.315586</td><td>trace-row 平均</td></tr>
             <tr><td>Mean oracle recall</td><td>0.637678</td><td>trace-row 平均</td></tr>
           </tbody>
@@ -226,7 +227,7 @@
     </section>
 
     <section>
-      <h2>4. Memory On/Off 对照</h2>
+      <h2>4. Memory Mode 对照</h2>
       <div class="wide">
         <table>
           <thead>
@@ -235,62 +236,55 @@
               <th>Rows</th>
               <th>Visible</th>
               <th>Positive</th>
-              <th>Trust</th>
-              <th>Success rows</th>
-              <th>False-trust rows</th>
-              <th>Mean row p_valid</th>
+              <th>Raw trust</th>
+              <th>Gated success</th>
+              <th>Gate rejected</th>
+              <th>Mean p_valid</th>
             </tr>
           </thead>
           <tbody>
+            <tr><td><code>on</code></td><td>450</td><td>318</td><td>348</td><td>372</td><td>246</td><td>126</td><td>0.924046</td></tr>
+            <tr><td><code>naive_count</code></td><td>450</td><td>318</td><td>348</td><td>322</td><td>242</td><td>80</td><td>0.863564</td></tr>
             <tr><td><code>off</code></td><td>450</td><td>318</td><td>348</td><td>0</td><td>0</td><td>0</td><td>0.765035</td></tr>
-            <tr><td><code>on</code></td><td>450</td><td>318</td><td>348</td><td>372</td><td>268</td><td>104</td><td>0.924046</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        这里要特别注意：memory <code>off</code> 不是“同一个 episode 内还可以累积，
-        只是跨 episode 不保存”的基线。当前实现是每一帧都从
-        <code>INITIAL_BELIEF</code> 开始，只吃当前帧证据，所以它是严格单帧基线。
-        单帧 positive evidence 会让 <code>p_valid</code> 到约 0.76，但策略仍选择
-        <code>VERIFY</code>，不会到 <code>TRUST</code>。
+        <code>off</code> 仍然只是 lower sanity check。主对照现在是
+        <code>naive_count</code>：它只数 positive，两个 positive 后才过 trust 阈值，
+        不使用 non-confirmation、unknown、几何、延迟出生或跨 episode memory。
       </p>
       <p>
-        因此这个结果能说明：重复证据累积对 replay 里的 trust 决策有明显作用。
-        它还不能单独说明：跨 episode lifelong memory 比 episode-local memory 强多少。
+        在这个 fixed replay 任务里，<code>naive_count</code> 和 memory
+        <code>on</code> 很接近。这意味着当前实验只能支持“累积有用”，
+        还不能支持“Dual-Anchor 优于朴素累积”。
       </p>
     </section>
 
     <section>
-      <h2>5. Noise Breakdown</h2>
+      <h2>5. Gate 为什么重要</h2>
       <div class="wide">
         <table>
           <thead>
             <tr>
-              <th>Noise</th>
-              <th>Memory</th>
-              <th>Replay-runs</th>
-              <th>Visible rows</th>
-              <th>Positive rows</th>
-              <th>Trust rows</th>
-              <th>Success rows</th>
-              <th>Success replay-runs</th>
-              <th>Mean final p_valid</th>
+              <th>Gate reason</th>
+              <th>Rows</th>
+              <th>解释</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>clean</code></td><td><code>off</code></td><td>10</td><td>106</td><td>120</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
-            <tr><td><code>clean</code></td><td><code>on</code></td><td>10</td><td>106</td><td>120</td><td>107</td><td>80</td><td>9</td><td>0.988713</td></tr>
-            <tr><td><code>mild</code></td><td><code>off</code></td><td>10</td><td>106</td><td>114</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
-            <tr><td><code>mild</code></td><td><code>on</code></td><td>10</td><td>106</td><td>114</td><td>137</td><td>95</td><td>10</td><td>0.969093</td></tr>
-            <tr><td><code>heavy</code></td><td><code>off</code></td><td>10</td><td>106</td><td>114</td><td>0</td><td>0</td><td>0</td><td>0.811041</td></tr>
-            <tr><td><code>heavy</code></td><td><code>on</code></td><td>10</td><td>106</td><td>114</td><td>128</td><td>93</td><td>9</td><td>0.942898</td></tr>
+            <tr><td><code>current_positive_confirmation</code></td><td>488</td><td>raw trust 被接受</td></tr>
+            <tr><td><code>target_not_currently_visible</code></td><td>184</td><td>主要 false-trust 来源</td></tr>
+            <tr><td><code>missing_current_positive_evidence</code></td><td>22</td><td>当前帧没有 positive detector evidence</td></tr>
+            <tr><td><code>not_raw_trust</code></td><td>656</td><td>策略本来就没有 trust</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        mild/heavy 在这个小矩阵里没有把结果打崩。主要原因不是噪声完全没影响，
-        而是类别和视角组成更主导：Grounding-DINO 对大目标类别仍然很稳，
-        对 sparse 类别则容易在目标不可见时继续给出过强记忆信心。
+        <code>tv_monitor</code> 的 raw trust 很多，但 gated success 很少：
+        memory <code>on</code> 是 87 raw trust 到 5 success，
+        <code>naive_count</code> 是 78 raw trust 到 6 success。
+        这正是 gate 要解决的问题。
       </p>
     </section>
 
@@ -304,62 +298,57 @@
               <th>Memory</th>
               <th>Visible</th>
               <th>Positive</th>
-              <th>Trust</th>
-              <th>Success</th>
-              <th>False-trust</th>
-              <th>判断</th>
+              <th>Raw trust</th>
+              <th>Gated success</th>
+              <th>Reject rate</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>bed</code></td><td><code>on</code></td><td>90</td><td>84</td><td>87</td><td>87</td><td>0</td><td class="good">强</td></tr>
-            <tr><td><code>sofa</code></td><td><code>on</code></td><td>90</td><td>84</td><td>84</td><td>84</td><td>0</td><td class="good">强</td></tr>
-            <tr><td><code>toilet</code></td><td><code>on</code></td><td>84</td><td>84</td><td>87</td><td>81</td><td>6</td><td class="good">强，但有少量 out-of-view trust</td></tr>
-            <tr><td><code>plant</code></td><td><code>on</code></td><td>42</td><td>16</td><td>27</td><td>6</td><td>21</td><td class="warn">弱，需要门控</td></tr>
-            <tr><td><code>tv_monitor</code></td><td><code>on</code></td><td>12</td><td>80</td><td>87</td><td>10</td><td>77</td><td class="bad">不能当成功类别 claim</td></tr>
+            <tr><td><code>bed</code></td><td><code>on</code></td><td>90</td><td>84</td><td>87</td><td>82</td><td>0.057</td></tr>
+            <tr><td><code>bed</code></td><td><code>naive_count</code></td><td>90</td><td>84</td><td>78</td><td>78</td><td>0.000</td></tr>
+            <tr><td><code>sofa</code></td><td><code>on</code></td><td>90</td><td>84</td><td>84</td><td>80</td><td>0.048</td></tr>
+            <tr><td><code>sofa</code></td><td><code>naive_count</code></td><td>90</td><td>84</td><td>78</td><td>78</td><td>0.000</td></tr>
+            <tr><td><code>toilet</code></td><td><code>on</code></td><td>84</td><td>84</td><td>87</td><td>76</td><td>0.126</td></tr>
+            <tr><td><code>toilet</code></td><td><code>naive_count</code></td><td>84</td><td>84</td><td>78</td><td>72</td><td>0.077</td></tr>
+            <tr><td><code>plant</code></td><td><code>on</code></td><td>42</td><td>16</td><td>27</td><td>3</td><td>0.889</td></tr>
+            <tr><td><code>plant</code></td><td><code>naive_count</code></td><td>42</td><td>16</td><td>10</td><td>8</td><td>0.200</td></tr>
+            <tr><td><code>tv_monitor</code></td><td><code>on</code></td><td>12</td><td>80</td><td>87</td><td>5</td><td>0.943</td></tr>
+            <tr><td><code>tv_monitor</code></td><td><code>naive_count</code></td><td>12</td><td>80</td><td>78</td><td>6</td><td>0.923</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        所以当前最可信的主结论只应该落在 <code>bed</code>、<code>sofa</code>、
-        <code>toilet</code>。<code>plant</code> 和 <code>tv_monitor</code>
-        现在更像是在暴露下一步算法问题：记忆置信度需要和当前视角确认、
-        几何一致性或 stop gate 绑定起来。
+        <code>bed</code>、<code>sofa</code>、<code>toilet</code> 仍是最干净的类别。
+        <code>plant</code> 和 <code>tv_monitor</code> 现在不再被误报成大量成功，
+        但也暴露出当前 memory-on 在 sparse 类别上更容易积累到 raw trust 后被 gate 拒绝。
       </p>
     </section>
 
     <section>
       <h2>7. Revisit Proxy</h2>
-      <p>
-        用 <code>step_index &gt;= 8</code> 粗略代表轨迹后半段 revisit：
-      </p>
       <div class="wide">
         <table>
           <thead>
             <tr>
-              <th>Noise</th>
               <th>Memory</th>
               <th>Late rows</th>
               <th>Late visible</th>
               <th>Late positive</th>
-              <th>Late trust</th>
-              <th>Late success</th>
-              <th>Late false-trust</th>
+              <th>Late raw trust</th>
+              <th>Late gated success</th>
+              <th>Late rejected</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>clean</code></td><td><code>off</code></td><td>70</td><td>52</td><td>64</td><td>0</td><td>0</td><td>0</td></tr>
-            <tr><td><code>clean</code></td><td><code>on</code></td><td>70</td><td>52</td><td>64</td><td>58</td><td>42</td><td>16</td></tr>
-            <tr><td><code>mild</code></td><td><code>off</code></td><td>70</td><td>52</td><td>58</td><td>0</td><td>0</td><td>0</td></tr>
-            <tr><td><code>mild</code></td><td><code>on</code></td><td>70</td><td>52</td><td>58</td><td>57</td><td>41</td><td>16</td></tr>
-            <tr><td><code>heavy</code></td><td><code>off</code></td><td>70</td><td>52</td><td>58</td><td>0</td><td>0</td><td>0</td></tr>
-            <tr><td><code>heavy</code></td><td><code>on</code></td><td>70</td><td>52</td><td>58</td><td>56</td><td>40</td><td>16</td></tr>
+            <tr><td><code>on</code></td><td>210</td><td>156</td><td>180</td><td>171</td><td>123</td><td>48</td></tr>
+            <tr><td><code>naive_count</code></td><td>210</td><td>156</td><td>180</td><td>178</td><td>128</td><td>50</td></tr>
+            <tr><td><code>off</code></td><td>210</td><td>156</td><td>180</td><td>0</td><td>0</td><td>0</td></tr>
           </tbody>
         </table>
       </div>
       <p>
-        这支持 replay 级别的 memory claim：回访阶段 memory <code>on</code>
-        能保留足够 belief 并产生 trust；memory <code>off</code> 不能。
-        但 false-trust 也说明 stop 不能只看 memory confidence。
+        回访阶段两个累积方法都能 trust，所以 replay pipeline 是通的；
+        但这仍然不是 Dual-Anchor 相对 naive-count 的优势证据。
       </p>
     </section>
 
@@ -369,25 +358,25 @@
         <div class="box">
           <h3 class="good">已完成</h3>
           <ul>
-            <li>Linux Habitat 主实验完成。</li>
-            <li>生成 <code>summary.json</code>、<code>rgb_noise_trace.csv</code>、<code>lifelong_memory.sqlite</code>。</li>
-            <li>本地已聚合 memory/noise/category/revisit proxy 指标。</li>
+            <li>三档 memory replay matrix 完成。</li>
+            <li>shared decision gate 生效，并写入 raw/gated trace。</li>
+            <li><code>naive_count</code> 不再是单帧 baseline。</li>
           </ul>
         </div>
         <div class="box">
-          <h3 class="warn">还不能 claim</h3>
+          <h3 class="warn">目前结论</h3>
           <ul>
-            <li>不能 claim 完整导航性能。</li>
-            <li>不能 claim all six category ready。</li>
-            <li>不能 claim lifelong cross-episode 优于 episode-local，因为还没有 episode-local ablation。</li>
+            <li>可以 claim positive accumulation matters。</li>
+            <li>可以 claim shared gate reduces false-trust reporting。</li>
+            <li>不能 claim memory-on beats naive-count。</li>
           </ul>
         </div>
         <div class="box">
           <h3 class="bad">主要风险</h3>
           <ul>
-            <li><code>tv_monitor</code> false-trust 很高。</li>
-            <li><code>plant</code> 成功行少，受视角和 detector mask 质量影响。</li>
-            <li>当前 stop proxy 需要 current-view confirmation gate。</li>
+            <li>当前 replay 任务对 naive-count 太友好。</li>
+            <li><code>tv_monitor</code> 可见行太少。</li>
+            <li><code>plant</code> 仍需 debug detector/visibility 细节。</li>
           </ul>
         </div>
       </div>
@@ -396,31 +385,17 @@
     <section>
       <h2>9. 下一步建议</h2>
       <ol>
-        <li>
-          加一个 <code>episode_local</code> ablation：episode 内累积、episode 间不持久。
-          这样才能拆开“短期证据累积”和“lifelong 跨 episode memory”。
-        </li>
-        <li>
-          给 stop/trust 加 current-view confirmation gate，尤其约束
-          <code>tv_monitor</code> 和 <code>plant</code>。
-        </li>
-        <li>
-          做 visibility-aware episode selection，再把 <code>chair</code> 加回矩阵。
-        </li>
-        <li>
-          导出 false-trust debug PNG，把错误分成 detector false positive、
-          oracle sparse visibility、几何/遮挡三类。
-        </li>
-        <li>
-          最后再接 Habitat follower 或真实导航系统，报告真正的 navigation metric。
-        </li>
+        <li>设计 naive-count 会失败的任务：跨 episode persistence、scene-change、negative evidence 或 geometry consistency。</li>
+        <li>导出 <code>plant</code> 和 <code>tv_monitor</code> gate rejection debug PNG。</li>
+        <li>做 visibility-aware episode selection，再把 <code>chair</code> 加回来。</li>
+        <li>接 Habitat follower 或真实导航系统之前，不要把当前结果写成导航成功率。</li>
       </ol>
     </section>
 
     <section>
       <h2>10. 复现实验命令</h2>
       <pre><code>ssh badger@100.88.131.52 \
-  'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384 --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,off --episodes-per-category 2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
+  'cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/memory_only_grounding_dino_replay_1280x720_epc2_cap384_naive_count_gate --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,naive_count,off --episodes-per-category 2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313'</code></pre>
     </section>
   </main>
 </body>
