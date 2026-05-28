@@ -719,6 +719,12 @@ After detector setup:
     anchors when `closest_goal_object_id` is available
   - category-level belief behavior remains as fallback for old callers
   - local focused tests passed: `86` tests, compileall, and `git diff --check`
+  - Linux focused tests in `conda habitat`: `86` tests passed
+  - Grounding-DINO bed instance-belief smoke:
+    `runs/habitat_usability/object_instance_belief_grounding_dino_bed_persistence_smoke_1280x720_cap384`
+    wrote both belief and anchor under `bed/goal_object:17`; the first
+    `mild`/`memory=on` row loaded persisted `p_valid=0.965016` and anchor
+    `(-1.329567, -9.573214)`
 
 Still not run:
 
@@ -737,8 +743,9 @@ Still not run:
 - Full expected-empty geometry-gate matrix across `bed,toilet,plant` with
   short teleport-only replay has been run; the stronger long-range version has
   also been run at EPC2. Do not treat either as official SPL.
-- Linux pull/test for instance-scoped belief persistence.
-- Grounding-DINO smoke after instance-scoped belief persistence.
+- EPC2 matrix after instance-scoped belief persistence. The bed smoke verifies
+  storage and load behavior, but the latest full matrix is still the guarded
+  geometry-anchor matrix.
 
 ## Known Risks
 
