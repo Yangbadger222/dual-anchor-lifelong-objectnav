@@ -96,6 +96,7 @@ DEFAULT_DEBUG_EXPORT_REPLAY_PHASES: tuple[str, ...] = ()
 DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES: tuple[str, ...] = ()
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
+DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M: float | None = None
 DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
 DEFAULT_REPLAY_PROTOCOL = "out_and_back"
 DEFAULT_GEODESIC_PATH_MAX_STEPS = 24
@@ -144,6 +145,12 @@ class ReplayStep:
     expected_target_absent: bool = False
 
 
+@dataclass(frozen=True)
+class MemoryGeometryState:
+    anchor_x: float | None = None
+    anchor_z: float | None = None
+
+
 def run_habitat_objectnav_rgb_noise_stress(
     output_dir: str | Path,
     *,
@@ -176,6 +183,7 @@ def run_habitat_objectnav_rgb_noise_stress(
     debug_export_evidence_types: Sequence[str] = DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
@@ -226,6 +234,7 @@ def run_habitat_objectnav_rgb_noise_stress(
         debug_export_evidence_types=debug_export_evidence_types,
         debug_export_limit_per_category=debug_export_limit_per_category,
         max_detection_area_ratio=max_detection_area_ratio,
+        memory_geometry_gate_radius_m=memory_geometry_gate_radius_m,
         episode_selection_strategy=episode_selection_strategy,
         replay_protocol=replay_protocol,
         geodesic_path_max_steps=geodesic_path_max_steps,
@@ -342,6 +351,7 @@ def run_habitat_objectnav_rgb_noise_stress(
                             debug_export_limit_per_category=debug_export_limit_per_category,
                             output_path=output_path,
                             max_detection_area_ratio=max_detection_area_ratio,
+                            memory_geometry_gate_radius_m=memory_geometry_gate_radius_m,
                             replay_protocol=replay_protocol,
                             geodesic_path_max_steps=geodesic_path_max_steps,
                         )
@@ -406,6 +416,7 @@ def run_rgb_noise_stress_preflight(
     debug_export_evidence_types: Sequence[str] = DEFAULT_DEBUG_EXPORT_EVIDENCE_TYPES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
     episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
@@ -429,6 +440,7 @@ def run_rgb_noise_stress_preflight(
     _validate_debug_export_replay_phases(debug_export_replay_phases)
     _validate_debug_export_evidence_types(debug_export_evidence_types)
     _validate_max_detection_area_ratio(max_detection_area_ratio)
+    _validate_memory_geometry_gate_radius(memory_geometry_gate_radius_m)
     _validate_replay_protocol(replay_protocol)
     _validate_geodesic_path_max_steps(geodesic_path_max_steps)
     _validate_episode_selection(
@@ -499,6 +511,7 @@ def run_rgb_noise_stress_preflight(
         ),
         "debug_export_limit_per_category": int(debug_export_limit_per_category),
         "max_detection_area_ratio": max_detection_area_ratio,
+        "memory_geometry_gate_radius_m": memory_geometry_gate_radius_m,
         "replay_protocol": replay_protocol,
         "revisit_strategy": replay_protocol,
         "geodesic_path_max_steps": int(geodesic_path_max_steps),
@@ -546,6 +559,7 @@ def _run_rgb_noise_episode(
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     output_path: Path | None = None,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    memory_geometry_gate_radius_m: float | None = DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
     replay_protocol: str = DEFAULT_REPLAY_PROTOCOL,
     geodesic_path_max_steps: int = DEFAULT_GEODESIC_PATH_MAX_STEPS,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -609,6 +623,7 @@ def _run_rgb_noise_episode(
         candidate_born = False
     rows: list[dict[str, Any]] = []
     negative_streak = 0
+    memory_geometry_state = MemoryGeometryState()
     previous_pose = _initial_replay_pose_from_steps(replay_steps) or _agent_pose(agent)
     total_steps = len(replay_steps)
     for step_index, replay_step in enumerate(replay_steps):
@@ -655,6 +670,11 @@ def _run_rgb_noise_episode(
             max_detection_area_ratio=max_detection_area_ratio,
         )
         metrics = _mask_metrics(oracle_mask=oracle_mask, detector_mask=detector_mask)
+        detection_anchor_xz = _estimate_detection_anchor_xz(
+            detector_mask=detector_mask,
+            depth=noisy_depth,
+            agent_pose=pose,
+        )
         view_metrics = _target_view_metrics(oracle_mask)
         depth_valid_ratio = _depth_valid_ratio(noisy_depth)
         collided = bool(getattr(sim, "previous_step_collided", False))
@@ -679,6 +699,27 @@ def _run_rgb_noise_episode(
                 target_visible=metrics["oracle_target_pixels"] >= min_target_pixels,
             )
         )
+        memory_geometry_distance_m: float | None = None
+        memory_geometry_gate_reason = ""
+        (
+            memory_geometry_state,
+            evidence_type,
+            evidence_strength,
+            quarantined,
+            evidence_reason,
+            memory_geometry_distance_m,
+        ) = _apply_memory_geometry_gate(
+            state=memory_geometry_state,
+            memory_mode=memory_mode,
+            evidence_type=evidence_type,
+            evidence_strength=evidence_strength,
+            quarantined=quarantined,
+            evidence_reason=evidence_reason,
+            observation_anchor_xz=detection_anchor_xz,
+            gate_radius_m=memory_geometry_gate_radius_m,
+        )
+        if evidence_reason == "geometry_inconsistent_positive":
+            memory_geometry_gate_reason = evidence_reason
         if evidence_type is EvidenceType.POSITIVE:
             negative_streak = 0
         elif evidence_type in {
@@ -791,6 +832,22 @@ def _run_rgb_noise_episode(
                             max((d.confidence for d in detections), default=0.0),
                             6,
                         ),
+                        "memory_anchor_x": _round_optional(
+                            memory_geometry_state.anchor_x
+                        ),
+                        "memory_anchor_z": _round_optional(
+                            memory_geometry_state.anchor_z
+                        ),
+                        "memory_observation_anchor_x": _round_optional(
+                            detection_anchor_xz[0] if detection_anchor_xz else None
+                        ),
+                        "memory_observation_anchor_z": _round_optional(
+                            detection_anchor_xz[1] if detection_anchor_xz else None
+                        ),
+                        "memory_geometry_distance_m": _round_optional(
+                            memory_geometry_distance_m
+                        ),
+                        "memory_geometry_gate_reason": memory_geometry_gate_reason,
                         **metrics,
                         **view_metrics,
                     },
@@ -834,6 +891,18 @@ def _run_rgb_noise_episode(
                     max((d.confidence for d in detections), default=0.0),
                     6,
                 ),
+                "memory_anchor_x": _round_optional(memory_geometry_state.anchor_x),
+                "memory_anchor_z": _round_optional(memory_geometry_state.anchor_z),
+                "memory_observation_anchor_x": _round_optional(
+                    detection_anchor_xz[0] if detection_anchor_xz else None
+                ),
+                "memory_observation_anchor_z": _round_optional(
+                    detection_anchor_xz[1] if detection_anchor_xz else None
+                ),
+                "memory_geometry_distance_m": _round_optional(
+                    memory_geometry_distance_m
+                ),
+                "memory_geometry_gate_reason": memory_geometry_gate_reason,
                 **metrics,
                 **view_metrics,
                 "target_visible": target_visible,
@@ -964,6 +1033,12 @@ def _filter_detections_by_area(
 def _mask_area_ratio(mask: np.ndarray) -> float:
     mask_bool = np.asarray(mask, dtype=bool)
     return float(mask_bool.sum()) / max(1, mask_bool.size)
+
+
+def _round_optional(value: float | None, digits: int = 6) -> float | None:
+    if value is None:
+        return None
+    return round(float(value), digits)
 
 
 def _detector_for_target(
@@ -1984,6 +2059,103 @@ def _memory_on_belief_update(
     return True, updater.apply(belief, event)
 
 
+def _apply_memory_geometry_gate(
+    *,
+    state: MemoryGeometryState,
+    memory_mode: str,
+    evidence_type: EvidenceType,
+    evidence_strength: float,
+    quarantined: bool,
+    evidence_reason: str,
+    observation_anchor_xz: tuple[float, float] | None,
+    gate_radius_m: float | None,
+) -> tuple[MemoryGeometryState, EvidenceType, float, bool, str, float | None]:
+    if (
+        memory_mode != "on"
+        or gate_radius_m is None
+        or evidence_type is not EvidenceType.POSITIVE
+        or observation_anchor_xz is None
+    ):
+        return (
+            state,
+            evidence_type,
+            evidence_strength,
+            quarantined,
+            evidence_reason,
+            None,
+        )
+    obs_x, obs_z = observation_anchor_xz
+    if state.anchor_x is None or state.anchor_z is None:
+        return (
+            MemoryGeometryState(anchor_x=obs_x, anchor_z=obs_z),
+            evidence_type,
+            evidence_strength,
+            quarantined,
+            evidence_reason,
+            None,
+        )
+    distance_m = float(np.hypot(obs_x - state.anchor_x, obs_z - state.anchor_z))
+    if distance_m > gate_radius_m:
+        return (
+            state,
+            EvidenceType.UNKNOWN,
+            0.35,
+            True,
+            "geometry_inconsistent_positive",
+            round(distance_m, 6),
+        )
+    return (
+        state,
+        evidence_type,
+        evidence_strength,
+        quarantined,
+        evidence_reason,
+        round(distance_m, 6),
+    )
+
+
+def _estimate_detection_anchor_xz(
+    *,
+    detector_mask: np.ndarray,
+    depth: np.ndarray,
+    agent_pose: tuple[tuple[float, float, float], tuple[float, float, float, float]],
+    hfov_degrees: float = 79.0,
+) -> tuple[float, float] | None:
+    bbox = _mask_bbox(detector_mask)
+    if bbox is None:
+        return None
+    x1, y1, x2, y2 = bbox
+    center_x = (x1 + x2 - 1) / 2.0
+    center_y = (y1 + y2 - 1) / 2.0
+    depth_arr = np.asarray(depth, dtype=float)
+    height, width = depth_arr.shape[:2]
+    if height <= 0 or width <= 0:
+        return None
+    patch = depth_arr[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
+    finite = patch[np.isfinite(patch) & (patch > 0.0)]
+    if finite.size == 0:
+        return None
+    distance = float(np.median(finite))
+    horizontal_offset = (center_x - (width - 1) / 2.0) / max(1.0, (width - 1) / 2.0)
+    bearing = horizontal_offset * np.deg2rad(hfov_degrees) / 2.0
+    yaw = _yaw_from_quaternion_xyzw(agent_pose[1])
+    world_angle = yaw + bearing
+    position = agent_pose[0]
+    return (
+        round(float(position[0] - distance * np.sin(world_angle)), 6),
+        round(float(position[2] - distance * np.cos(world_angle)), 6),
+    )
+
+
+def _yaw_from_quaternion_xyzw(
+    rotation: tuple[float, float, float, float],
+) -> float:
+    x, y, z, w = rotation
+    siny_cosp = 2.0 * (w * y + x * z)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return float(np.arctan2(siny_cosp, cosy_cosp))
+
+
 def _apply_expected_empty_context(
     *,
     evidence_type: EvidenceType,
@@ -2649,6 +2821,13 @@ def _validate_max_detection_area_ratio(max_detection_area_ratio: float | None) -
         return
     if not 0.0 < max_detection_area_ratio <= 1.0:
         raise ValueError("max_detection_area_ratio must be in (0, 1] or None")
+
+
+def _validate_memory_geometry_gate_radius(radius_m: float | None) -> None:
+    if radius_m is None:
+        return
+    if radius_m <= 0.0:
+        raise ValueError("memory_geometry_gate_radius_m must be positive or None")
 
 
 def _validate_replay_protocol(replay_protocol: str) -> None:

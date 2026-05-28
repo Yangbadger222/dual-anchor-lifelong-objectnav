@@ -368,6 +368,36 @@ non-confirmation. The goal is to expose the algorithm's negative-evidence and
 retirement behavior in Habitat before scaling to a larger noise/category
 matrix.
 
+## Update: Memory Geometry Gate Prototype (2026-05-28)
+
+The expected-empty Grounding-DINO matrix exposed a detector/memory boundary
+issue for `bed`: the detector can produce positive target evidence in an
+expected-empty view by labeling a spatially different object, such as a door
+edge or dresser, as `bed`. A category-only belief table cannot distinguish
+that false positive from a revisit to the same remembered object.
+
+The RGB-noise runner therefore adds an optional `memory=on` geometry-gate
+prototype:
+
+- CLI flag: `--memory-geometry-gate-radius-m <meters>`;
+- default: disabled, preserving all previous experiment results;
+- the first accepted positive observation in a replay creates a lightweight
+  memory anchor by projecting the detector bbox center through the noisy depth
+  image into Habitat world `x/z`;
+- later `memory=on` positives whose projected anchor is farther than the
+  configured radius are quarantined as `UNKNOWN` with reason
+  `geometry_inconsistent_positive`;
+- trace rows record the memory anchor, observation anchor, geometry distance,
+  and geometry gate reason;
+- `naive_count` is unchanged: it still only counts positive observations and
+  receives no geometry, non-confirmation, delayed birth, or persistence logic.
+
+This is a candidate-association prototype, not the final Dual-Anchor memory
+store. The anchor is currently per replay and is not persisted in SQLite across
+episodes. It is intended to test whether spatial consistency helps reject
+detector false positives before investing in a full object-instance memory
+schema with anchor covariance and multi-object association.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

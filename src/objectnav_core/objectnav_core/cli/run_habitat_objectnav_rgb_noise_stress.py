@@ -13,6 +13,7 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     DEFAULT_DEBUG_EXPORT_REPLAY_PHASES,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
+    DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M,
     DEFAULT_EPISODE_SELECTION_STRATEGY,
     DEFAULT_GEODESIC_PATH_MAX_STEPS,
     DEFAULT_REPLAY_PROTOCOL,
@@ -186,6 +187,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--memory-geometry-gate-radius-m",
+        type=float,
+        default=DEFAULT_MEMORY_GEOMETRY_GATE_RADIUS_M or 0.0,
+        help=(
+            "Enable memory=on candidate-anchor geometry gating with this radius "
+            "in meters. Set <=0 to disable. This does not change naive_count."
+        ),
+    )
+    parser.add_argument(
         "--stop-on-trust",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_STOP_ON_TRUST,
@@ -267,6 +277,9 @@ def main() -> None:
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio
             ),
+            memory_geometry_gate_radius_m=_optional_positive_ratio(
+                args.memory_geometry_gate_radius_m
+            ),
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,
             geodesic_path_max_steps=args.geodesic_path_max_steps,
@@ -307,6 +320,9 @@ def main() -> None:
             debug_export_limit_per_category=args.debug_export_limit_per_category,
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio
+            ),
+            memory_geometry_gate_radius_m=_optional_positive_ratio(
+                args.memory_geometry_gate_radius_m
             ),
             episode_selection_strategy=args.episode_selection_strategy,
             replay_protocol=args.replay_protocol,

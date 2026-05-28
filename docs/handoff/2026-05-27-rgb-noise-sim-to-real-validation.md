@@ -518,6 +518,60 @@ After detector setup:
     more conservative and has fewer total success rows.
 - Created experiment report:
   `docs/experiments/2026-05-28-expected-empty-grounding-dino-replay.md`
+- Ran the larger expected-empty matrix on `badger-linux` after pulling commit
+  `cb22187`:
+  - output:
+    `runs/habitat_usability/expected_empty_grounding_dino_matrix_1280x720_epc2_cap384`
+  - config: `bed,toilet,plant`, two structured episodes/category,
+    `clean,mild,heavy`, `on,naive_count,off`, Grounding-DINO tiny,
+    detector cap `384`, `1280x720`, `--no-stop-on-trust`
+  - selected episodes: `3,33,55,39,62,84`
+  - trace rows: `594`; replay summaries: `54`
+  - expected-empty evidence: `144` non-confirmations and `72` positives
+  - memory metrics:
+    - `on`: `18/18` successful episodes, `77` success rows, `115` raw trust,
+      `38` gate rejections, mean first-success step `1.277778`
+    - `naive_count`: `18/18` successful episodes, `87` success rows,
+      `161` raw trust, `74` gate rejections, mean first-success step
+      `2.333333`
+    - `off`: `0/18` successful episodes
+  - category read:
+    - `plant` and `toilet`: expected-empty rows are all non-confirmation;
+      `memory=on` sharply reduces raw trust and gate rejections.
+    - `bed`: expected-empty rows are all detector-positive, so negative
+      evidence never reaches memory.
+- Exported expected-empty bed positive PNGs:
+  - output:
+    `runs/habitat_usability/expected_empty_bed_positive_debug_1280x720_epc2_cap384`
+  - exported `24` PNGs under `debug_rows/`
+  - local contact sheet:
+    `/tmp/dual_anchor_expected_empty_bed_positive_debug/contact_sheet.png`
+  - all `24/24` rows had `target_visible=False`, `oracle_target_pixels=0`,
+    and `overlap_pixels=0`
+  - visual read: Grounding-DINO boxes door/furniture-edge regions and a red
+    dresser/wall region as `bed`; this is detector false-positive pressure,
+    not Habitat GT being overly strict around a visible bed.
+- Ran a bed confidence-threshold ablation:
+  - `conf=0.35`: expected-empty positives `19/24`, but confirm positives only
+    `6/18`
+  - `conf=0.45`: expected-empty positives `12/24`, confirm positives `5/18`
+  - `conf=0.55`: expected-empty positives `8/24`, confirm positives `5/18`
+  - conclusion: raising detector confidence is not a clean fix because it also
+    kills true visible bed positives.
+- Added local optional memory geometry gate:
+  - CLI flag: `--memory-geometry-gate-radius-m`
+  - default disabled
+  - only affects `memory=on`
+  - first positive in a replay creates a depth-projected `x/z` memory anchor
+  - later `memory=on` positives farther than the radius are quarantined as
+    `UNKNOWN` with reason `geometry_inconsistent_positive`
+  - `naive_count` remains positive-only and geometry-free
+  - trace rows now include `memory_anchor_x/z`,
+    `memory_observation_anchor_x/z`, `memory_geometry_distance_m`, and
+    `memory_geometry_gate_reason`
+  - local focused tests passed: `47` RGB-noise stress tests and `58` broader
+    focused tests; compileall, geometry preflight, and `git diff --check`
+    passed
 
 Still not run:
 
@@ -533,8 +587,10 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
-- Larger expected-empty `clean,mild,heavy` matrix.
-- Expected-empty detector-positive debug PNG export/review.
+- Linux pull/test for the memory-geometry-gate commit.
+- Bed expected-empty geometry-gate smoke on Linux.
+- Full expected-empty geometry-gate matrix across `bed,toilet,plant`.
+- SQLite persistence of object-instance geometry anchors across episodes.
 
 ## Known Risks
 
@@ -569,36 +625,49 @@ Still not run:
 - Delayed birth is an algorithm contribution for `memory=on`, not a baseline
   feature. Keep `naive_count` positive-only: no delayed birth state,
   non-confirmation handling, geometry, or persistence.
+- The new geometry gate is currently per replay and optional. It is a
+  candidate-association prototype, not yet the final Dual-Anchor lifelong
+  object store.
+- The bed detector issue should not be solved by simply raising
+  Grounding-DINO confidence; the threshold ablation shows that route also
+  damages true-positive recall.
 
 ## Next Recommended Step
 
-1. Pull the detector-area-filter commit on `badger-linux` and rerun the
-   `plant,tv_monitor` diagnostic subset with the default filter. Completed for
-   `0.70` and `0.40`; see the diagnostic report.
-2. Manually review the full
+1. Commit and push the memory-geometry-gate prototype; pull it on
+   `badger-linux`.
+2. Run focused remote tests in `conda habitat`.
+3. Run a bed-only expected-empty smoke with
+   `--memory-geometry-gate-radius-m 1.5` and compare `memory=on` vs
+   `naive_count`.
+4. If the bed smoke reduces geometry-inconsistent positives without killing
+   true revisit success, rerun the full
+   `expected_empty_grounding_dino_matrix_1280x720_epc2_cap384` equivalent with
+   the geometry gate enabled.
+5. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. If broader detector/GT evidence is needed, run trace-filtered hidden-positive
+6. If broader detector/GT evidence is needed, run trace-filtered hidden-positive
    PNG export across all selected categories at a controlled cap.
-4. Decide whether hidden-view `unknown` is enough for the next memory claim or
+7. Decide whether hidden-view `unknown` is enough for the next memory claim or
    whether the harness needs an explicit expected-location-empty evidence
    context to produce true `NON_CONFIRMATION`.
-5. Add visibility-aware episode selection and reintroduce `chair`.
-6. Add a fallback selection mode so categories with zero structured candidates
+8. Add visibility-aware episode selection and reintroduce `chair`.
+9. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
-7. Pull the delayed-birth commit on `badger-linux` and rerun the
+10. Pull the delayed-birth commit on `badger-linux` and rerun the
    Grounding-DINO `geodesic_path` smoke from `episode_start`; compare
    `summary.json["episode_selection"]`, `memory=on`, and `naive_count`.
    Completed for commit `2e67295`; delayed birth did not change the smoke.
-8. Implement an explicit expected-location-empty context before running a
+11. Implement an explicit expected-location-empty context before running a
    larger matrix. Local implementation exists; next run Linux smokes.
-9. Run a larger `expected_empty_challenge` matrix with `bed,toilet,plant`,
+12. Run a larger `expected_empty_challenge` matrix with `bed,toilet,plant`,
    `clean,mild,heavy`, and at least two structured episodes/category; compare
    success episodes, first-success step, path-to-first-success, raw trust, and
    gate rejections.
-10. Export expected-empty detector-positive PNGs at a controlled cap to
+13. Export expected-empty detector-positive PNGs at a controlled cap to
    understand Grounding-DINO false positives in the hidden interval.
-11. Combine expected-empty semantics with a long-range approach protocol or
+14. Combine expected-empty semantics with a long-range approach protocol or
    connect the replay harness to a real action-level Habitat follower and
    report navigation metrics.
 

@@ -203,6 +203,23 @@ def test_preflight_records_expected_empty_challenge_replay_protocol(tmp_path: Pa
     assert "expected_empty" in summary["replay_phases"]
 
 
+def test_preflight_records_memory_geometry_gate_radius(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        memory_geometry_gate_radius_m=1.5,
+    )
+
+    assert summary["memory_geometry_gate_radius_m"] == 1.5
+
+
 def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
     categories = {"plant", "tv_monitor"}
 
@@ -410,6 +427,71 @@ def test_detector_mask_drops_frame_when_union_area_is_over_broad() -> None:
     assert kept == []
     assert filtered_count == 2
     assert not mask.any()
+
+
+def test_detection_anchor_projection_uses_depth_and_agent_yaw() -> None:
+    detector_mask = np.zeros((4, 4), dtype=bool)
+    detector_mask[1:3, 1:3] = True
+    depth = np.full((4, 4), 2.0, dtype=np.float32)
+
+    anchor = stress._estimate_detection_anchor_xz(
+        detector_mask=detector_mask,
+        depth=depth,
+        agent_pose=((1.0, 0.0, 3.0), (0.0, 0.0, 0.0, 1.0)),
+        hfov_degrees=90.0,
+    )
+
+    assert anchor is not None
+    assert anchor[0] == 1.0
+    assert anchor[1] == 1.0
+
+
+def test_memory_geometry_gate_quarantines_far_positive_after_anchor_birth() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=0.0)
+
+    updated_state, evidence_type, strength, quarantined, reason, distance = (
+        stress._apply_memory_geometry_gate(
+            state=state,
+            memory_mode="on",
+            evidence_type=EvidenceType.POSITIVE,
+            evidence_strength=1.0,
+            quarantined=False,
+            evidence_reason="detector_positive_mask",
+            observation_anchor_xz=(3.0, 0.0),
+            gate_radius_m=1.5,
+        )
+    )
+
+    assert updated_state == state
+    assert evidence_type is EvidenceType.UNKNOWN
+    assert strength == 0.35
+    assert quarantined is True
+    assert reason == "geometry_inconsistent_positive"
+    assert distance == 3.0
+
+
+def test_memory_geometry_gate_does_not_change_naive_count_or_disabled_runs() -> None:
+    state = stress.MemoryGeometryState(anchor_x=0.0, anchor_z=0.0)
+
+    for memory_mode, gate_radius in (("naive_count", 1.5), ("on", None)):
+        _, evidence_type, strength, quarantined, reason, distance = (
+            stress._apply_memory_geometry_gate(
+                state=state,
+                memory_mode=memory_mode,
+                evidence_type=EvidenceType.POSITIVE,
+                evidence_strength=1.0,
+                quarantined=False,
+                evidence_reason="detector_positive_mask",
+                observation_anchor_xz=(3.0, 0.0),
+                gate_radius_m=gate_radius,
+            )
+        )
+
+        assert evidence_type is EvidenceType.POSITIVE
+        assert strength == 1.0
+        assert quarantined is False
+        assert reason == "detector_positive_mask"
+        assert distance is None
 
 
 def test_naive_count_baseline_only_accumulates_positive_evidence() -> None:
