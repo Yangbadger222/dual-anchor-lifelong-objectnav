@@ -308,6 +308,39 @@ long-range replay with the original delayed-birth contribution while keeping
 the shared current-positive gate and the shared current-positive trust shortcut
 unchanged.
 
+## Update: Long-Range Lifelong Timing Metrics (2026-05-28)
+
+The delayed-birth rerun did not change the small Grounding-DINO
+`geodesic_path` smoke because the first positive evidence appears early in
+the selected episodes. The result shows that row-count success alone is too
+coarse for lifelong memory evaluation: a cross-episode memory may be valuable
+because it trusts sooner after a current confirmation, not only because it
+creates more success rows.
+
+The replay summary therefore records timing and distance metrics per replay:
+
+- first positive step and phase;
+- first raw trust step and phase;
+- first gated trust step and phase;
+- first oracle-stop-success step and phase;
+- replay path translation accumulated up to first success;
+- whether the replay ever produced an oracle-stop success.
+
+The run summary also reports `memory_mode_metrics`, aggregating:
+
+- replay episodes per memory mode;
+- successful replay episodes per memory mode;
+- success rows, raw trust rows, and gate-rejection rows;
+- mean first-success step;
+- mean path translation to first success;
+- mean final `p_valid`.
+
+These are reporting metrics only. They do not change detector inference,
+evidence classification, memory updates, `naive_count`, the shared gate, or
+stop-on-trust behavior. They are needed before scaling to a larger lifelong
+matrix because top-tier evidence should show both reliability and efficiency
+over long-distance episodes.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

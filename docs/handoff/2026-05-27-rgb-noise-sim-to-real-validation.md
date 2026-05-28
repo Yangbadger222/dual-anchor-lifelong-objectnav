@@ -448,6 +448,26 @@ After detector setup:
   - compileall passed
   - geodesic-path preflight wrote
     `runs/habitat_usability/geodesic_delayed_birth_preflight/summary.json`
+- Reran the same Grounding-DINO `geodesic_path` smoke on `badger-linux` after
+  pulling commit `2e67295`:
+  - output:
+    `runs/habitat_usability/geodesic_path_grounding_dino_smoke_1280x720_cap384_delayed_birth`
+  - selected episodes unchanged: `3`, `55`, `62`
+  - trace rows unchanged: `114`
+  - total gated success unchanged: `24`
+  - `memory=on`: `24` raw trust, `11` gated success, `13` gate rejections
+  - `naive_count`: `28` raw trust, `13` gated success, `15` gate rejections
+  - conclusion: delayed birth is a correct semantics fix, but this small smoke
+    has early positive evidence and does not expose its benefit.
+- Added local long-range timing metrics:
+  - episode summaries now record first positive, first raw trust, first gated
+    trust, first oracle-stop success, path translation to first success, and
+    `successful_replay`
+  - run summaries now include `memory_mode_metrics`
+  - local focused tests passed: `39` tests for
+    `test_habitat_objectnav_rgb_noise_stress.py`
+- Created experiment report:
+  `docs/experiments/2026-05-28-geodesic-path-grounding-dino-replay.md`
 
 Still not run:
 
@@ -463,7 +483,8 @@ Still not run:
   navmesh shortest-path waypoints by teleporting; it is a long-range bridge,
   not an official navigation metric.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
-- Linux rerun of the `geodesic_path` Grounding-DINO smoke after delayed birth.
+- Linux rerun of the `geodesic_path` Grounding-DINO smoke after adding timing
+  metrics.
 
 ## Known Risks
 
@@ -518,10 +539,14 @@ Still not run:
 7. Pull the delayed-birth commit on `badger-linux` and rerun the
    Grounding-DINO `geodesic_path` smoke from `episode_start`; compare
    `summary.json["episode_selection"]`, `memory=on`, and `naive_count`.
-8. If delayed birth helps the smoke, scale to a larger `bed,toilet,plant`
-   matrix with `clean,mild,heavy`; if it still does not help, implement an
+   Completed for commit `2e67295`; delayed birth did not change the smoke.
+8. Pull the timing-metrics commit on `badger-linux`, rerun the same
+   Grounding-DINO `geodesic_path` smoke, and inspect
+   `summary.json["memory_mode_metrics"]`.
+9. If timing metrics show memory advantage, scale to a larger
+   `bed,toilet,plant` matrix with `clean,mild,heavy`; otherwise implement an
    explicit expected-location-empty context before running a larger matrix.
-9. Connect the replay harness to a real action-level Habitat follower and
+10. Connect the replay harness to a real action-level Habitat follower and
    report navigation metrics.
 
 ## Context for Next Contributor

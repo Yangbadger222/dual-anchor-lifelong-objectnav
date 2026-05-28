@@ -910,6 +910,8 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision_gate_reason": "current_positive_confirmation",
                 "replay_phase": "confirm",
                 "oracle_stop_success": True,
+                "memory_mode": "on",
+                "translation_m": 1.0,
                 "detector_precision": 1.0,
                 "oracle_recall": 1.0,
             },
@@ -920,6 +922,8 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
                 "decision_gate_reason": "target_not_currently_visible",
                 "replay_phase": "non_confirm",
                 "oracle_stop_success": False,
+                "memory_mode": "on",
+                "translation_m": 1.0,
                 "detector_precision": 0.0,
                 "oracle_recall": 0.0,
             },
@@ -927,8 +931,11 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
         episode_summaries=[
             {
                 "object_category": "tv_monitor",
+                "memory_mode": "on",
                 "final_p_valid": 0.95,
                 "oracle_stop_success_rows": 1,
+                "first_oracle_stop_success_step": 0,
+                "path_translation_to_first_success_m": 1.0,
             }
         ],
     )
@@ -952,6 +959,63 @@ def test_run_summary_reports_raw_and_gated_decision_counts(tmp_path: Path) -> No
     assert summary["replay_phase_raw_decision_counts"] == {
         "confirm": {"trust": 1},
         "non_confirm": {"trust": 1},
+    }
+    assert summary["memory_mode_metrics"]["on"] == {
+        "episodes": 1,
+        "success_episodes": 1,
+        "success_rows": 1,
+        "raw_trust_rows": 2,
+        "gate_rejection_rows": 1,
+        "mean_first_success_step": 0.0,
+        "mean_path_translation_to_first_success_m": 1.0,
+        "mean_final_p_valid": 0.95,
+    }
+
+
+def test_episode_timing_metrics_record_first_success_and_path_distance() -> None:
+    rows = [
+        {
+            "step_index": 0,
+            "replay_phase": "approach",
+            "evidence_type": "unknown",
+            "raw_decision": "verify",
+            "decision": "verify",
+            "oracle_stop_success": False,
+            "translation_m": 0.0,
+        },
+        {
+            "step_index": 1,
+            "replay_phase": "approach",
+            "evidence_type": "positive",
+            "raw_decision": "trust",
+            "decision": "verify",
+            "oracle_stop_success": False,
+            "translation_m": 2.0,
+        },
+        {
+            "step_index": 2,
+            "replay_phase": "confirm",
+            "evidence_type": "positive",
+            "raw_decision": "trust",
+            "decision": "trust",
+            "oracle_stop_success": True,
+            "translation_m": 3.0,
+        },
+    ]
+
+    metrics = stress._episode_timing_metrics(rows)
+
+    assert metrics == {
+        "first_positive_step": 1,
+        "first_positive_phase": "approach",
+        "first_raw_trust_step": 1,
+        "first_raw_trust_phase": "approach",
+        "first_gated_trust_step": 2,
+        "first_gated_trust_phase": "confirm",
+        "first_oracle_stop_success_step": 2,
+        "first_oracle_stop_success_phase": "confirm",
+        "path_translation_to_first_success_m": 5.0,
+        "successful_replay": True,
     }
 
 

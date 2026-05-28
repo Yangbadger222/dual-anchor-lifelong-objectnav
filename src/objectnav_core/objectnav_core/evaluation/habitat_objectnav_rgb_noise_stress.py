@@ -861,6 +861,7 @@ def _run_rgb_noise_episode(
             int(row["oracle_stop_success"]) for row in rows
         ),
         "final_p_valid": round(belief.p_valid, 6),
+        **_episode_timing_metrics(rows),
     }
 
 
@@ -2272,6 +2273,10 @@ def _summarize_rgb_noise_run(
             "mean_detector_precision": _mean(rows, "detector_precision"),
             "mean_oracle_recall": _mean(rows, "oracle_recall"),
             "mean_final_p_valid": _mean(episode_summaries, "final_p_valid"),
+            "memory_mode_metrics": _memory_mode_metrics(
+                rows=rows,
+                episode_summaries=episode_summaries,
+            ),
             "detection_filtered_count": sum(
                 int(row.get("detection_filtered_count", 0)) for row in rows
             ),
@@ -2290,6 +2295,137 @@ def _summarize_rgb_noise_run(
         }
     )
     return summary
+
+
+def _episode_timing_metrics(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    first_positive = _first_row(rows, lambda row: row.get("evidence_type") == "positive")
+    first_raw_trust = _first_row(rows, lambda row: row.get("raw_decision") == "trust")
+    first_gated_trust = _first_row(rows, lambda row: row.get("decision") == "trust")
+    first_success = _first_row(rows, lambda row: bool(row.get("oracle_stop_success")))
+    return {
+        "first_positive_step": _row_step(first_positive),
+        "first_positive_phase": _row_phase(first_positive),
+        "first_raw_trust_step": _row_step(first_raw_trust),
+        "first_raw_trust_phase": _row_phase(first_raw_trust),
+        "first_gated_trust_step": _row_step(first_gated_trust),
+        "first_gated_trust_phase": _row_phase(first_gated_trust),
+        "first_oracle_stop_success_step": _row_step(first_success),
+        "first_oracle_stop_success_phase": _row_phase(first_success),
+        "path_translation_to_first_success_m": _path_translation_to_row(
+            rows,
+            first_success,
+        ),
+        "successful_replay": first_success is not None,
+    }
+
+
+def _memory_mode_metrics(
+    *,
+    rows: Sequence[dict[str, Any]],
+    episode_summaries: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    memory_modes = sorted(
+        {
+            str(row["memory_mode"])
+            for row in rows
+            if row.get("memory_mode") is not None
+        }
+        | {
+            str(summary["memory_mode"])
+            for summary in episode_summaries
+            if summary.get("memory_mode") is not None
+        }
+    )
+    metrics: dict[str, dict[str, Any]] = {}
+    for memory_mode in memory_modes:
+        mode_rows = [row for row in rows if row.get("memory_mode") == memory_mode]
+        mode_summaries = [
+            summary
+            for summary in episode_summaries
+            if summary.get("memory_mode") == memory_mode
+        ]
+        metrics[memory_mode] = {
+            "episodes": len(mode_summaries),
+            "success_episodes": sum(
+                int(_episode_summary_successful(summary))
+                for summary in mode_summaries
+            ),
+            "success_rows": sum(
+                int(row.get("oracle_stop_success", False)) for row in mode_rows
+            ),
+            "raw_trust_rows": sum(
+                int(row.get("raw_decision") == "trust") for row in mode_rows
+            ),
+            "gate_rejection_rows": sum(
+                int(
+                    row.get("decision_gate_reason")
+                    in {
+                        "target_not_currently_visible",
+                        "missing_current_positive_evidence",
+                    }
+                )
+                for row in mode_rows
+            ),
+            "mean_first_success_step": _mean(
+                mode_summaries,
+                "first_oracle_stop_success_step",
+            ),
+            "mean_path_translation_to_first_success_m": _mean(
+                mode_summaries,
+                "path_translation_to_first_success_m",
+            ),
+            "mean_final_p_valid": _mean(mode_summaries, "final_p_valid"),
+        }
+    return metrics
+
+
+def _episode_summary_successful(summary: dict[str, Any]) -> bool:
+    if summary.get("successful_replay") is not None:
+        return bool(summary["successful_replay"])
+    if summary.get("first_oracle_stop_success_step") is not None:
+        return True
+    return int(summary.get("oracle_stop_success_rows", 0)) > 0
+
+
+def _first_row(
+    rows: Sequence[dict[str, Any]],
+    predicate: Any,
+) -> dict[str, Any] | None:
+    for row in rows:
+        if predicate(row):
+            return row
+    return None
+
+
+def _row_step(row: dict[str, Any] | None) -> int | None:
+    if row is None or row.get("step_index") is None:
+        return None
+    return int(row["step_index"])
+
+
+def _row_phase(row: dict[str, Any] | None) -> str | None:
+    if row is None or row.get("replay_phase") is None:
+        return None
+    return str(row["replay_phase"])
+
+
+def _path_translation_to_row(
+    rows: Sequence[dict[str, Any]],
+    target_row: dict[str, Any] | None,
+) -> float | None:
+    if target_row is None:
+        return None
+    target_step = _row_step(target_row)
+    if target_step is None:
+        return None
+    return round(
+        sum(
+            float(row.get("translation_m", 0.0))
+            for row in rows
+            if int(row.get("step_index", -1)) <= target_step
+        ),
+        6,
+    )
 
 
 def _nested_count_values(
