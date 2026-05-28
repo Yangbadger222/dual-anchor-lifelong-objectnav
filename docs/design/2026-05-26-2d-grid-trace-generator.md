@@ -138,3 +138,25 @@ The 2D trace generator should expose state-machine failures early, especially fa
 - Should opportunistic verification receive an explicit memory-maintenance value before search?
 - Which scenario parameters should be replaced first by Habitat or real bag statistics?
 - Should the JPDA-lite gate become a full multi-hypothesis tracker before Habitat integration?
+
+## Update: Structured Naive-Count Decision Challenge (2026-05-28)
+
+The Habitat fixed-replay matrix showed that `memory=on` and `naive_count` are
+nearly tied when the replay mostly rewards repeated visible positives. The next
+2D trace use case is therefore a structured decision challenge that preserves
+the same baseline semantics while adding cases where memory should matter:
+
+- `naive_count` only counts positive evidence and trusts after two positives.
+- It does not consume non-confirmation, unknown, scene-change, path blockage,
+  delayed birth, JPDA association, or geometry consistency.
+- Both `usability_memory` and `naive_count` pass through the same
+  current-positive stop gate. The trace keeps raw decisions and gated decisions
+  so rejected raw trust remains visible.
+- `removed_or_moved` starts with early positives and then emits
+  non-confirmation / scene-change evidence, making stale-positive trust visible.
+- `multi_object_association` continues to include ambiguous and false-positive
+  observations so positive-only counting can accumulate ghost evidence.
+
+The runner should report per-policy raw trust, gated trust, gate rejections,
+unsafe raw trust, and false-positive write pressure. This is still a synthetic
+logic challenge, not Habitat SPL or a physical navigation benchmark.

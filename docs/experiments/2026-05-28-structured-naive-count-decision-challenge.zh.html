@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>结构化 Naive-Count 决策挑战报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182026;
+      --muted: #5c6670;
+      --line: #d8ddd4;
+      --paper: #fbfaf6;
+      --band: #eef4f1;
+      --accent: #1d6b63;
+      --warn: #8a4b19;
+    }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.64;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 34px 24px 64px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 18px;
+      margin-bottom: 28px;
+    }
+    h1, h2, h3 {
+      color: var(--accent);
+      letter-spacing: 0;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+    }
+    h2 {
+      margin-top: 34px;
+      font-size: 22px;
+    }
+    h3 {
+      margin-top: 24px;
+      font-size: 18px;
+    }
+    p {
+      margin: 10px 0;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .callout {
+      background: var(--band);
+      border-left: 4px solid var(--accent);
+      padding: 14px 16px;
+      margin: 18px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      margin: 12px 0 24px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #edf1ec;
+      color: #26322f;
+    }
+    code {
+      background: #f0eee7;
+      border: 1px solid #e0dccf;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      overflow: auto;
+      background: #172026;
+      color: #f5f1e8;
+      padding: 14px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    ul {
+      padding-left: 22px;
+    }
+    .warn {
+      color: var(--warn);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>结构化 Naive-Count 决策挑战报告</h1>
+    <p class="meta">日期：2026-05-28；环境：macOS 本地；输出目录：<code>runs/grid_trace/structured_naive_count_decision_challenge_seed17_ep900</code></p>
+  </header>
+
+  <section>
+    <h2>一句话结论</h2>
+    <div class="callout">
+      <p>在单房间 fixed replay 里，<code>naive_count</code> 和 memory 很接近；但在带场景变化、负证据、路径代价刷新和多同类歧义的结构化 trace 中，纯 positive 计数会明显积累 stale / ghost trust。当前结果支持继续往“多房间多走廊结构化 replay”推进，而不是继续只跑简单房间轨迹。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>这次做了什么</h2>
+    <ul>
+      <li>把现有 <code>grid_trace_experiment</code> 扩展为双策略输出：<code>usability_memory</code> 和 <code>naive_count</code>。</li>
+      <li><code>naive_count</code> 保持最朴素：只累计 positive，两次 positive 后才允许 raw trust；不处理 non-confirmation、unknown、scene-change、delayed birth、JPDA 或 geometry。</li>
+      <li>两条策略共用同一个 current-positive decision gate；报告同时保留 raw decision 和 gated decision。</li>
+      <li>把 <code>removed_or_moved</code> 改成先出现两个 positive，再进入 non-confirmation / scene-change，这样 baseline 不是稻草人。</li>
+      <li>生成了 JSON、CSV 和 HTML trace artifact，并新增了 Markdown 实验报告。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>实验命令</h2>
+    <pre><code>PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_grid_trace_experiment \
+  --output runs/grid_trace/structured_naive_count_decision_challenge_seed17_ep900 \
+  --seed 17 \
+  --episodes 900 \
+  --steps-per-episode 8</code></pre>
+  </section>
+
+  <section>
+    <h2>核心结果</h2>
+    <table>
+      <tr><th>指标</th><th>usability_memory</th><th>naive_count</th><th>说明</th></tr>
+      <tr><td>事件数</td><td>7200</td><td>7200</td><td>两条策略共用同一条 trace</td></tr>
+      <tr><td>Raw trust</td><td>2011</td><td>2186</td><td>未经过 current-positive gate</td></tr>
+      <tr><td>Gated trust</td><td>1129</td><td>945</td><td>同一个 gate 后的可停靠 trust</td></tr>
+      <tr><td>Gate rejection</td><td>882</td><td>1241</td><td>raw trust 被 gate 拒绝</td></tr>
+      <tr><td>Unsafe raw trust</td><td>882</td><td>1241</td><td>raw trust 发生在当前没有有效 positive 时</td></tr>
+      <tr><td>False-positive write pressure</td><td>0</td><td>200</td><td>naive_count 会把歧义 false positive 计入记忆</td></tr>
+    </table>
+
+    <h3>最关键场景</h3>
+    <table>
+      <tr><th>场景</th><th>usability_memory</th><th>naive_count</th><th>解读</th></tr>
+      <tr><td><code>removed_or_moved</code> unsafe raw trust</td><td>7</td><td>600</td><td>naive_count 吃到两次 early positive 后无法被负证据拉回来</td></tr>
+      <tr><td><code>removed_or_moved</code> 最终决策</td><td>retire</td><td>raw trust / gated verify</td><td>gate 能挡坏 stop，但 baseline 内部仍然 stale trust</td></tr>
+      <tr><td><code>multi_object_association</code> false-positive write pressure</td><td>0</td><td>200</td><td>JPDA-style guard 防住 ghost write</td></tr>
+      <tr><td><code>multi_object_association</code> unsafe raw trust</td><td>397</td><td>500</td><td>两者都受压，但 naive_count 更差</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>算法状态</h2>
+    <p>现在的状态比前一版清楚很多：Grounding-DINO + shared gate 的 Habitat replay 证明 pipeline 能跑，但还不能单独证明 Dual-Anchor / Lifelong 优势；结构化 grid trace 证明在多房间/走廊会出现的 stale、blocked、association 类问题上，memory updater 和 association guard 确实有 naive positive-count 解释不了的收益。</p>
+    <p class="warn">这不是 Habitat SPL，也不是最终 sim-to-real 结果。它是决策逻辑压力测试，用来指导下一步该把什么结构搬进 Habitat 或真实 bag replay。</p>
+  </section>
+
+  <section>
+    <h2>下一步</h2>
+    <ul>
+      <li>把这个结构化挑战迁移到 Habitat：优先构造多房间/走廊 revisit、目标消失/重现、blocked access、nearby same-class distractor。</li>
+      <li>继续保持 shared current-positive gate，三档策略都用同一个 gate。</li>
+      <li>保持 <code>naive_count</code> positive-only、阈值为 2；不要给 baseline 加 non-confirmation、unknown、delayed birth、JPDA 或 geometry。</li>
+      <li>检测器侧继续保留 <code>0.70</code> 面积过滤；剩余 <code>tv_monitor</code> false positives 需要 segmentation 或 appearance sanity check，不要靠更紧面积阈值硬砍。</li>
+      <li>等结构化 Habitat replay 稳定后，再接 navmesh follower 或真实导航系统，报告导航指标。</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

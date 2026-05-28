@@ -65,6 +65,21 @@ def test_generate_grid_trace_is_deterministic_and_uses_required_schema() -> None
     assert any(event.jpda_memory_id == "unassigned" for event in association_events)
 
 
+def test_removed_or_moved_trace_starts_positive_then_invalidates_memory() -> None:
+    trace = generate_grid_trace(seed=17, episodes=9, steps_per_episode=8)
+    events = [event for event in trace if event.scenario == "removed_or_moved"]
+
+    assert [event.evidence_type.value for event in events[:2]] == [
+        "positive",
+        "positive",
+    ]
+    assert any(
+        event.evidence_type.value in {"non_confirmation", "access_blocked"}
+        for event in events[2:-1]
+    )
+    assert events[-1].evidence_type.value == "scene_changed"
+
+
 def test_grid_trace_experiment_writes_artifacts_and_runs_usability_replay(tmp_path: Path) -> None:
     output_dir = tmp_path / "grid_trace"
 
@@ -101,6 +116,26 @@ def test_grid_trace_experiment_writes_artifacts_and_runs_usability_replay(tmp_pa
     assert summary["association_metrics"]["jpda_rejected_ambiguous_events"] > 0
     assert summary["association_metrics"]["ghost_positive_writes_prevented"] > 0
     assert summary["scenario_summaries"]["multi_object_association"]["nearest_wrong_association_events"] > 0
+    assert summary["baseline_comparison"]["naive_count"]["positive_count_threshold"] == 2
+    assert (
+        summary["baseline_comparison"]["naive_count"]["gate_rejection_count"]
+        > summary["baseline_comparison"]["usability_memory"]["gate_rejection_count"]
+    )
+    assert (
+        summary["baseline_comparison"]["naive_count"]["unsafe_raw_trust_count"]
+        > summary["baseline_comparison"]["usability_memory"]["unsafe_raw_trust_count"]
+    )
+    removed_policy = summary["policy_scenario_summaries"]["removed_or_moved"]
+    assert (
+        removed_policy["naive_count"]["unsafe_raw_trust_count"]
+        > removed_policy["usability_memory"]["unsafe_raw_trust_count"]
+    )
+    assert (
+        summary["policy_scenario_summaries"]["multi_object_association"]["naive_count"][
+            "false_positive_write_pressure"
+        ]
+        > 0
+    )
 
     summary_path = output_dir / "summary.json"
     events_path = output_dir / "events.csv"
@@ -113,12 +148,32 @@ def test_grid_trace_experiment_writes_artifacts_and_runs_usability_replay(tmp_pa
 
     rows = list(csv.DictReader(events_path.read_text(encoding="utf-8").splitlines()))
     assert len(rows) == 96
+    removed_rows = [
+        row
+        for row in rows
+        if row["scenario"] == "removed_or_moved" and row["episode_id"] == "1"
+    ]
+    assert removed_rows[0]["naive_count_positive_count"] == "1"
+    assert removed_rows[0]["naive_count_raw_decision"] != "trust"
+    assert removed_rows[1]["naive_count_positive_count"] == "2"
+    assert removed_rows[1]["naive_count_raw_decision"] == "trust"
+    assert removed_rows[2]["evidence_type"] in {"non_confirmation", "access_blocked"}
+    assert removed_rows[2]["naive_count_raw_decision"] == "trust"
+    assert removed_rows[2]["naive_count_decision"] == "verify"
     assert {
         "p_existence",
         "p_location_valid",
         "p_usable",
         "p_valid",
         "decision",
+        "usability_memory_raw_decision",
+        "usability_memory_decision",
+        "usability_memory_gate_reason",
+        "naive_count_positive_count",
+        "naive_count_raw_decision",
+        "naive_count_decision",
+        "naive_count_gate_reason",
+        "naive_count_false_positive_write",
         "cost_trust",
         "cost_verify",
         "cost_search",
@@ -142,3 +197,4 @@ def test_grid_trace_experiment_writes_artifacts_and_runs_usability_replay(tmp_pa
     assert "removed_or_moved" in report_html
     assert "Inflation & Stale Cost Metrics" in report_html
     assert "Association Metrics" in report_html
+    assert "Baseline Comparison" in report_html

@@ -226,6 +226,23 @@ After detector setup:
     positives and reduced success rows to `11`
   - keep `0.70`; do not solve the remaining detector issue by tightening area
     alone
+- Added and ran the structured `naive_count` decision challenge locally:
+  - output:
+    `runs/grid_trace/structured_naive_count_decision_challenge_seed17_ep900`
+  - command:
+    `PYTHONPATH=src/objectnav_core python3 -m objectnav_core.cli.run_grid_trace_experiment --output runs/grid_trace/structured_naive_count_decision_challenge_seed17_ep900 --seed 17 --episodes 900 --steps-per-episode 8`
+  - `naive_count` remains positive-only with a two-positive trust threshold
+  - both policies share the same current-positive decision gate
+  - result: `naive_count` had `1241` unsafe raw-trust rows versus `882` for
+    `usability_memory`
+  - `removed_or_moved`: `naive_count` had `600` unsafe raw-trust rows after
+    early positives; `usability_memory` had `7` and retired
+  - `multi_object_association`: `naive_count` had `200` false-positive
+    write-pressure rows; the JPDA-style memory path had zero
+  - report:
+    `docs/experiments/2026-05-28-structured-naive-count-decision-challenge.md`
+    and HTML companion
+    `docs/experiments/2026-05-28-structured-naive-count-decision-challenge.zh.html`
 
 Still not run:
 
@@ -274,8 +291,9 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Add a task where naive count should fail: cross-episode persistence,
-   scene-change handling, negative evidence, or geometry consistency.
+3. Port the structured decision challenge into Habitat: room/corridor revisit,
+   disappearance/reobservation, blocked access, stale path-cost refresh, and
+   nearby same-class distractors.
 4. Add visibility-aware episode selection and reintroduce `chair`.
 5. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.

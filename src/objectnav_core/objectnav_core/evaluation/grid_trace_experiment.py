@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 from objectnav_core.memory.usability import (
     DecisionContext,
+    DecisionType,
     EvidenceEvent,
     EvidenceType,
     MemoryBelief,
@@ -30,6 +31,9 @@ SCENARIOS = (
     "stale_path_cost",
     "multi_object_association",
 )
+NAIVE_COUNT_POSITIVES_TO_TRUST = 2
+USABILITY_MEMORY_POLICY = "usability_memory"
+NAIVE_COUNT_POLICY = "naive_count"
 
 
 @dataclass(frozen=True)
@@ -193,7 +197,9 @@ def run_grid_trace_experiment(
         "decision_rates": replay["decision_rates"],
         "path_cost_metrics": replay["path_cost_metrics"],
         "association_metrics": replay["association_metrics"],
+        "baseline_comparison": replay["baseline_comparison"],
         "scenario_summaries": replay["scenario_summaries"],
+        "policy_scenario_summaries": replay["policy_scenario_summaries"],
         "artifact_files": {
             "summary": "summary.json",
             "events": "events.csv",
@@ -213,11 +219,20 @@ class _StreamingReplay:
         self.events_path = events_path
         self.handle = events_path.open("w", encoding="utf-8", newline="")
         self.writer: csv.DictWriter[str] | None = None
-        self.beliefs: dict[int, MemoryBelief] = {}
+        self.beliefs: dict[tuple[int, str], MemoryBelief] = {}
+        self.naive_positive_counts: dict[tuple[int, str], int] = {}
         self.total_events = 0
         self.evidence_counts: dict[str, int] = {}
         self.decision_counts: dict[str, int] = {}
         self.scenario_summaries: dict[str, Any] = {}
+        self.baseline_comparison = {
+            USABILITY_MEMORY_POLICY: _new_policy_summary(),
+            NAIVE_COUNT_POLICY: {
+                **_new_policy_summary(),
+                "positive_count_threshold": NAIVE_COUNT_POSITIVES_TO_TRUST,
+            },
+        }
+        self.policy_scenario_summaries: dict[str, dict[str, Any]] = {}
         self.inflation_blocked_events = 0
         self.stale_cost_events = 0
         self.decision_flip_after_refresh = 0
@@ -253,28 +268,40 @@ class _StreamingReplay:
         if event.jpda_memory_id != "unassigned":
             self.beliefs[belief_key] = belief
 
+        cached_context = DecisionContext(
+            d_nav=event.cached_d_nav if event.cached_d_nav is not None else event.d_nav,
+            d_verify=event.cached_d_verify if event.cached_d_verify is not None else event.d_verify,
+            c_fail=event.c_fail,
+            c_search=event.c_search,
+            b_remaining=event.b_remaining,
+            verification_repeatedly_failed=_is_repeated_failure(event),
+        )
+        refreshed_context = DecisionContext(
+            d_nav=event.fresh_d_nav if event.fresh_d_nav is not None else event.d_nav,
+            d_verify=event.fresh_d_verify if event.fresh_d_verify is not None else event.d_verify,
+            c_fail=event.c_fail,
+            c_search=event.c_search,
+            b_remaining=event.b_remaining,
+            verification_repeatedly_failed=_is_repeated_failure(event),
+        )
         stale_result = self.policy.choose(
             belief,
-            DecisionContext(
-                d_nav=event.cached_d_nav if event.cached_d_nav is not None else event.d_nav,
-                d_verify=event.cached_d_verify if event.cached_d_verify is not None else event.d_verify,
-                c_fail=event.c_fail,
-                c_search=event.c_search,
-                b_remaining=event.b_remaining,
-                verification_repeatedly_failed=_is_repeated_failure(event),
-            ),
+            cached_context,
         )
         refreshed_result = self.policy.choose(
             belief,
-            DecisionContext(
-                d_nav=event.fresh_d_nav if event.fresh_d_nav is not None else event.d_nav,
-                d_verify=event.fresh_d_verify if event.fresh_d_verify is not None else event.d_verify,
-                c_fail=event.c_fail,
-                c_search=event.c_search,
-                b_remaining=event.b_remaining,
-                verification_repeatedly_failed=_is_repeated_failure(event),
-            ),
+            refreshed_context,
         )
+        usability_gated_decision = _gated_decision(refreshed_result.decision, event)
+        usability_gate_reason = _gate_reason(refreshed_result.decision, event)
+
+        naive_positive_count, naive_false_positive_write = self._update_naive_count(event)
+        naive_result = self.policy.choose(
+            _naive_count_belief(naive_positive_count),
+            refreshed_context,
+        )
+        naive_gated_decision = _gated_decision(naive_result.decision, event)
+        naive_gate_reason = _gate_reason(naive_result.decision, event)
         flipped = stale_result.decision is not refreshed_result.decision
         stale_cache_error = event.stale_cost and flipped and stale_result.decision.value in {
             "trust",
@@ -301,6 +328,14 @@ class _StreamingReplay:
             "p_usable": belief.p_usable,
             "p_valid": refreshed_result.p_valid,
             "decision": refreshed_result.decision.value,
+            "usability_memory_raw_decision": refreshed_result.decision.value,
+            "usability_memory_decision": usability_gated_decision.value,
+            "usability_memory_gate_reason": usability_gate_reason,
+            "naive_count_positive_count": naive_positive_count,
+            "naive_count_raw_decision": naive_result.decision.value,
+            "naive_count_decision": naive_gated_decision.value,
+            "naive_count_gate_reason": naive_gate_reason,
+            "naive_count_false_positive_write": naive_false_positive_write,
             "decision_stale": stale_result.decision.value,
             "decision_refreshed": refreshed_result.decision.value,
             "decision_flipped_after_refresh": flipped,
@@ -325,6 +360,20 @@ class _StreamingReplay:
             nearest_wrong,
             jpda_rejected,
             ghost_prevented,
+        )
+        self._update_policy_counts(
+            event,
+            USABILITY_MEMORY_POLICY,
+            refreshed_result.decision,
+            usability_gated_decision,
+            false_positive_write=False,
+        )
+        self._update_policy_counts(
+            event,
+            NAIVE_COUNT_POLICY,
+            naive_result.decision,
+            naive_gated_decision,
+            false_positive_write=naive_false_positive_write,
         )
 
     def finish(self) -> dict[str, Any]:
@@ -362,6 +411,8 @@ class _StreamingReplay:
                     self.association_events,
                 ),
             },
+            "baseline_comparison": self.baseline_comparison,
+            "policy_scenario_summaries": self.policy_scenario_summaries,
         }
 
     def _write_row(self, row: dict[str, Any]) -> None:
@@ -438,6 +489,54 @@ class _StreamingReplay:
         scenario_summary["final_belief"] = _belief_dict(belief)
         scenario_summary["final_decision"] = decision
 
+    def _update_naive_count(self, event: GridTraceEvent) -> tuple[int, bool]:
+        memory_id = event.nearest_memory_id if event.nearest_memory_id != "unassigned" else "target"
+        key = (event.episode_id, memory_id)
+        positive_count = self.naive_positive_counts.get(key, 0)
+        false_positive_write = False
+        if event.evidence_type is EvidenceType.POSITIVE:
+            positive_count += 1
+            self.naive_positive_counts[key] = positive_count
+            false_positive_write = event.false_positive
+        return positive_count, false_positive_write
+
+    def _update_policy_counts(
+        self,
+        event: GridTraceEvent,
+        policy_name: str,
+        raw_decision: DecisionType,
+        gated_decision: DecisionType,
+        *,
+        false_positive_write: bool,
+    ) -> None:
+        summary = self.baseline_comparison[policy_name]
+        _update_policy_summary(
+            summary,
+            event,
+            raw_decision,
+            gated_decision,
+            false_positive_write=false_positive_write,
+        )
+        scenario_summary = self.policy_scenario_summaries.setdefault(event.scenario, {})
+        policy_summary = scenario_summary.setdefault(
+            policy_name,
+            {
+                **_new_policy_summary(),
+                **(
+                    {"positive_count_threshold": NAIVE_COUNT_POSITIVES_TO_TRUST}
+                    if policy_name == NAIVE_COUNT_POLICY
+                    else {}
+                ),
+            },
+        )
+        _update_policy_summary(
+            policy_summary,
+            event,
+            raw_decision,
+            gated_decision,
+            false_positive_write=false_positive_write,
+        )
+
 
 def _sample_evidence(
     *,
@@ -452,7 +551,7 @@ def _sample_evidence(
         return EvidenceType.UNKNOWN, 0.6, False, 1, False
     if scenario == "removed_or_moved":
         if step_index < 2:
-            return EvidenceType.NON_CONFIRMATION, 0.8, False, 1, False
+            return EvidenceType.POSITIVE, 1.0, False, 1, False
         if step_index == steps_per_episode - 1:
             return EvidenceType.SCENE_CHANGED, 1.2, False, 1, False
         evidence = EvidenceType.ACCESS_BLOCKED if rng.random() < 0.35 else EvidenceType.NON_CONFIRMATION
@@ -627,6 +726,82 @@ def _is_repeated_failure(event: GridTraceEvent) -> bool:
     return event.scenario in repeated_failure_scenarios and event.step_index >= 5
 
 
+def _naive_count_belief(positive_count: int) -> MemoryBelief:
+    if positive_count >= NAIVE_COUNT_POSITIVES_TO_TRUST:
+        return MemoryBelief(
+            p_existence=0.98,
+            p_location_valid=0.98,
+            p_usable=0.98,
+        )
+    return MemoryBelief(
+        p_existence=0.05,
+        p_location_valid=0.95,
+        p_usable=0.95,
+    )
+
+
+def _gated_decision(decision: DecisionType, event: GridTraceEvent) -> DecisionType:
+    if decision is not DecisionType.TRUST:
+        return decision
+    if _is_current_positive(event):
+        return DecisionType.TRUST
+    return DecisionType.VERIFY
+
+
+def _gate_reason(decision: DecisionType, event: GridTraceEvent) -> str:
+    if decision is not DecisionType.TRUST:
+        return "raw_decision_not_trust"
+    if _is_current_positive(event):
+        return "current_positive"
+    if event.evidence_type is not EvidenceType.POSITIVE:
+        return "missing_current_positive"
+    if event.false_positive:
+        return "false_positive"
+    return "trust_rejected"
+
+
+def _is_current_positive(event: GridTraceEvent) -> bool:
+    return event.evidence_type is EvidenceType.POSITIVE and not event.false_positive
+
+
+def _new_policy_summary() -> dict[str, Any]:
+    return {
+        "events": 0,
+        "raw_trust_count": 0,
+        "gated_trust_count": 0,
+        "gate_rejection_count": 0,
+        "unsafe_raw_trust_count": 0,
+        "false_positive_write_pressure": 0,
+        "raw_decision_counts": {},
+        "decision_counts": {},
+        "final_raw_decision": "",
+        "final_decision": "",
+    }
+
+
+def _update_policy_summary(
+    summary: dict[str, Any],
+    event: GridTraceEvent,
+    raw_decision: DecisionType,
+    gated_decision: DecisionType,
+    *,
+    false_positive_write: bool,
+) -> None:
+    summary["events"] += 1
+    summary["raw_trust_count"] += int(raw_decision is DecisionType.TRUST)
+    summary["gated_trust_count"] += int(gated_decision is DecisionType.TRUST)
+    rejected_trust = raw_decision is DecisionType.TRUST and gated_decision is not DecisionType.TRUST
+    summary["gate_rejection_count"] += int(rejected_trust)
+    summary["unsafe_raw_trust_count"] += int(
+        raw_decision is DecisionType.TRUST and not _is_current_positive(event)
+    )
+    summary["false_positive_write_pressure"] += int(false_positive_write)
+    _increment(summary["raw_decision_counts"], raw_decision.value)
+    _increment(summary["decision_counts"], gated_decision.value)
+    summary["final_raw_decision"] = raw_decision.value
+    summary["final_decision"] = gated_decision.value
+
+
 def _increment(counts: dict[str, int], key: str) -> None:
     counts[key] = counts.get(key, 0) + 1
 
@@ -669,6 +844,10 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         f"<tr><td>{escape(name)}</td><td>{value}</td></tr>"
         for name, value in sorted(summary["association_metrics"].items())
     )
+    baseline_rows = "\n".join(
+        _render_baseline_row(name, payload)
+        for name, payload in sorted(summary["baseline_comparison"].items())
+    )
     scenario_rows = "\n".join(
         _render_scenario_row(name, payload)
         for name, payload in sorted(summary["scenario_summaries"].items())
@@ -707,12 +886,29 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
   <table><tr><th>Metric</th><th>Value</th></tr>{metric_rows}</table>
   <h2>Association Metrics</h2>
   <table><tr><th>Metric</th><th>Value</th></tr>{association_rows}</table>
+  <h2>Baseline Comparison</h2>
+  <table><tr><th>Policy</th><th>Raw Trust</th><th>Gated Trust</th><th>Gate Rejections</th><th>Unsafe Raw Trust</th><th>False Positive Writes</th><th>Final Raw</th><th>Final Gated</th></tr>{baseline_rows}</table>
   <h2>Scenario Summaries</h2>
   <table><tr><th>Scenario</th><th>Events</th><th>Quarantined</th><th>Blocked</th><th>Inflation Blocked</th><th>Stale Events</th><th>Flips</th><th>Wrong NN</th><th>JPDA Reject</th><th>Ghost Prevented</th><th>Final Belief</th><th>Final Decision</th></tr>{scenario_rows}</table>
 </body>
 </html>
 """
     path.write_text(html, encoding="utf-8")
+
+
+def _render_baseline_row(name: str, payload: dict[str, Any]) -> str:
+    return (
+        "<tr>"
+        f"<td><code>{escape(name)}</code></td>"
+        f"<td>{payload['raw_trust_count']}</td>"
+        f"<td>{payload['gated_trust_count']}</td>"
+        f"<td>{payload['gate_rejection_count']}</td>"
+        f"<td>{payload['unsafe_raw_trust_count']}</td>"
+        f"<td>{payload['false_positive_write_pressure']}</td>"
+        f"<td><code>{escape(str(payload['final_raw_decision']))}</code></td>"
+        f"<td><code>{escape(str(payload['final_decision']))}</code></td>"
+        "</tr>"
+    )
 
 
 def _render_scenario_row(name: str, payload: dict[str, Any]) -> str:

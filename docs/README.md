@@ -38,6 +38,8 @@ This directory stores the project memory. Keep it useful enough that a new human
 | Memory-only Grounding-DINO replay at 1280x720 | [`experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.md`](experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.md) |
 | Memory-only Grounding-DINO replay HTML report | [`experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html`](experiments/2026-05-28-memory-only-grounding-dino-replay-1280x720.zh.html) |
 | Plant / TV-monitor gate-rejection PNG diagnostics | [`experiments/2026-05-28-gate-rejection-debug-pngs.md`](experiments/2026-05-28-gate-rejection-debug-pngs.md) |
+| Structured naive-count decision challenge | [`experiments/2026-05-28-structured-naive-count-decision-challenge.md`](experiments/2026-05-28-structured-naive-count-decision-challenge.md) |
+| Structured naive-count decision challenge HTML report | [`experiments/2026-05-28-structured-naive-count-decision-challenge.zh.html`](experiments/2026-05-28-structured-naive-count-decision-challenge.zh.html) |
 | Publication target decision | [`decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md`](decisions/2026-05-27-publication-target-robotics-systems-no-benchmark-grinding.md) |
 | RGB-noise validation handoff | [`handoff/2026-05-27-rgb-noise-sim-to-real-validation.md`](handoff/2026-05-27-rgb-noise-sim-to-real-validation.md) |
 | Usability memory algorithm | [`design/2026-05-26-usability-centered-lifelong-object-memory.md`](design/2026-05-26-usability-centered-lifelong-object-memory.md) |
