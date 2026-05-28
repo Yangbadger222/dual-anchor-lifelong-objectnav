@@ -316,6 +316,25 @@ After detector setup:
     unchanged
   - local focused tests passed: 29 tests in
     `src/objectnav_core/tests/test_habitat_objectnav_rgb_noise_stress.py`
+- Pulled commit `df8cf45` on `badger-linux` and ran visibility-challenge
+  smokes:
+  - remote focused test passed in `conda habitat`: 29 tests
+  - `oracle_bbox` output:
+    `runs/habitat_usability/visibility_challenge_oracle_bbox_smoke`
+  - Grounding-DINO output:
+    `runs/habitat_usability/visibility_challenge_grounding_dino_smoke_clean`
+  - both outputs have 117 trace rows and 9 replay summaries
+  - phase visibility is now correct:
+    - `confirm`: 27/27 target-visible rows
+    - `depart`: 0/18 target-visible rows
+    - `non_confirm`: 0/36 target-visible rows
+    - `revisit`: 36/36 target-visible rows
+  - oracle-bbox hidden phases produce `unknown`, not `non_confirmation`
+  - Grounding-DINO hidden phases include detector positives despite zero oracle
+    target visibility: 6 positive `depart` rows and 12 positive `non_confirm`
+    rows
+  - protocol report:
+    `docs/experiments/2026-05-28-visibility-challenge-replay-smoke.md`
 
 Still not run:
 
@@ -324,8 +343,9 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- Linux `oracle_bbox` smoke for `--replay-protocol visibility_challenge`.
-- Grounding-DINO memory comparison using `--replay-protocol visibility_challenge`.
+- Larger `1280x720` Grounding-DINO memory comparison using
+  `--replay-protocol visibility_challenge`.
+- PNG export for hidden-phase Grounding-DINO positives.
 - Full planner-backed Habitat action protocol. The new visibility challenge
   teleports between measured viewpoints; it is still a memory/evidence stress
   test, not a navigation metric.
@@ -367,12 +387,13 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Pull the visibility-challenge commit on `badger-linux`.
-4. Run an `oracle_bbox` smoke with `--replay-protocol visibility_challenge` and
-   inspect phase evidence. The hidden interval should have zero target-visible
-   rows with oracle boxes.
-5. Run a small Grounding-DINO memory comparison with
+3. Run a larger `1280x720` Grounding-DINO memory comparison with
    `--replay-protocol visibility_challenge`.
+4. Export hidden-phase Grounding-DINO positive rows to PNG before making a
+   false-trust claim.
+5. Decide whether hidden-view `unknown` is enough for the next memory claim or
+   whether the harness needs an explicit expected-location-empty evidence
+   context to produce true `NON_CONFIRMATION`.
 6. Add visibility-aware episode selection and reintroduce `chair`.
 7. Add a fallback selection mode so categories with zero structured candidates
    can still be included with an explicit `fallback_reason`.
