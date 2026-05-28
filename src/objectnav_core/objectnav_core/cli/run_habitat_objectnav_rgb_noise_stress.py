@@ -11,7 +11,12 @@ from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
     DEFAULT_DEBUG_EXPORT_CATEGORIES,
     DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
+    DEFAULT_EPISODE_SELECTION_STRATEGY,
+    DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+    DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+    DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     SUPPORTED_DETECTORS,
+    SUPPORTED_EPISODE_SELECTION_STRATEGIES,
     SUPPORTED_YOLO_PROMPT_MODES,
     run_habitat_objectnav_rgb_noise_stress,
     run_rgb_noise_stress_preflight,
@@ -95,6 +100,37 @@ def main() -> None:
         type=int,
         default=None,
         help="Select up to this many episodes per target category.",
+    )
+    parser.add_argument(
+        "--episode-selection-strategy",
+        default=DEFAULT_EPISODE_SELECTION_STRATEGY,
+        choices=SUPPORTED_EPISODE_SELECTION_STRATEGIES,
+        help=(
+            "Episode selection policy. structured_visibility keeps episodes "
+            "with multiple goal viewpoints and nontrivial geodesic/euclidean "
+            "path structure."
+        ),
+    )
+    parser.add_argument(
+        "--structured-min-goal-viewpoints",
+        type=int,
+        default=DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+        help="Minimum goal viewpoints for structured_visibility episode selection.",
+    )
+    parser.add_argument(
+        "--structured-min-geodesic-distance",
+        type=float,
+        default=DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+        help="Minimum geodesic distance for structured_visibility selection.",
+    )
+    parser.add_argument(
+        "--structured-min-path-complexity-ratio",
+        type=float,
+        default=DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
+        help=(
+            "Minimum geodesic/euclidean distance ratio for "
+            "structured_visibility selection."
+        ),
     )
     parser.add_argument(
         "--target-categories",
@@ -189,6 +225,10 @@ def main() -> None:
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio
             ),
+            episode_selection_strategy=args.episode_selection_strategy,
+            structured_min_goal_viewpoints=args.structured_min_goal_viewpoints,
+            structured_min_geodesic_distance=args.structured_min_geodesic_distance,
+            structured_min_path_complexity_ratio=args.structured_min_path_complexity_ratio,
         )
     else:
         summary = run_habitat_objectnav_rgb_noise_stress(
@@ -222,6 +262,10 @@ def main() -> None:
             max_detection_area_ratio=_optional_positive_ratio(
                 args.max_detection_area_ratio
             ),
+            episode_selection_strategy=args.episode_selection_strategy,
+            structured_min_goal_viewpoints=args.structured_min_goal_viewpoints,
+            structured_min_geodesic_distance=args.structured_min_geodesic_distance,
+            structured_min_path_complexity_ratio=args.structured_min_path_complexity_ratio,
         )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

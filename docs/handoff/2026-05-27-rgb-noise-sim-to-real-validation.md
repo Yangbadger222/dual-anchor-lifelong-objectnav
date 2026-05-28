@@ -251,8 +251,8 @@ Still not run:
   contact sheet have been inspected so far.
 - Visibility-aware category qualification that selects episodes by actual
   oracle-visible reset/goal-viewpoint rows.
-- A task designed to separate Dual-Anchor / Lifelong memory from naive positive
-  accumulation.
+- Habitat execution of the structured decision challenge that already works in
+  the synthetic 2D trace.
 - Full navigation-backed ObjectNav run with Habitat follower / planner metrics.
 
 ## Known Risks
@@ -291,9 +291,10 @@ Still not run:
 2. Manually review the full
    `runs/habitat_usability/gate_rejection_debug_plant_tv_monitor_grounding_dino_1280x720_epc2_cap384/debug_gate_rejections/`
    directory before making a paper claim about detector-vs-GT responsibility.
-3. Port the structured decision challenge into Habitat: room/corridor revisit,
-   disappearance/reobservation, blocked access, stale path-cost refresh, and
-   nearby same-class distractors.
+3. Pull the structured episode-selection commit on Linux and run:
+   `cd ~/Desktop/dual-anchor-lifelong-objectnav && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_usability/structured_visibility_grounding_dino_replay_1280x720_epc2_cap384 --noise-levels clean,mild,heavy --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --memory-ablation on,naive_count,off --episodes-per-category 2 --episode-selection-strategy structured_visibility --structured-min-goal-viewpoints 2 --structured-min-geodesic-distance 2.0 --structured-min-path-complexity-ratio 1.2 --target-categories bed,sofa,toilet,plant,tv_monitor --sensor-width 1280 --sensor-height 720 --yolo-prompt-mode target --no-stop-on-trust --seed 313`
+   Then inspect `summary.json["episode_selection"]` before interpreting memory
+   metrics.
 4. Add visibility-aware episode selection and reintroduce `chair`.
 5. Then connect the replay harness to a real navigation policy or Habitat
    follower and report navigation metrics.

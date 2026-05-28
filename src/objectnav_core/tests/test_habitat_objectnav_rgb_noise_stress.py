@@ -99,6 +99,29 @@ def test_preflight_records_gate_rejection_debug_export_config(tmp_path: Path) ->
     assert summary["debug_export_limit_per_category"] == 12
 
 
+def test_preflight_records_structured_episode_selection_config(tmp_path: Path) -> None:
+    summary = stress.run_rgb_noise_stress_preflight(
+        output_dir=tmp_path,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_levels=("clean",),
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        memory_ablation=("on", "naive_count"),
+        seed=313,
+        episode_selection_strategy="structured_visibility",
+        structured_min_goal_viewpoints=3,
+        structured_min_geodesic_distance=2.0,
+        structured_min_path_complexity_ratio=1.25,
+    )
+
+    assert summary["episode_selection_strategy"] == "structured_visibility"
+    assert summary["structured_min_goal_viewpoints"] == 3
+    assert summary["structured_min_geodesic_distance"] == 2.0
+    assert summary["structured_min_path_complexity_ratio"] == 1.25
+
+
 def test_gate_rejection_debug_export_condition_is_category_scoped() -> None:
     categories = {"plant", "tv_monitor"}
 
@@ -368,6 +391,67 @@ def test_select_episodes_balances_by_category() -> None:
     assert stress._category_counts(selected) == {"plant": 1, "toilet": 1}
 
 
+def test_structured_episode_selection_prefers_multiview_complex_paths() -> None:
+    episodes = [
+        _Episode(
+            "p-flat",
+            "plant",
+            goal_viewpoints=1,
+            geodesic_distance=1.0,
+            euclidean_distance=1.0,
+        ),
+        _Episode(
+            "p-structured",
+            "plant",
+            goal_viewpoints=4,
+            geodesic_distance=6.0,
+            euclidean_distance=2.0,
+        ),
+        _Episode(
+            "t-flat",
+            "toilet",
+            goal_viewpoints=2,
+            geodesic_distance=1.5,
+            euclidean_distance=1.5,
+        ),
+        _Episode(
+            "t-structured",
+            "toilet",
+            goal_viewpoints=3,
+            geodesic_distance=5.0,
+            euclidean_distance=2.0,
+        ),
+    ]
+
+    selected = stress._select_episodes(
+        episodes,
+        target_categories=("toilet", "plant"),
+        episodes_per_category=1,
+        max_episodes=None,
+        episode_selection_strategy="structured_visibility",
+        structured_min_goal_viewpoints=2,
+        structured_min_geodesic_distance=2.0,
+        structured_min_path_complexity_ratio=1.2,
+    )
+
+    assert [episode.episode_id for episode in selected] == [
+        "t-structured",
+        "p-structured",
+    ]
+    report = stress._episode_selection_summary(
+        all_episodes=episodes,
+        selected_episodes=selected,
+        target_categories=("toilet", "plant"),
+        episode_selection_strategy="structured_visibility",
+        structured_min_goal_viewpoints=2,
+        structured_min_geodesic_distance=2.0,
+        structured_min_path_complexity_ratio=1.2,
+    )
+    assert report["candidate_episode_count"] == 2
+    assert report["dropped_by_structured_filter_count"] == 2
+    assert report["selected_episode_ids"] == ["t-structured", "p-structured"]
+
+
 def test_target_view_metrics_marks_edge_clipped_views() -> None:
     centered = stress._target_view_metrics(_mask_with_box((10, 12, 30, 36), (48, 48)))
     clipped = stress._target_view_metrics(_mask_with_box((31, 40, 48, 48), (48, 48)))
@@ -578,9 +662,20 @@ def _mask_with_box(
 
 
 class _Episode:
-    def __init__(self, episode_id: str, object_category: str) -> None:
+    def __init__(
+        self,
+        episode_id: str,
+        object_category: str,
+        *,
+        goal_viewpoints: int = 0,
+        geodesic_distance: float | None = None,
+        euclidean_distance: float | None = None,
+    ) -> None:
         self.episode_id = episode_id
         self.object_category = object_category
+        self.goal_viewpoints = tuple({} for _ in range(goal_viewpoints))
+        self.geodesic_distance = geodesic_distance
+        self.euclidean_distance = euclidean_distance
 
 
 class _StaticDetector:

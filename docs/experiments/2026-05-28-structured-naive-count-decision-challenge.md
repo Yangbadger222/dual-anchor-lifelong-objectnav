@@ -116,6 +116,9 @@ nearby same-class association ambiguity.
 - Port the structured challenge to Habitat by selecting episodes or scripted
   routes that contain room/corridor revisits, disappear/reobserve intervals,
   and nearby same-class distractors.
+- Use `--episode-selection-strategy structured_visibility` as the first
+  Habitat bridge. It is only a metadata prefilter, so inspect the selected
+  episode IDs before making a paper claim.
 - Keep the shared current-positive gate for all policies.
 - Keep `naive_count` positive-only with threshold `2`; do not add negative
   evidence, delayed birth, JPDA, or geometry to the baseline.

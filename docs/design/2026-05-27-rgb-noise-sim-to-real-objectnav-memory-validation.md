@@ -126,6 +126,28 @@ This is still a v1 heuristic, not a substitute for instance segmentation. It is
 intended to remove pathological open-vocabulary full-frame detections while
 preserving the existing shared current-positive gate.
 
+## Update: Structured Habitat Episode Selection (2026-05-28)
+
+The synthetic structured decision challenge showed that positive-only
+`naive_count` fails most clearly when a target is first confirmed and then
+invalidated by scene change, negative evidence, path blockage, or association
+ambiguity. The next Habitat stage therefore must stop selecting only the first
+N episodes per category.
+
+The RGB-noise harness now exposes `episode_selection_strategy`:
+
+- `category_balanced`: the old behavior, selecting the first matching episodes
+  per category.
+- `structured_visibility`: a metadata-only filter that prefers episodes with
+  multiple goal viewpoints, nontrivial geodesic distance, and a
+  geodesic/euclidean path-complexity ratio above threshold.
+
+This filter is intentionally conservative. It does not claim the episode
+contains a true room/corridor memory challenge; it only avoids obviously flat
+or single-view episodes before the expensive Grounding-DINO replay. The summary
+records candidate counts, selected episode IDs, and dropped counts so the run
+can be audited before interpreting memory results.
+
 ## Goal
 
 Validate the Dual-Anchor Lifelong ObjectNav memory algorithm in Habitat so

@@ -63,6 +63,10 @@ SUPPORTED_DETECTORS: tuple[str, ...] = (
     "oracle_bbox",
 )
 SUPPORTED_MEMORY_ABLATIONS: tuple[str, ...] = ("on", "naive_count", "off")
+SUPPORTED_EPISODE_SELECTION_STRATEGIES: tuple[str, ...] = (
+    "category_balanced",
+    "structured_visibility",
+)
 SUPPORTED_YOLO_PROMPT_MODES: tuple[str, ...] = (
     "target",
     "all_categories",
@@ -76,6 +80,10 @@ DEFAULT_STOP_ON_TRUST = True
 DEFAULT_DEBUG_EXPORT_CATEGORIES: tuple[str, ...] = ("plant", "tv_monitor")
 DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY = 256
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
+DEFAULT_EPISODE_SELECTION_STRATEGY = "category_balanced"
+DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS = 2
+DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE = 2.0
+DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
 DEBUG_PANEL_MAX_WIDTH = 640
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 INITIAL_BELIEF = MemoryBelief(
@@ -128,6 +136,10 @@ def run_habitat_objectnav_rgb_noise_stress(
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+    structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+    structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
 ) -> dict[str, Any]:
     """Run the v1 RGB/depth-noise ObjectNav memory stress harness."""
 
@@ -170,6 +182,10 @@ def run_habitat_objectnav_rgb_noise_stress(
         debug_export_categories=debug_export_categories,
         debug_export_limit_per_category=debug_export_limit_per_category,
         max_detection_area_ratio=max_detection_area_ratio,
+        episode_selection_strategy=episode_selection_strategy,
+        structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+        structured_min_geodesic_distance=structured_min_geodesic_distance,
+        structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
     )
     rgb_profile = RgbNoiseProfile.from_yaml(rgb_noise_profile)
     depth_profile = DepthNoiseProfile.from_yaml(depth_noise_profile)
@@ -186,6 +202,10 @@ def run_habitat_objectnav_rgb_noise_stress(
         target_categories=target_categories,
         episodes_per_category=episodes_per_category,
         max_episodes=max_episodes,
+        episode_selection_strategy=episode_selection_strategy,
+        structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+        structured_min_geodesic_distance=structured_min_geodesic_distance,
+        structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
     )
     if not selected_episodes:
         raise ValueError(f"No ObjectNav episodes found under {dataset_path}")
@@ -286,6 +306,13 @@ def run_habitat_objectnav_rgb_noise_stress(
         sensor_height=sensor_height_resolved,
         sensor_width=sensor_width_resolved,
         max_episodes=max_episodes,
+        all_episodes=episodes,
+        selected_episodes=selected_episodes,
+        target_categories=target_categories,
+        episode_selection_strategy=episode_selection_strategy,
+        structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+        structured_min_geodesic_distance=structured_min_geodesic_distance,
+        structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
         rows=trace_rows,
         episode_summaries=episode_summaries,
         debug_png_counts=debug_png_counts,
@@ -319,6 +346,10 @@ def run_rgb_noise_stress_preflight(
     debug_export_categories: Sequence[str] = DEFAULT_DEBUG_EXPORT_CATEGORIES,
     debug_export_limit_per_category: int = DEFAULT_DEBUG_EXPORT_LIMIT_PER_CATEGORY,
     max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+    structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+    structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
 ) -> dict[str, Any]:
     """Validate the RGB-noise stress configuration without importing Habitat."""
 
@@ -334,6 +365,12 @@ def run_rgb_noise_stress_preflight(
     _validate_yolo_prompt_mode(yolo_prompt_mode)
     _validate_debug_export_limit(debug_export_limit_per_category)
     _validate_max_detection_area_ratio(max_detection_area_ratio)
+    _validate_episode_selection(
+        episode_selection_strategy=episode_selection_strategy,
+        structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+        structured_min_geodesic_distance=structured_min_geodesic_distance,
+        structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
+    )
     sensor_height_resolved, sensor_width_resolved = _resolve_sensor_resolution(
         sensor_size=sensor_size,
         sensor_width=sensor_width,
@@ -372,6 +409,12 @@ def run_rgb_noise_stress_preflight(
         "target_categories": list(TARGET_CATEGORIES),
         "category_filter": list(target_categories),
         "episodes_per_category": episodes_per_category,
+        "episode_selection_strategy": episode_selection_strategy,
+        "structured_min_goal_viewpoints": int(structured_min_goal_viewpoints),
+        "structured_min_geodesic_distance": float(structured_min_geodesic_distance),
+        "structured_min_path_complexity_ratio": float(
+            structured_min_path_complexity_ratio
+        ),
         "memory_ablation": list(memory_ablation),
         "debug_export_gate_rejections": bool(debug_export_gate_rejections),
         "debug_export_categories": sorted(_debug_category_filter(debug_export_categories)),
@@ -1287,16 +1330,55 @@ def _select_episodes(
     target_categories: Sequence[str],
     episodes_per_category: int | None,
     max_episodes: int | None,
+    episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+    structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+    structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
 ) -> list[Any]:
     if not target_categories:
         raise ValueError("At least one target category is required")
+    _validate_episode_selection(
+        episode_selection_strategy=episode_selection_strategy,
+        structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+        structured_min_geodesic_distance=structured_min_geodesic_distance,
+        structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
+    )
     category_filter = {_normalize_yolo_label(category) for category in target_categories}
     filtered = [
         episode
         for episode in episodes
         if _normalize_yolo_label(episode.object_category) in category_filter
     ]
-    if episodes_per_category is None:
+    if episode_selection_strategy == "structured_visibility":
+        filtered = [
+            episode
+            for episode in filtered
+            if _is_structured_episode_candidate(
+                episode,
+                min_goal_viewpoints=structured_min_goal_viewpoints,
+                min_geodesic_distance=structured_min_geodesic_distance,
+                min_path_complexity_ratio=structured_min_path_complexity_ratio,
+            )
+        ]
+        filtered = sorted(
+            filtered,
+            key=_structured_episode_sort_key,
+            reverse=True,
+        )
+    if (
+        episode_selection_strategy == "structured_visibility"
+        and episodes_per_category is not None
+    ):
+        selected = []
+        for category in target_categories:
+            normalized_category = _normalize_yolo_label(category)
+            category_candidates = [
+                episode
+                for episode in filtered
+                if _normalize_yolo_label(episode.object_category) == normalized_category
+            ]
+            selected.extend(category_candidates[:episodes_per_category])
+    elif episodes_per_category is None:
         selected = filtered
     else:
         counts: dict[str, int] = {}
@@ -1310,6 +1392,92 @@ def _select_episodes(
             if all(counts.get(category, 0) >= episodes_per_category for category in category_filter):
                 break
     return selected[:max_episodes] if max_episodes is not None else selected
+
+
+def _is_structured_episode_candidate(
+    episode: Any,
+    *,
+    min_goal_viewpoints: int,
+    min_geodesic_distance: float,
+    min_path_complexity_ratio: float,
+) -> bool:
+    if len(getattr(episode, "goal_viewpoints", ()) or ()) < min_goal_viewpoints:
+        return False
+    geodesic_distance = getattr(episode, "geodesic_distance", None)
+    if geodesic_distance is None or float(geodesic_distance) < min_geodesic_distance:
+        return False
+    return _episode_path_complexity_ratio(episode) >= min_path_complexity_ratio
+
+
+def _structured_episode_sort_key(episode: Any) -> tuple[float, float, int]:
+    return (
+        _episode_path_complexity_ratio(episode),
+        float(getattr(episode, "geodesic_distance", 0.0) or 0.0),
+        len(getattr(episode, "goal_viewpoints", ()) or ()),
+    )
+
+
+def _episode_path_complexity_ratio(episode: Any) -> float:
+    geodesic_distance = getattr(episode, "geodesic_distance", None)
+    euclidean_distance = getattr(episode, "euclidean_distance", None)
+    if geodesic_distance is None or euclidean_distance is None:
+        return 0.0
+    euclidean = max(float(euclidean_distance), 1e-6)
+    return float(geodesic_distance) / euclidean
+
+
+def _episode_selection_summary(
+    *,
+    all_episodes: Sequence[Any],
+    selected_episodes: Sequence[Any],
+    target_categories: Sequence[str],
+    episode_selection_strategy: str,
+    structured_min_goal_viewpoints: int,
+    structured_min_geodesic_distance: float,
+    structured_min_path_complexity_ratio: float,
+) -> dict[str, Any]:
+    category_filter = {_normalize_yolo_label(category) for category in target_categories}
+    category_candidates = [
+        episode
+        for episode in all_episodes
+        if _normalize_yolo_label(episode.object_category) in category_filter
+    ]
+    structured_candidates = [
+        episode
+        for episode in category_candidates
+        if _is_structured_episode_candidate(
+            episode,
+            min_goal_viewpoints=structured_min_goal_viewpoints,
+            min_geodesic_distance=structured_min_geodesic_distance,
+            min_path_complexity_ratio=structured_min_path_complexity_ratio,
+        )
+    ]
+    candidate_count = (
+        len(structured_candidates)
+        if episode_selection_strategy == "structured_visibility"
+        else len(category_candidates)
+    )
+    return {
+        "episode_selection_strategy": episode_selection_strategy,
+        "category_candidate_episode_count": len(category_candidates),
+        "candidate_episode_count": candidate_count,
+        "selected_episode_count": len(selected_episodes),
+        "dropped_by_structured_filter_count": max(
+            0,
+            len(category_candidates) - len(structured_candidates),
+        )
+        if episode_selection_strategy == "structured_visibility"
+        else 0,
+        "structured_min_goal_viewpoints": int(structured_min_goal_viewpoints),
+        "structured_min_geodesic_distance": float(structured_min_geodesic_distance),
+        "structured_min_path_complexity_ratio": float(
+            structured_min_path_complexity_ratio
+        ),
+        "selected_episode_ids": [
+            str(getattr(episode, "episode_id")) for episode in selected_episodes
+        ],
+        "selected_category_counts": _category_counts(selected_episodes),
+    }
 
 
 def _category_counts(episodes: Sequence[Any]) -> dict[str, int]:
@@ -1334,6 +1502,13 @@ def _summarize_rgb_noise_run(
     sensor_height: int,
     sensor_width: int,
     max_episodes: int | None,
+    all_episodes: Sequence[Any] = (),
+    selected_episodes: Sequence[Any] = (),
+    target_categories: Sequence[str] = TARGET_CATEGORIES,
+    episode_selection_strategy: str = DEFAULT_EPISODE_SELECTION_STRATEGY,
+    structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
+    structured_min_geodesic_distance: float = DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
+    structured_min_path_complexity_ratio: float = DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     rows: Sequence[dict[str, Any]],
     episode_summaries: Sequence[dict[str, Any]],
     debug_png_counts: dict[str, int] | None = None,
@@ -1361,6 +1536,15 @@ def _summarize_rgb_noise_run(
             "sensor_height": sensor_height,
             "sensor_resolution": f"{sensor_width}x{sensor_height}",
             "max_episodes": max_episodes,
+            "episode_selection": _episode_selection_summary(
+                all_episodes=all_episodes,
+                selected_episodes=selected_episodes,
+                target_categories=target_categories,
+                episode_selection_strategy=episode_selection_strategy,
+                structured_min_goal_viewpoints=structured_min_goal_viewpoints,
+                structured_min_geodesic_distance=structured_min_geodesic_distance,
+                structured_min_path_complexity_ratio=structured_min_path_complexity_ratio,
+            ),
             "episodes_completed": len(episode_summaries),
             "episode_category_counts": _category_counts(episode_summaries),
             "trace_rows": len(rows),
@@ -1466,6 +1650,26 @@ def _validate_max_detection_area_ratio(max_detection_area_ratio: float | None) -
         return
     if not 0.0 < max_detection_area_ratio <= 1.0:
         raise ValueError("max_detection_area_ratio must be in (0, 1] or None")
+
+
+def _validate_episode_selection(
+    *,
+    episode_selection_strategy: str,
+    structured_min_goal_viewpoints: int,
+    structured_min_geodesic_distance: float,
+    structured_min_path_complexity_ratio: float,
+) -> None:
+    if episode_selection_strategy not in SUPPORTED_EPISODE_SELECTION_STRATEGIES:
+        raise ValueError(
+            "episode_selection_strategy must be one of: "
+            f"{', '.join(SUPPORTED_EPISODE_SELECTION_STRATEGIES)}"
+        )
+    if structured_min_goal_viewpoints <= 0:
+        raise ValueError("structured_min_goal_viewpoints must be positive")
+    if structured_min_geodesic_distance < 0.0:
+        raise ValueError("structured_min_geodesic_distance must be non-negative")
+    if structured_min_path_complexity_ratio < 1.0:
+        raise ValueError("structured_min_path_complexity_ratio must be at least 1.0")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
