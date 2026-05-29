@@ -384,3 +384,62 @@ This is explicitly a synthetic lifecycle stress test, not an official Habitat
 object relocation. It is the next required experiment because the stable matrix
 only proves memory helps versus no-memory search, not versus a fair count-only
 memory baseline.
+
+### Synthetic Stale Relocation Results
+
+Oracle smoke:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_oracle_stale_smoke`
+
+- `memory_guided`: `12/12`, `326.562821 m`
+- `naive_count`: `12/12`, `481.632688 m`
+- `no_memory`: `12/12`, `311.039992 m`
+- memory vs naive path reduction: `32.1967%`
+- memory vs no-memory path reduction: `-4.9906%`
+
+The oracle smoke verifies the intended mechanism: stale memory initially costs
+extra compared with no-memory fallback, but repaired memory beats positive-only
+counting on repeated queries.
+
+Grounding-DINO clean smoke:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_smoke`
+
+- `memory_guided`: `8/12`, `387.049418 m`
+- `naive_count`: `8/12`, `481.497948 m`
+- `no_memory`: `8/12`, `311.039992 m`
+- memory vs naive path reduction: `19.6156%`
+- success is tied because `chair` and `tv_monitor` fallback detector misses
+  affect all modes.
+
+Grounding-DINO three-noise matrix:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_matrix_v1`
+
+Parameters: full HM3D `val`, `12` groups, two per category, three noise
+levels, `query_repeats=2`, detector-qualified anchors, synthetic stale
+relocation.
+
+Result:
+
+- `memory_guided`: `62/72`, `2295.380789 m`
+- `naive_count`: `62/72`, `3468.987806 m`
+- `no_memory`: `62/72`, `2547.505218 m`
+- memory vs naive path reduction: `33.8314%`
+- memory vs no-memory path reduction: `9.8969%`
+- memory vs naive success delta: `0`
+
+Mechanism check:
+
+- `memory_guided` routes: `31` repaired-memory successes, `31` initial
+  memory-then-fallback successes, `10` fallback failures.
+- `naive_count` routes: `62` memory-then-fallback successes and `10` fallback
+  failures; it never receives the repaired anchor state.
+- failures are shared detector failures, mostly `chair` and `tv_monitor`, not
+  memory-only regressions.
+
+This is the strongest current result: under a controlled stale-relocation
+stress, repaired memory substantially reduces repeated-query path cost versus a
+fair positive-only counting baseline while preserving the same success count.
+It is still a geodesic proxy and synthetic relocation stress, so it is not yet a
+paper-ready ObjectNav SPL claim.

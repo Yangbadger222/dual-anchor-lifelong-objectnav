@@ -46,6 +46,12 @@ New full-val sanity results:
   produced `memory_guided=68/72`, `naive_count=68/72`, `no_memory=62/72`;
   memory reduced path by `61.7469%` vs no-memory but tied fair `naive_count`.
   Remaining memory failures are all `tv_monitor` under `mild/heavy` noise.
+- Synthetic stale-relocation matrix v1:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_matrix_v1`
+  produced `memory_guided=62/72`, `naive_count=62/72`, `no_memory=62/72`;
+  memory reduced path by `33.8314%` vs `naive_count` and `9.8969%` vs
+  `no_memory`. This is the current best evidence for repair-aware memory over
+  positive-only counting.
 
 ## Files Touched
 
@@ -157,14 +163,13 @@ Passed on Linux:
 
 ## Next Recommended Step
 
-1. Run `--lifecycle-challenge synthetic_stale_relocation` with oracle first,
-   then Grounding-DINO on the full-val six-category subset. This is the first
-   protocol expected to separate `memory_guided` from fair `naive_count`.
-2. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
+1. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
    claims; current Grounding-DINO tiny returns zero boxes under `mild/heavy` for
    one high-GT-pixel view.
-3. Replace teleport-to-viewpoint with an action-level Habitat follower and
+2. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
+3. Scale the stale-relocation matrix beyond 12 groups after detector robustness
+   is better understood.
 4. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
