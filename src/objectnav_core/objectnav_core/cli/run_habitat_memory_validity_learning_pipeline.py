@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--l2", type=float, default=DEFAULT_L2)
     parser.add_argument("--holdout-field")
     parser.add_argument("--holdout-values")
+    parser.add_argument(
+        "--skip-decision-sensitivity",
+        action="store_true",
+        help="Skip fixed/evidence/event-posterior decision-sensitivity mining.",
+    )
     return parser
 
 
@@ -55,6 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         holdout_values=_split_csv(args.holdout_values)
         if args.holdout_values
         else (),
+        include_decision_sensitivity=not args.skip_decision_sensitivity,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0

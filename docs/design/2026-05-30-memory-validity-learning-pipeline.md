@@ -35,7 +35,8 @@ The pipeline is an offline orchestration layer. It depends on:
 - `export_habitat_memory_validity_dataset`;
 - `train_memory_validity_logistic_model`;
 - optional `split_memory_validity_dataset` and `evaluate_memory_validity_model`;
-- `score_memory_validity_decisions`.
+- `score_memory_validity_decisions`;
+- `mine_habitat_decision_sensitivity`.
 
 It does not import Habitat-Sim, detectors, or the online runner.
 
@@ -52,6 +53,8 @@ It does not import Habitat-Sim, detectors, or the online runner.
 | Output | `model.json` | JSON | Learned model report |
 | Output | `scores.json` | JSON | Learned decision scores |
 | Output | `scores.csv` | CSV | Flat score table |
+| Output | `decision_sensitivity.json` | JSON | Fixed/evidence/event-posterior comparison mining |
+| Output | `decision_sensitivity.csv` | CSV | Flat miner candidates |
 | Output | `pipeline_report.json` | JSON | Paths, counts, metrics, score aggregate |
 
 ## Interfaces
@@ -73,7 +76,10 @@ Implementation plan:
    report.
 5. Write `model.json`.
 6. Score learned decisions for the exported examples.
-7. Write `scores.json`, `scores.csv`, and `pipeline_report.json`.
+7. Mine fixed/evidence/event-posterior decision sensitivity from the same
+   summary inputs unless explicitly skipped.
+8. Write `scores.json`, `scores.csv`, `decision_sensitivity.json`,
+   `decision_sensitivity.csv`, and `pipeline_report.json`.
 
 ## Failure Modes
 
@@ -82,13 +88,15 @@ Implementation plan:
 | No examples exported | Trainer raises `ValueError` | Run broader summaries or inspect exporter warnings |
 | Empty holdout/train split | Split helper raises `ValueError` | Adjust holdout values |
 | Missing action-count features | Scorer skips rows with warnings | Inspect `scores.json` warnings |
+| Summaries lack miner fields | Miner reports warnings/skips | Keep learned artifacts and inspect miner report |
 | Train-only run mistaken as paper evidence | Pipeline report records holdout metadata or absence | Require held-out run for claims |
 | Linux host unreachable | Local pipeline remains ready | Run when SSH returns |
 
 ## Verification Plan
 
 - Unit test the pipeline API on synthetic summary files.
-- CLI test that writes all five artifact files plus `pipeline_report.json`.
+- CLI test that writes learned artifacts, decision-sensitivity artifacts, and
+  `pipeline_report.json`.
 - Focused pipeline/model/dataset tests.
 - Full local core suite.
 - Later Linux run on ranked relocation summaries.
@@ -111,7 +119,8 @@ generalized, and whether learned probabilities crossed decision boundaries.
 ## Implementation Notes
 
 The local implementation adds both the Python API and CLI. It writes
-`dataset.json`, `examples.csv`, `model.json`, `scores.json`, `scores.csv`, and
+`dataset.json`, `examples.csv`, `model.json`, `scores.json`, `scores.csv`,
+`decision_sensitivity.json`, `decision_sensitivity.csv`, and
 `pipeline_report.json` under the requested output directory. The next required
 step is to run this command on the real ranked relocation summaries once the
 Linux Habitat host is reachable.

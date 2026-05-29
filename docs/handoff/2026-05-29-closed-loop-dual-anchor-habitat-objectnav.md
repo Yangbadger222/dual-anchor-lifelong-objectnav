@@ -252,8 +252,11 @@ The end-to-end offline learning pipeline is now local:
   `python -m objectnav_core.cli.run_habitat_memory_validity_learning_pipeline <inputs...> --output-dir <dir>`
 
 The pipeline writes `dataset.json`, `examples.csv`, `model.json`,
-`scores.json`, `scores.csv`, and `pipeline_report.json`. Suggested first Linux
-run once SSH is reachable:
+`scores.json`, `scores.csv`, `decision_sensitivity.json`,
+`decision_sensitivity.csv`, and `pipeline_report.json`. It mines
+fixed/evidence/event-posterior decision sensitivity by default; use
+`--skip-decision-sensitivity` only for fast learned-only smoke runs. Suggested
+first Linux run once SSH is reachable:
 
 ```bash
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_memory_validity_learning_pipeline \
@@ -268,6 +271,10 @@ Local verification after adding the pipeline: focused pipeline/model/exporter
 tests produced `13` passed, `py_compile` passed for the pipeline API and CLI,
 the full local core suite produced `278` passed, and `git diff --check` was
 clean.
+After adding baseline mining to the pipeline, focused pipeline/model/exporter
+and decision-sensitivity tests produced `21` passed, `py_compile` passed for
+the pipeline API and CLI, the full local core suite produced `279` passed, and
+`git diff --check` was clean.
 
 ## Files Touched
 

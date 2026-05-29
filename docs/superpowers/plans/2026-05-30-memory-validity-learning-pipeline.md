@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add one offline command that exports memory-validity data, trains a learned validity model, evaluates optional holdouts, and scores learned decisions.
+**Goal:** Add one offline command that exports memory-validity data, trains a learned validity model, evaluates optional holdouts, scores learned decisions, and emits heuristic decision-sensitivity baselines.
 
-**Architecture:** Create a small orchestration module in `objectnav_core.evaluation` that composes the existing exporter, trainer/evaluator, and scorer APIs. Add a CLI wrapper that writes deterministic JSON/CSV artifacts into an output directory.
+**Architecture:** Create a small orchestration module in `objectnav_core.evaluation` that composes the existing exporter, trainer/evaluator, scorer, and decision-sensitivity miner APIs. Add a CLI wrapper that writes deterministic JSON/CSV artifacts into an output directory.
 
 **Tech Stack:** Python standard library, existing pytest suite, existing `objectnav_core` CLI/module layout.
 
@@ -20,7 +20,7 @@
 
 - [ ] **Step 1: Write failing pipeline API test**
 
-Create a synthetic summary file with four memory-guided rows. Call `run_memory_validity_learning_pipeline(...)` with a category holdout and assert it writes `dataset.json`, `examples.csv`, `model.json`, `scores.json`, `scores.csv`, and `pipeline_report.json`.
+Create a synthetic summary file with four memory-guided rows. Call `run_memory_validity_learning_pipeline(...)` with a category holdout and assert it writes `dataset.json`, `examples.csv`, `model.json`, `scores.json`, `scores.csv`, `decision_sensitivity.json`, `decision_sensitivity.csv`, and `pipeline_report.json`.
 
 - [ ] **Step 2: Run focused test and verify RED**
 
@@ -32,7 +32,7 @@ Expected: fail because the pipeline module does not exist.
 
 - [ ] **Step 3: Implement pipeline API**
 
-Compose the exporter, trainer, optional split/evaluation helpers, scorer, and CSV writers. Return the pipeline report.
+Compose the exporter, trainer, optional split/evaluation helpers, scorer, decision-sensitivity miner, and CSV writers. Return the pipeline report.
 
 ## Chunk 2: CLI
 
@@ -52,7 +52,7 @@ Expected: fail because the CLI module does not exist.
 
 - [ ] **Step 3: Implement CLI**
 
-Parse input paths, `--output-dir`, `--policies`, `--features`, training parameters, and optional holdout flags. Print the pipeline report and return `0`.
+Parse input paths, `--output-dir`, `--policies`, `--features`, training parameters, optional holdout flags, and `--skip-decision-sensitivity`. Print the pipeline report and return `0`.
 
 ## Chunk 3: Documentation and Verification
 

@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 from typing import Any, Sequence
 
+from objectnav_core.evaluation.habitat_decision_sensitivity import (
+    mine_habitat_decision_sensitivity,
+    write_decision_sensitivity_csv,
+)
 from objectnav_core.evaluation.habitat_memory_validity_dataset import (
     DEFAULT_POLICIES,
     export_habitat_memory_validity_dataset,
@@ -32,6 +36,7 @@ def run_memory_validity_learning_pipeline(
     l2: float = DEFAULT_L2,
     holdout_field: str | None = None,
     holdout_values: Sequence[str] = (),
+    include_decision_sensitivity: bool = True,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -40,6 +45,8 @@ def run_memory_validity_learning_pipeline(
     model_json = output_path / "model.json"
     scores_json = output_path / "scores.json"
     scores_csv = output_path / "scores.csv"
+    decision_sensitivity_json = output_path / "decision_sensitivity.json"
+    decision_sensitivity_csv = output_path / "decision_sensitivity.csv"
     pipeline_report_json = output_path / "pipeline_report.json"
 
     dataset = export_habitat_memory_validity_dataset(inputs, policies=policies)
@@ -76,18 +83,31 @@ def run_memory_validity_learning_pipeline(
     scores = score_memory_validity_decisions(dataset, model)
     _write_json(scores_json, scores)
     write_memory_validity_decision_scores_csv(scores_csv, scores["rows"])
+    sensitivity = None
+    if include_decision_sensitivity:
+        sensitivity = mine_habitat_decision_sensitivity(inputs, policies=policies)
+        _write_json(decision_sensitivity_json, sensitivity)
+        write_decision_sensitivity_csv(
+            decision_sensitivity_csv,
+            sensitivity["candidates"],
+        )
+
+    artifacts = {
+        "dataset_json": str(dataset_json),
+        "dataset_csv": str(dataset_csv),
+        "model_json": str(model_json),
+        "scores_json": str(scores_json),
+        "scores_csv": str(scores_csv),
+        "pipeline_report_json": str(pipeline_report_json),
+    }
+    if sensitivity is not None:
+        artifacts["decision_sensitivity_json"] = str(decision_sensitivity_json)
+        artifacts["decision_sensitivity_csv"] = str(decision_sensitivity_csv)
 
     report = {
         "task": "habitat_memory_validity_learning_pipeline",
         "inputs": [str(input_path) for input_path in inputs],
-        "artifacts": {
-            "dataset_json": str(dataset_json),
-            "dataset_csv": str(dataset_csv),
-            "model_json": str(model_json),
-            "scores_json": str(scores_json),
-            "scores_csv": str(scores_csv),
-            "pipeline_report_json": str(pipeline_report_json),
-        },
+        "artifacts": artifacts,
         "dataset": {
             "summary_count": dataset["summary_count"],
             "row_count": dataset["row_count"],
@@ -106,6 +126,15 @@ def run_memory_validity_learning_pipeline(
             "skipped_count": scores["skipped_count"],
             "aggregate": scores["aggregate"],
         },
+        "decision_sensitivity": (
+            None
+            if sensitivity is None
+            else {
+                "candidate_count": sensitivity["candidate_count"],
+                "warning_count": sensitivity["warning_count"],
+                "aggregate": sensitivity["aggregate"],
+            }
+        ),
     }
     _write_json(pipeline_report_json, report)
     return report

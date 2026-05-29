@@ -31,6 +31,10 @@ def test_memory_validity_learning_pipeline_writes_all_artifacts(
     assert report["model"]["split"]["holdout_example_count"] == 2
     assert report["model"]["evaluation"]["holdout"]["accuracy"] == 1.0
     assert report["scores"]["example_count"] == 4
+    assert report["decision_sensitivity"]["candidate_count"] == 4
+    assert report["decision_sensitivity"]["aggregate"]["by_boundary_region"] == {
+        "reliability_sensitive": 4
+    }
     for artifact_path in report["artifacts"].values():
         assert Path(artifact_path).exists()
     model = json.loads((output_dir / "model.json").read_text(encoding="utf-8"))
@@ -39,6 +43,10 @@ def test_memory_validity_learning_pipeline_writes_all_artifacts(
     assert scores["aggregate"]["boundary_region_counts"] == {
         "reliability_sensitive": 4
     }
+    sensitivity = json.loads(
+        (output_dir / "decision_sensitivity.json").read_text(encoding="utf-8")
+    )
+    assert sensitivity["candidate_count"] == 4
 
 
 def test_memory_validity_learning_pipeline_cli(tmp_path: Path) -> None:
@@ -76,6 +84,37 @@ def test_memory_validity_learning_pipeline_cli(tmp_path: Path) -> None:
     assert report["dataset"]["example_count"] == 4
     assert report["model"]["evaluation"]["holdout"]["example_count"] == 2
     assert report["scores"]["aggregate"]["learned_memory_first_count"] == 2
+    assert report["decision_sensitivity"]["candidate_count"] == 4
+
+
+def test_memory_validity_learning_pipeline_cli_can_skip_sensitivity(
+    tmp_path: Path,
+) -> None:
+    from objectnav_core.cli.run_habitat_memory_validity_learning_pipeline import main
+
+    summary_path = _write_summary(tmp_path / "run" / "summary.json")
+    output_dir = tmp_path / "pipeline_skip"
+
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--output-dir",
+                str(output_dir),
+                "--features",
+                "memory_evidence_detector_precision",
+                "--skip-decision-sensitivity",
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(
+        (output_dir / "pipeline_report.json").read_text(encoding="utf-8")
+    )
+    assert report["decision_sensitivity"] is None
+    assert "decision_sensitivity_json" not in report["artifacts"]
+    assert not (output_dir / "decision_sensitivity.json").exists()
 
 
 def _write_summary(path: Path) -> Path:
