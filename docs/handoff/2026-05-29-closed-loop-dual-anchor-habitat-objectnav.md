@@ -213,6 +213,13 @@ Passed locally before this handoff update:
   `32` passed.
 - Full local core tests after memory decision bucket support: `218` passed.
 - `git diff --check` passed after memory decision bucket support.
+- Linux focused Habitat/CLI tests after pulling memory decision buckets:
+  `32` passed.
+- Linux balanced6 evidence-mode navmesh rerun with buckets preserved
+  `memory_guided=565`, `frontier_only=943`, and `naive_count=575` actions.
+  Memory-guided bucket counts were `memory_shorter_reused=3`,
+  `memory_rescued_frontier_failure=1`, `frontier_shorter_selected=1`, and
+  `valid_memory_wrongly_deferred=1`.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -287,22 +294,24 @@ Passed locally before this handoff update:
   tiny oracle run and a balanced6 direction check, but it uses
   oracle/Grounding-DINO candidate-view evidence rather than per-action
   perception and remains a transparent heuristic, not learned calibration.
+- Bucket counts show the current estimator still wrongly defers one valid sofa
+  memory on the balanced6 smoke, so the small aggregate gain should not be
+  presented as robust.
 
 ## Next Recommended Step
 
-1. Pull memory decision bucket support on Linux and run focused tests.
-2. Run a larger balanced evidence-mode navmesh smoke and report per-case
-   bucket counts directly from the summary.
-3. Replace oracle/candidate-view reliability evidence with detector/per-action
+1. Calibrate the reliability estimator against bucket counts, especially valid
+   memories wrongly deferred versus harmful memory reuse avoided.
+2. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+3. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-5. Move Grounding-DINO from selected candidate-view verification to per-action
+4. Move Grounding-DINO from selected candidate-view verification to per-action
    observation and stopping decisions.
-6. Implement natural Habitat object relocation/removal or a clearly labeled
+5. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-7. Scale the balanced runs beyond six groups and report confidence intervals.
-8. Convert the smoke metrics into SPL-like metrics only after per-action
+6. Scale the balanced runs beyond six groups and report confidence intervals.
+7. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
