@@ -221,3 +221,30 @@ pose. This keeps stale-memory accounting physically meaningful and prevents a
 failed memory attempt from incorrectly restarting fallback at the original
 query pose. The field is computed after detector-qualified anchor selection so
 it follows the memory viewpoint that the agent actually attempted.
+
+## 2026-05-29 Update: Shared Detector-Qualified Fallback
+
+Failure-slice debugging showed that a single query fallback viewpoint can make
+`chair` and `tv_monitor` failures look like algorithm failures even when other
+Habitat goal viewpoints may be detector-verifiable. A real navigation fallback
+would not be constrained to stop at only the first stored goal viewpoint; it
+would continue searching nearby candidate views until the current-view detector
+gate succeeds or the search budget fails.
+
+The runner now applies the same detector-qualified candidate policy to fallback
+verification that it already applies to memory-anchor creation:
+
+- sample query episode goal viewpoints;
+- rank them by Habitat semantic target pixels;
+- verify the top `--anchor-candidate-limit` candidates with the configured
+  detector, RGB/depth noise, and shared current-view gate;
+- select a detector-positive fallback candidate when one exists, otherwise use
+  the most visible fallback candidate and record the miss.
+
+This fallback selector is shared by `memory_guided`, `naive_count`, and
+`no_memory`. It is not a memory-only advantage. Trace rows record
+`fallback_anchor_source` and `fallback_strategy` so later analyses can tell
+whether a result depended on a non-first fallback candidate. The protocol is
+still a geodesic/search-proxy evaluation, not a closed-loop planner, but this
+change removes an unnecessary single-view brittleness before the action-level
+port.

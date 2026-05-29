@@ -513,26 +513,6 @@ def run_habitat_memory_lifecycle_objectnav(
                     semantic_id_to_category,
                     group.category,
                 )
-                fallback_candidate = _first_goal_view_candidate(
-                    sim=sim,
-                    agent=sim.initialize_agent(0),
-                    episode=group.query_episode,
-                    target_semantic_ids=target_semantic_ids,
-                )
-                oracle_goal_path_cost = _path_distance(
-                    _shortest_path_points(
-                        sim=sim,
-                        start=group.query_episode.start_position,
-                        end=fallback_candidate.position,
-                    )
-                )
-                fallback_path_cost, search_proxy_waypoint_count = _search_proxy_path_distance(
-                    sim=sim,
-                    start=group.query_episode.start_position,
-                    goal=fallback_candidate.position,
-                    seed=seed + scene_index * 1000 + group_index,
-                    waypoint_count=search_proxy_waypoints,
-                )
                 detector_adapter = _detector_for_target(
                     detector_cache=detector_cache,
                     detector=detector,
@@ -599,6 +579,61 @@ def run_habitat_memory_lifecycle_objectnav(
                         strategy=anchor_strategy,
                         min_target_pixels=min_target_pixels,
                     )
+                    fallback_candidates = _rank_lifecycle_anchor_candidates(
+                        _sample_replay_view_candidates(
+                            sim=sim,
+                            agent=sim.initialize_agent(0),
+                            episode=group.query_episode,
+                            target_semantic_ids=target_semantic_ids,
+                        ),
+                        limit=anchor_candidate_limit,
+                    )
+                    fallback_verifications = {
+                        candidate.source: _verify_lifecycle_view(
+                            sim=sim,
+                            position=candidate.position,
+                            rotation=candidate.rotation,
+                            target_semantic_ids=target_semantic_ids,
+                            target_category=group.category,
+                            detector=detector,
+                            detector_adapter=detector_adapter,
+                            accepted_detection_labels=accepted_labels,
+                            noise_level=noise_level,
+                            rgb_noise=rgb_noise,
+                            depth_noise=depth_noise,
+                            frame_index=base_frame_index + 200 + candidate_index,
+                            min_target_pixels=min_target_pixels,
+                            min_detector_pixels=min_detector_pixels,
+                            max_detection_area_ratio=max_detection_area_ratio,
+                            helpers=helper_bundle,
+                        )
+                        for candidate_index, candidate in enumerate(fallback_candidates)
+                    }
+                    fallback_candidate = _choose_lifecycle_fallback_candidate(
+                        candidates=fallback_candidates,
+                        verifications=fallback_verifications,
+                        min_target_pixels=min_target_pixels,
+                    )
+                    fallback_verification = fallback_verifications[
+                        fallback_candidate.source
+                    ]
+                    oracle_goal_path_cost = _path_distance(
+                        _shortest_path_points(
+                            sim=sim,
+                            start=group.query_episode.start_position,
+                            end=fallback_candidate.position,
+                        )
+                    )
+                    (
+                        fallback_path_cost,
+                        search_proxy_waypoint_count,
+                    ) = _search_proxy_path_distance(
+                        sim=sim,
+                        start=group.query_episode.start_position,
+                        goal=fallback_candidate.position,
+                        seed=seed + scene_index * 1000 + group_index,
+                        waypoint_count=search_proxy_waypoints,
+                    )
                     memory_verification = memory_verifications[memory_candidate.source]
                     if lifecycle_challenge == "synthetic_stale_relocation":
                         memory_verification = _stale_memory_verification(
@@ -620,24 +655,6 @@ def run_habitat_memory_lifecycle_objectnav(
                         goal=fallback_candidate.position,
                         seed=seed + scene_index * 1000 + group_index + 500000,
                         waypoint_count=search_proxy_waypoints,
-                    )
-                    fallback_verification = _verify_lifecycle_view(
-                        sim=sim,
-                        position=fallback_candidate.position,
-                        rotation=fallback_candidate.rotation,
-                        target_semantic_ids=target_semantic_ids,
-                        target_category=group.category,
-                        detector=detector,
-                        detector_adapter=detector_adapter,
-                        accepted_detection_labels=accepted_labels,
-                        noise_level=noise_level,
-                        rgb_noise=rgb_noise,
-                        depth_noise=depth_noise,
-                        frame_index=base_frame_index + 1,
-                        min_target_pixels=min_target_pixels,
-                        min_detector_pixels=min_detector_pixels,
-                        max_detection_area_ratio=max_detection_area_ratio,
-                        helpers=helper_bundle,
                     )
                     for mode in modes:
                         repaired = False
@@ -684,6 +701,8 @@ def run_habitat_memory_lifecycle_objectnav(
                                     fallback_from_memory_waypoint_count=(
                                         fallback_from_memory_waypoint_count
                                     ),
+                                    fallback_anchor_source=fallback_candidate.source,
+                                    fallback_strategy="detector_positive",
                                     memory_verification=active_memory_verification,
                                     fallback_verification=fallback_verification,
                                     result=result,
@@ -923,6 +942,37 @@ def _choose_lifecycle_anchor_candidate(
     )
 
 
+def _choose_lifecycle_fallback_candidate(
+    *,
+    candidates: Sequence[Any],
+    verifications: dict[str, LifecycleVerification],
+    min_target_pixels: int,
+) -> Any:
+    if not candidates:
+        raise ValueError("At least one lifecycle fallback candidate is required")
+    visible_candidates = [
+        candidate
+        for candidate in candidates
+        if int(getattr(candidate, "target_pixels", 0) or 0) >= min_target_pixels
+    ]
+    ranked_candidates = visible_candidates or list(candidates)
+    positive_candidates = [
+        candidate
+        for candidate in ranked_candidates
+        if verifications.get(str(getattr(candidate, "source")), None) is not None
+        and verifications[str(getattr(candidate, "source"))].shared_gate_success
+    ]
+    if positive_candidates:
+        return max(
+            positive_candidates,
+            key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+        )
+    return max(
+        ranked_candidates,
+        key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+    )
+
+
 def _stale_memory_verification(
     verification: LifecycleVerification,
 ) -> LifecycleVerification:
@@ -1027,6 +1077,8 @@ def _lifecycle_row(
     oracle_goal_path_cost: float,
     search_proxy_waypoint_count: int,
     fallback_from_memory_waypoint_count: int,
+    fallback_anchor_source: str,
+    fallback_strategy: str,
     memory_verification: LifecycleVerification,
     fallback_verification: LifecycleVerification,
     result: LifecyclePlanResult,
@@ -1060,6 +1112,8 @@ def _lifecycle_row(
         "detector": detector,
         "detector_prompt_categories": "|".join(detector_prompt_categories),
         "memory_anchor_source": memory_anchor_source,
+        "fallback_anchor_source": fallback_anchor_source,
+        "fallback_strategy": fallback_strategy,
         "success": result.success,
         "path_length_m": result.total_path_length_m,
         "memory_path_cost_m": round(memory_path_cost, 6),

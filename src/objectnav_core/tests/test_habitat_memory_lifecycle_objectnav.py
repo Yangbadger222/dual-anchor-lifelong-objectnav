@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
     _choose_lifecycle_anchor_candidate,
+    _choose_lifecycle_fallback_candidate,
     _rank_lifecycle_anchor_candidates,
     _stale_memory_verification,
     _lifecycle_row,
@@ -218,6 +219,8 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
         oracle_goal_path_cost=2.0,
         search_proxy_waypoint_count=1,
         fallback_from_memory_waypoint_count=2,
+        fallback_anchor_source="goal_viewpoint:1",
+        fallback_strategy="detector_positive",
         memory_verification=memory_verification,
         fallback_verification=fallback_verification,
         result=result,
@@ -228,6 +231,8 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
     assert row["fallback_evidence_reason"] == "detector_positive_mask"
     assert row["fallback_from_memory_path_cost_m"] == 4.5
     assert row["fallback_from_memory_waypoint_count"] == 2
+    assert row["fallback_anchor_source"] == "goal_viewpoint:1"
+    assert row["fallback_strategy"] == "detector_positive"
 
 
 def test_detector_qualified_anchor_prefers_positive_over_first_viewpoint() -> None:
@@ -266,6 +271,23 @@ def test_detector_qualified_anchor_falls_back_to_most_visible_viewpoint() -> Non
     )
 
     assert selected is better_visible
+
+
+def test_detector_qualified_fallback_prefers_positive_over_first_viewpoint() -> None:
+    first = SimpleNamespace(source="goal_viewpoint:0", target_pixels=1800)
+    qualified = SimpleNamespace(source="goal_viewpoint:1", target_pixels=900)
+    verifications = {
+        "goal_viewpoint:0": _verification(EvidenceType.NON_CONFIRMATION, target_visible=True),
+        "goal_viewpoint:1": _verification(EvidenceType.POSITIVE, target_visible=True),
+    }
+
+    selected = _choose_lifecycle_fallback_candidate(
+        candidates=(first, qualified),
+        verifications=verifications,
+        min_target_pixels=24,
+    )
+
+    assert selected is qualified
 
 
 def test_anchor_candidate_ranking_keeps_top_visible_candidates() -> None:

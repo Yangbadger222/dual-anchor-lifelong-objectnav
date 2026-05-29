@@ -543,3 +543,44 @@ Critical interpretation:
   synthetic stale protocol plus the search proxy. It should be treated as a
   supporting signal, not the headline.
 - This is still not official SPL or a closed-loop learned policy result.
+
+### Failure-Slice Detector Sweep
+
+After the corrected stale matrix, the remaining failed cells were isolated to
+`chair` and `tv_monitor`. A small Linux sweep tested whether `tv_monitor`
+could be fixed by detector settings alone.
+
+| Run | Weights | Prompt | Conf/Text | Cap | Noise | Memory Success | No-Memory Success |
+|---|---|---|---|---:|---|---:|---:|
+| `habitat_memory_lifecycle_tv_monitor_prompt_target_stale_pf_v1` | tiny | `target` | `0.25/0.25` | `384` | clean/mild/heavy | `6/12` | `6/12` |
+| `habitat_memory_lifecycle_tv_monitor_prompt_target_aliases_stale_pf_v1` | tiny | `target_aliases` | `0.25/0.25` | `384` | clean/mild/heavy | `0/12` | `0/12` |
+| `habitat_memory_lifecycle_tv_monitor_prompt_all_categories_stale_pf_v1` | tiny | `all_categories` | `0.25/0.25` | `384` | clean/mild/heavy | `2/12` | `2/12` |
+| `habitat_memory_lifecycle_tv_monitor_threshold_conf015_text020_stale_pf_v2` | tiny | `target` | `0.15/0.20` | `384` | clean/mild/heavy | `6/12` | `6/12` |
+| `habitat_memory_lifecycle_tv_monitor_threshold_conf010_text015_stale_pf_v2` | tiny | `target` | `0.10/0.15` | `384` | clean/mild/heavy | `6/12` | `6/12` |
+| `habitat_memory_lifecycle_tv_monitor_cap512_clean_pf_v1` | tiny | `target` | `0.25/0.25` | `512` | clean | `2/4` | `2/4` |
+| `habitat_memory_lifecycle_tv_monitor_cap640_clean_pf_v1` | tiny | `target` | `0.25/0.25` | `640` | clean | `2/4` | `2/4` |
+| `habitat_memory_lifecycle_tv_monitor_grounding_dino_base_clean_pf_v1` | base | `target` | `0.25/0.25` | `384` | clean | `2/4` | `2/4` |
+
+Interpretation:
+
+- Prompt aliases and all-category prompts made `tv_monitor` worse, not better.
+- Lowering confidence/text thresholds did not recover the missed fallback
+  detections.
+- Larger inference caps (`512`, `640`) did not recover the clean missed
+  fallback view.
+- Grounding-DINO base did not recover the clean missed fallback view either,
+  and it has a much higher loading cost on the 8GB RTX 4070 Laptop GPU.
+
+For `chair`, the clean failure is different: the detector returned overlapping
+boxes (`precision=0.731960`, `recall=0.366132`) but the detector-only evidence
+classifier rejected the union mask as `fragmented_detector_mask`. That can be
+used as diagnostic evidence that the current gate is conservative, but it
+cannot become a runtime rule by itself because the high precision/recall values
+come from Habitat GT.
+
+Protocol consequence: the next code change should not tune detector thresholds
+around `tv_monitor`. Instead, fallback verification should be shared and
+multi-view: all modes should be allowed to verify the top query goal viewpoints
+and stop at the first detector-positive fallback view. This models fallback
+search more realistically and avoids making a single brittle Habitat viewpoint
+the determinant of every mode's success.
