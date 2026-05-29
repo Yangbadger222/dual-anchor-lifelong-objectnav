@@ -178,6 +178,12 @@ Passed locally before this handoff update:
   successfully. It produced `memory_guided=124`, `frontier_only=124`, and
   `naive_count=139` actions. `memory_guided` selected `['frontier']` with
   `memory_decision=frontier_first`; `naive_count` selected `['memory']`.
+- Linux balanced3 cost-aware oracle navmesh heading-sweep smoke completed
+  successfully. It produced `memory_guided=419`, `frontier_only=708`, and
+  `naive_count=387` actions across chair, plant, and toilet. `memory_guided`
+  selected frontier for chair/plant, memory for toilet, and succeeded in all 3
+  episodes. `frontier_only` failed on toilet; `naive_count` remained shorter in
+  aggregate because chair memory was cheaper than the sampled frontier route.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -244,21 +250,26 @@ Passed locally before this handoff update:
 - The current accepted-memory policy fix has been rerun on Linux for 1 group.
   It prevents costly memory reuse in that smoke, but does not yet show memory
   beating a fair frontier baseline.
+- The balanced3 navmesh result shows the fixed `memory_valid_prior=0.5` is too
+  blunt: it keeps the toilet win where frontier fails, but gives up cheap valid
+  chair memory. Treat this as evidence for learning/estimating memory
+  reliability, not as a reason to manually tune the prior.
 
 ## Next Recommended Step
 
-1. Scale the cost-aware navmesh-frontier smoke to a small balanced multi-group
-   run and separate cases where memory beats frontier from cases where
-   cost-aware deferral prevents harmful memory reuse.
-2. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+1. Add an evidence-derived memory reliability estimator using current evidence,
+   dual-anchor covariance, object class, session age, and recent verification
+   outcomes; keep `memory_valid_prior` as the fallback/default.
+2. Rerun balanced navmesh smokes after the estimator and report per-case
+   decision buckets: memory win, frontier win, harmful memory avoided, and
+   valid memory wrongly deferred.
+3. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-3. Move Grounding-DINO from selected candidate-view verification to per-action
+4. Move Grounding-DINO from selected candidate-view verification to per-action
    observation and stopping decisions.
-4. Implement natural Habitat object relocation/removal or a clearly labeled
+5. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-5. Scale the balanced runs beyond six groups and report confidence intervals.
-6. Estimate `memory_valid_prior` from evidence, covariance, object class, and
-   session age instead of fixing it by hand.
+6. Scale the balanced runs beyond six groups and report confidence intervals.
 7. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
