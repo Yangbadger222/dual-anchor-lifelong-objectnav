@@ -249,6 +249,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     policies: Sequence[str] = POLICIES,
     max_groups: int | None = DEFAULT_MAX_GROUPS,
+    selected_group_ids: Sequence[str] | None = None,
     sensor_width: int = DEFAULT_SENSOR_WIDTH,
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
@@ -292,6 +293,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         target_categories=target_categories,
         policies=policies,
         max_groups=max_groups,
+        selected_group_ids=selected_group_ids,
         sensor_width=sensor_width,
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
@@ -330,6 +332,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         target_categories=target_categories,
         policies=policies,
         max_groups=max_groups,
+        selected_group_ids=selected_group_ids,
         sensor_width=sensor_width,
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
@@ -375,6 +378,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     target_categories: Sequence[str] = TARGET_CATEGORIES,
     policies: Sequence[str] = POLICIES,
     max_groups: int | None = DEFAULT_MAX_GROUPS,
+    selected_group_ids: Sequence[str] | None = None,
     sensor_width: int = DEFAULT_SENSOR_WIDTH,
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
@@ -418,6 +422,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         target_categories=target_categories,
         policies=policies,
         max_groups=max_groups,
+        selected_group_ids=selected_group_ids,
         sensor_width=sensor_width,
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
@@ -497,8 +502,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         episode_selection_strategy="structured_visibility",
     )
     groups = _build_lifecycle_groups(selected_episodes)
-    if max_groups is not None:
-        groups = _select_balanced_groups(groups, max_groups=max_groups)
+    groups = _select_closed_loop_groups(
+        groups,
+        max_groups=max_groups,
+        selected_group_ids=selected_group_ids,
+    )
     if not groups:
         raise ValueError("No lifecycle groups could be built from selected episodes")
 
@@ -1147,6 +1155,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         finally:
             sim.close()
 
+    requested_group_ids = (
+        [str(group_id) for group_id in selected_group_ids]
+        if selected_group_ids is not None
+        else []
+    )
     summary = _base_summary(
         task="habitat_closed_loop_dual_anchor_objectnav",
         full_habitat_run=True,
@@ -1155,6 +1168,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         target_categories=target_categories,
         policies=policies,
         max_groups=max_groups,
+        selected_group_ids=selected_group_ids,
         sensor_width=sensor_width,
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
@@ -1191,6 +1205,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
             "selected_groups": len(groups),
             "episode_selection": {
                 "candidate_episode_count": len(selected_episodes),
+                "selection_mode": (
+                    "explicit_group_ids"
+                    if selected_group_ids is not None
+                    else "balanced_categories"
+                ),
+                "requested_group_count": len(requested_group_ids),
+                "requested_group_ids": requested_group_ids,
                 "selected_group_count": len(groups),
                 "selected_group_ids": [group.group_id for group in groups],
                 "selected_episode_ids": [
@@ -1578,6 +1599,7 @@ def _base_summary(
     target_categories: Sequence[str],
     policies: Sequence[str],
     max_groups: int | None,
+    selected_group_ids: Sequence[str] | None,
     sensor_width: int,
     sensor_height: int,
     gate_threshold: float,
@@ -1657,6 +1679,21 @@ def _base_summary(
             else round(float(max_detection_area_ratio), 6)
         ),
         "detector_prompt_mode": detector_prompt_mode,
+        "episode_selection": {
+            "selection_mode": (
+                "explicit_group_ids"
+                if selected_group_ids is not None
+                else "balanced_categories"
+            ),
+            "requested_group_count": (
+                len(selected_group_ids) if selected_group_ids is not None else 0
+            ),
+            "requested_group_ids": (
+                [str(group_id) for group_id in selected_group_ids]
+                if selected_group_ids is not None
+                else []
+            ),
+        },
         "session_restart": {
             "memory_frame_id": "map_session_1",
             "runtime_frame_id": "map_session_2",
@@ -1681,6 +1718,7 @@ def _validate_common(
     target_categories: Sequence[str],
     policies: Sequence[str],
     max_groups: int | None,
+    selected_group_ids: Sequence[str] | None,
     sensor_width: int,
     sensor_height: int,
     gate_threshold: float,
@@ -1717,6 +1755,23 @@ def _validate_common(
         raise ValueError(f"unknown target category/categories: {', '.join(unknown_categories)}")
     if max_groups is not None and max_groups <= 0:
         raise ValueError("max_groups must be positive when provided")
+    if selected_group_ids is not None:
+        requested_group_ids = [str(group_id) for group_id in selected_group_ids]
+        if not requested_group_ids:
+            raise ValueError(
+                "selected_group_ids must contain at least one group id when provided"
+            )
+        duplicates = sorted(
+            {
+                group_id
+                for group_id in requested_group_ids
+                if requested_group_ids.count(group_id) > 1
+            }
+        )
+        if duplicates:
+            raise ValueError(
+                "selected_group_ids contains duplicates: " + ", ".join(duplicates)
+            )
     if sensor_width <= 0 or sensor_height <= 0:
         raise ValueError("sensor dimensions must be positive")
     if gate_threshold <= 0.0:
@@ -1832,6 +1887,35 @@ def _select_balanced_groups(groups: Sequence[Any], *, max_groups: int) -> list[A
         if len(selected) >= max_groups:
             return selected
     return selected
+
+
+def _select_closed_loop_groups(
+    groups: Sequence[Any],
+    *,
+    max_groups: int | None,
+    selected_group_ids: Sequence[str] | None = None,
+) -> list[Any]:
+    if selected_group_ids is not None:
+        requested_group_ids = [str(group_id) for group_id in selected_group_ids]
+        if not requested_group_ids:
+            raise ValueError(
+                "selected_group_ids must contain at least one group id when provided"
+            )
+        group_by_id = {
+            str(getattr(group, "group_id")): group for group in groups
+        }
+        missing_group_ids = [
+            group_id for group_id in requested_group_ids if group_id not in group_by_id
+        ]
+        if missing_group_ids:
+            raise ValueError(
+                "selected_group_ids missing from lifecycle groups: "
+                + ", ".join(missing_group_ids)
+            )
+        return [group_by_id[group_id] for group_id in requested_group_ids]
+    if max_groups is not None:
+        return _select_balanced_groups(groups, max_groups=max_groups)
+    return list(groups)
 
 
 def _matching_reason_for_challenge(challenge: str) -> str:

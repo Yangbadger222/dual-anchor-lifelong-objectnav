@@ -69,6 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--policies", default=",".join(POLICIES))
     parser.add_argument("--max-groups", type=int, default=DEFAULT_MAX_GROUPS)
+    parser.add_argument(
+        "--selected-group-ids",
+        default="",
+        help=(
+            "CSV list of exact lifecycle group ids to replay instead of the "
+            "balanced category slice."
+        ),
+    )
     parser.add_argument("--sensor-width", type=int, default=DEFAULT_SENSOR_WIDTH)
     parser.add_argument("--sensor-height", type=int, default=DEFAULT_SENSOR_HEIGHT)
     parser.add_argument("--gate-threshold", type=float, default=DEFAULT_GATE_THRESHOLD)
@@ -197,6 +205,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         target_categories=_split_csv(args.target_categories),
         policies=_split_csv(args.policies),
         max_groups=args.max_groups,
+        selected_group_ids=(
+            _split_csv(args.selected_group_ids)
+            if args.selected_group_ids
+            else None
+        ),
         sensor_width=args.sensor_width,
         sensor_height=args.sensor_height,
         gate_threshold=args.gate_threshold,

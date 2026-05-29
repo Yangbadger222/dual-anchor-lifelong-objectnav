@@ -101,6 +101,9 @@ Implemented foundation:
   `plant` shorter-frontier decision.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
+- Explicit `selected_group_ids` replay slicing for the Habitat closed-loop
+  runner and CLI. Explicit slices bypass balanced sampling, preserve requested
+  order, and are recorded in `episode_selection`.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
   oracle/action smoke.
 - A Markdown experiment report for the Grounding-DINO candidate-gate smoke:
@@ -670,7 +673,9 @@ Passed locally before this handoff update:
 
 1. Build a targeted decision-boundary slice that deliberately combines an
    interior reliability boundary, mixed detector-event evidence, and enough
-   posterior shift to cross the boundary.
+   posterior shift to cross the boundary. The explicit replay slice now
+   exists, so the next pass should use mined `group_id` values rather than
+   broad balanced sweeps.
 2. Investigate learned reliability calibration using mined rows as supervision,
    rather than hand-tuning the event-posterior weights.
 3. Continue calibrating the reliability estimator against bucket counts and
@@ -694,3 +699,22 @@ The target paper story is now stricter: show that dual-anchor memory helps
 lifelong ObjectNav under map-frame restarts, localization uncertainty, instance
 ambiguity, and stale objects. A small advantage over a weak search proxy is not
 enough.
+
+## 2026-05-29 Replay Slice Update
+
+The Habitat closed-loop runner now accepts explicit `selected_group_ids` and
+records the requested slice in `episode_selection`. This is the missing control
+plane for replaying mined decision-boundary rows.
+
+Verification run just completed:
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py -q`
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q`
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py -q`
+- `python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
+- `git diff --check`
+
+Next step:
+- Rerun the mined boundary-near `group_id` rows through the new replay slice
+  and check whether `event_posterior` can now cross an interior boundary in
+  Habitat.

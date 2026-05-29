@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav as cli_module
+
 from objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav import main
 
 
@@ -230,3 +232,40 @@ def test_habitat_closed_loop_cli_preflight_accepts_detector_confirmation_config(
         "min_rotation_deg": 5.0,
         "min_mask_iou": 0.05,
     }
+
+
+def test_habitat_closed_loop_cli_preflight_forwards_selected_group_ids(
+    tmp_path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_preflight(output_dir, **kwargs):
+        captured["output_dir"] = str(output_dir)
+        captured["kwargs"] = kwargs
+        return {"task": "fake"}
+
+    monkeypatch.setattr(
+        cli_module,
+        "run_habitat_closed_loop_dual_anchor_preflight",
+        fake_preflight,
+    )
+
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--selected-group-ids",
+            "scene-a|chair|goal_object:1,scene-b|plant|goal_object:2",
+            "--preflight-only",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["kwargs"]["selected_group_ids"] == (
+        "scene-a|chair|goal_object:1",
+        "scene-b|plant|goal_object:2",
+    )

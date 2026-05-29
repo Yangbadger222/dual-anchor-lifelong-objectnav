@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from types import SimpleNamespace
+
+import pytest
 
 import numpy as np
 
@@ -160,8 +163,6 @@ def test_habitat_closed_loop_preflight_records_detector_confirmation_config(
 
 
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
-    from types import SimpleNamespace
-
     groups = [
         SimpleNamespace(category="chair", group_id="chair-1"),
         SimpleNamespace(category="chair", group_id="chair-2"),
@@ -176,6 +177,36 @@ def test_select_balanced_groups_prefers_category_coverage_before_duplicates() ->
         "plant-1",
         "sofa-1",
     ]
+
+
+def test_select_closed_loop_groups_preserves_explicit_order() -> None:
+    groups = [
+        SimpleNamespace(category="chair", group_id="chair-1"),
+        SimpleNamespace(category="plant", group_id="plant-1"),
+        SimpleNamespace(category="sofa", group_id="sofa-1"),
+    ]
+
+    selected = closed_loop._select_closed_loop_groups(
+        groups,
+        max_groups=1,
+        selected_group_ids=("sofa-1", "chair-1"),
+    )
+
+    assert [group.group_id for group in selected] == ["sofa-1", "chair-1"]
+
+
+def test_select_closed_loop_groups_rejects_missing_explicit_group_ids() -> None:
+    groups = [
+        SimpleNamespace(category="chair", group_id="chair-1"),
+        SimpleNamespace(category="plant", group_id="plant-1"),
+    ]
+
+    with pytest.raises(ValueError, match="missing"):
+        closed_loop._select_closed_loop_groups(
+            groups,
+            max_groups=1,
+            selected_group_ids=("chair-1", "sofa-9"),
+        )
 
 
 def test_habitat_option_row_records_closed_loop_action_decision() -> None:
