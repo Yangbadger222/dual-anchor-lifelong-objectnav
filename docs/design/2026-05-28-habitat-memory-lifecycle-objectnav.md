@@ -248,3 +248,20 @@ whether a result depended on a non-first fallback candidate. The protocol is
 still a geodesic/search-proxy evaluation, not a closed-loop planner, but this
 change removes an unnecessary single-view brittleness before the action-level
 port.
+
+## 2026-05-29 Update: Action-Level Route Meter
+
+The next validation layer starts with a small action-route meter built around
+Habitat-Sim `GreedyGeodesicFollower`. It is intentionally separate from the
+main lifecycle runner at first:
+
+- input: simulator, start pose, goal position, max steps, and goal radius;
+- output: executed Habitat actions, whether the follower emitted stop, final
+  position, and executed distance;
+- scope: action-level route accounting only, not detector-backed stopping or
+  official Habitat SPL yet.
+
+This staged boundary keeps the geodesic lifecycle protocol stable while adding
+the first action-level measurement primitive. The follow-up is to run the same
+memory/fallback routes through this meter and report action counts and executed
+distances alongside geodesic/search-proxy costs.
