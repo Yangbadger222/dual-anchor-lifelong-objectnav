@@ -76,6 +76,26 @@ def test_memory_guided_falls_back_after_failed_memory_verification() -> None:
     assert result.stop_reason == "fallback_verified"
 
 
+def test_memory_guided_charges_fallback_from_failed_memory_pose() -> None:
+    result = plan_lifecycle_query(
+        mode="memory_guided",
+        memory_path_cost_m=3.0,
+        fallback_path_cost_m=20.0,
+        fallback_from_memory_path_cost_m=5.5,
+        memory_verification=_verification(
+            EvidenceType.NON_CONFIRMATION,
+            target_visible=False,
+        ),
+        fallback_verifications=(
+            _verification(EvidenceType.POSITIVE, target_visible=True),
+        ),
+    )
+
+    assert result.success is True
+    assert result.route == ("memory", "fallback")
+    assert result.total_path_length_m == 8.5
+
+
 def test_no_memory_skips_memory_pose_even_if_memory_would_verify() -> None:
     result = plan_lifecycle_query(
         mode="no_memory",
@@ -194,8 +214,10 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
         memory_anchor_source="goal_viewpoint:0",
         memory_path_cost=3.0,
         fallback_path_cost=7.0,
+        fallback_from_memory_path_cost=4.5,
         oracle_goal_path_cost=2.0,
         search_proxy_waypoint_count=1,
+        fallback_from_memory_waypoint_count=2,
         memory_verification=memory_verification,
         fallback_verification=fallback_verification,
         result=result,
@@ -204,6 +226,8 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
 
     assert row["memory_evidence_reason"] == "edge_touch_breakthrough"
     assert row["fallback_evidence_reason"] == "detector_positive_mask"
+    assert row["fallback_from_memory_path_cost_m"] == 4.5
+    assert row["fallback_from_memory_waypoint_count"] == 2
 
 
 def test_detector_qualified_anchor_prefers_positive_over_first_viewpoint() -> None:
@@ -396,6 +420,7 @@ def test_memory_guided_repairs_stale_anchor_across_repeated_queries() -> None:
         initial_memory_path_cost_m=6.0,
         repaired_memory_path_cost_m=2.0,
         fallback_path_cost_m=11.0,
+        fallback_from_memory_path_cost_m=4.0,
         initial_memory_verification=stale_memory,
         repaired_memory_verification=repaired_memory,
         fallback_verification=fallback,
@@ -406,6 +431,7 @@ def test_memory_guided_repairs_stale_anchor_across_repeated_queries() -> None:
         initial_memory_path_cost_m=6.0,
         repaired_memory_path_cost_m=2.0,
         fallback_path_cost_m=11.0,
+        fallback_from_memory_path_cost_m=4.0,
         initial_memory_verification=stale_memory,
         repaired_memory_verification=repaired_memory,
         fallback_verification=fallback,
@@ -416,9 +442,9 @@ def test_memory_guided_repairs_stale_anchor_across_repeated_queries() -> None:
         ("memory", "fallback"),
         ("memory",),
     ]
-    assert [result.total_path_length_m for result in memory_results] == [17.0, 2.0]
+    assert [result.total_path_length_m for result in memory_results] == [10.0, 2.0]
     assert [result.route for result in naive_results] == [
         ("memory", "fallback"),
         ("memory", "fallback"),
     ]
-    assert [result.total_path_length_m for result in naive_results] == [17.0, 17.0]
+    assert [result.total_path_length_m for result in naive_results] == [10.0, 10.0]

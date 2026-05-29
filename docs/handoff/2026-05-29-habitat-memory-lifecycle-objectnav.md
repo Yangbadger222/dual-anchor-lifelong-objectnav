@@ -2,7 +2,7 @@
 
 Date: 2026-05-29  
 Owner: Codex  
-Status: In Progress - Full Val Enabled, Detector-Qualified Anchor Follow-up Pending
+Status: In Progress - Post-Memory Fallback Cost Fix Pending Linux Rerun
 
 ## Current State
 
@@ -14,7 +14,7 @@ Full HM3D `val` scene assets have now been unpacked on the Linux machine under
 coverage is available: `88` strict same-instance groups across all six target
 categories.
 
-The strongest completed run is:
+The strongest pre-fix completed run is:
 
 `runs/habitat_usability/habitat_memory_lifecycle_grounding_dino_repeated_v2_allcat`
 
@@ -50,8 +50,20 @@ New full-val sanity results:
   `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_matrix_v1`
   produced `memory_guided=62/72`, `naive_count=62/72`, `no_memory=62/72`;
   memory reduced path by `33.8314%` vs `naive_count` and `9.8969%` vs
-  `no_memory`. This is the current best evidence for repair-aware memory over
-  positive-only counting.
+  `no_memory`. This is useful historical evidence for repair-aware memory over
+  positive-only counting, but it was run before the post-memory fallback cost
+  fix and must be rerun before it becomes a main result.
+
+Critical accounting fix in progress:
+
+- Pre-fix stale traces charged memory-then-fallback routes as
+  `memory_path_cost_m + fallback_path_cost_m`, where `fallback_path_cost_m`
+  starts at the original query pose.
+- The corrected protocol now charges `memory_path_cost_m +
+  fallback_from_memory_path_cost_m`, where fallback starts from the actual
+  detector-qualified memory anchor that failed verification.
+- New trace fields: `fallback_from_memory_path_cost_m` and
+  `fallback_from_memory_waypoint_count`.
 
 ## Files Touched
 
@@ -73,6 +85,7 @@ Recent code also adds:
 - `--anchor-candidate-limit` with default `4`
 - `--lifecycle-challenge stable|synthetic_stale_relocation`
 - trace fields for `memory_anchor_source` and evidence reasons
+- trace fields for post-memory fallback cost after stale checks
 - `detector_miss_count` is based on `attempted_detector_miss`, so unused
   fallback misses do not pollute successful memory rows.
 
@@ -129,8 +142,9 @@ python -m objectnav_core.cli.run_habitat_memory_lifecycle_objectnav \
 
 Passed locally:
 
-- Focused lifecycle/CLI tests: `12` passed.
-- Full core tests: `159` passed.
+- Focused lifecycle tests after post-memory fallback fix: `15` passed.
+- CLI tests: `4` passed.
+- Full core tests: `166` passed.
 - Compileall and `git diff --check`.
 
 Passed on Linux:
@@ -145,6 +159,9 @@ Passed on Linux:
 
 - Current evaluation is geodesic and teleport-to-viewpoint based, not an
   action-level ObjectNav benchmark.
+- Stale-relocation path numbers from `*_stale_*` runs before the
+  post-memory fallback fix should be treated as pre-fix debugging results until
+  the Linux rerun finishes.
 - `search_proxy` is a deterministic proxy for no-memory search cost, not a
   learned or frontier closed-loop policy.
 - `val_mini` only forms three strict same-instance lifecycle groups:
@@ -163,14 +180,17 @@ Passed on Linux:
 
 ## Next Recommended Step
 
-1. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
+1. Pull the post-memory fallback cost fix on Linux and rerun at least the
+   oracle stale smoke plus Grounding-DINO stale matrix with new output
+   directories.
+2. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
    claims; current Grounding-DINO tiny returns zero boxes under `mild/heavy` for
    one high-GT-pixel view.
-2. Replace teleport-to-viewpoint with an action-level Habitat follower and
+3. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
-3. Scale the stale-relocation matrix beyond 12 groups after detector robustness
+4. Scale the stale-relocation matrix beyond 12 groups after detector robustness
    is better understood.
-4. Only after those pass, compare against stronger semantic-map and frontier
+5. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor

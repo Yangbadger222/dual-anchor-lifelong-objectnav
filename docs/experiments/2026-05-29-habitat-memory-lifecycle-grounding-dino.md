@@ -387,6 +387,15 @@ memory baseline.
 
 ### Synthetic Stale Relocation Results
 
+Important accounting note: the first stale-relocation runs below were produced
+before the 2026-05-29 post-memory fallback cost fix. In those pre-fix traces, a
+memory-then-fallback route charged `memory_path_cost_m + fallback_path_cost_m`,
+where `fallback_path_cost_m` starts again at the query pose. The corrected
+protocol charges `memory_path_cost_m + fallback_from_memory_path_cost_m`, where
+the fallback route starts at the actual detector-qualified memory anchor. Treat
+the pre-fix path-length numbers as historical debugging evidence until the
+replacement runs are recorded below.
+
 Oracle smoke:
 
 `runs/habitat_usability/habitat_memory_lifecycle_val_oracle_stale_smoke`
@@ -443,3 +452,21 @@ stress, repaired memory substantially reduces repeated-query path cost versus a
 fair positive-only counting baseline while preserving the same success count.
 It is still a geodesic proxy and synthetic relocation stress, so it is not yet a
 paper-ready ObjectNav SPL claim.
+
+### Post-Memory Fallback Cost Fix
+
+Critical review found a route-accounting flaw in stale cases: after a failed
+memory verification, fallback search was charged from the original query start
+instead of from the failed memory pose. This made memory-then-fallback routes
+physically ambiguous and could distort memory-vs-baseline path deltas.
+
+The runner now writes `fallback_from_memory_path_cost_m` and
+`fallback_from_memory_waypoint_count` for every trace row. `memory_guided` and
+`naive_count` use this post-memory fallback cost whenever they first attempt
+memory and then fall back; `no_memory` still uses `fallback_path_cost_m` from
+the query start. The computation happens after detector-qualified anchor
+selection, so it follows the actual stored memory viewpoint rather than the
+legacy first goal viewpoint.
+
+Replacement Linux stale-relocation runs should use new output directories and
+be recorded here before any paper-facing claims are made from the stale matrix.

@@ -198,8 +198,26 @@ confirmed anchor. To test the actual contribution, the runner now supports
 
 This challenge keeps discovery detector qualification intact, then marks the
 remembered anchor as stale at query time. The first query must pay the old
-memory attempt plus fallback verification. If fallback succeeds,
+memory attempt plus the fallback route continuing from the failed memory pose.
+If fallback succeeds,
 `memory_guided` repairs the anchor and reuses it on later repeated queries;
 `naive_count` remains positive-only and does not receive repair state. This is a
 controlled lifecycle stress test, not an official Habitat object-relocation
 benchmark.
+
+## 2026-05-29 Update: Post-Memory Fallback Cost
+
+The lifecycle runner now records two fallback costs:
+
+- `fallback_path_cost_m`: no-memory search proxy from the query start to the
+  fallback goal viewpoint.
+- `fallback_from_memory_path_cost_m`: search proxy from the actually selected
+  memory anchor to the fallback goal viewpoint.
+
+When a mode first travels to memory and then falls back, total path length is
+charged as `memory_path_cost_m + fallback_from_memory_path_cost_m`. `no_memory`
+continues to use `fallback_path_cost_m` because it never visits the memory
+pose. This keeps stale-memory accounting physically meaningful and prevents a
+failed memory attempt from incorrectly restarting fallback at the original
+query pose. The field is computed after detector-qualified anchor selection so
+it follows the memory viewpoint that the agent actually attempted.

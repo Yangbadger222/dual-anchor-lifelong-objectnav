@@ -113,6 +113,7 @@ def plan_lifecycle_query(
     mode: str,
     memory_path_cost_m: float | None,
     fallback_path_cost_m: float,
+    fallback_from_memory_path_cost_m: float | None = None,
     memory_verification: LifecycleVerification | None,
     fallback_verifications: Sequence[LifecycleVerification],
     naive_prior_positive_count: int = 0,
@@ -126,6 +127,11 @@ def plan_lifecycle_query(
         )
     if fallback_path_cost_m < 0.0:
         raise ValueError("fallback_path_cost_m must be non-negative")
+    if (
+        fallback_from_memory_path_cost_m is not None
+        and fallback_from_memory_path_cost_m < 0.0
+    ):
+        raise ValueError("fallback_from_memory_path_cost_m must be non-negative")
     if memory_path_cost_m is not None and memory_path_cost_m < 0.0:
         raise ValueError("memory_path_cost_m must be non-negative")
     if naive_prior_positive_count < 0:
@@ -138,6 +144,7 @@ def plan_lifecycle_query(
             memory_path_cost_m=memory_path_cost_m,
             memory_verification=memory_verification,
             fallback_path_cost_m=fallback_path_cost_m,
+            fallback_from_memory_path_cost_m=fallback_from_memory_path_cost_m,
             fallback_verifications=fallback_verifications,
             prior_positive_count=naive_prior_positive_count,
             positives_to_trust=naive_positive_to_trust,
@@ -174,11 +181,17 @@ def plan_lifecycle_query(
                 stop_reason="memory_verified",
             )
         fallback_success = _any_shared_gate_success(fallback_verifications)
+        post_memory_fallback_path_cost = (
+            fallback_path_cost_m
+            if fallback_from_memory_path_cost_m is None
+            else fallback_from_memory_path_cost_m
+        )
         return LifecyclePlanResult(
             mode=mode,
             success=fallback_success,
             total_path_length_m=round(
-                float(memory_path_cost_m or 0.0) + float(fallback_path_cost_m),
+                float(memory_path_cost_m or 0.0)
+                + float(post_memory_fallback_path_cost),
                 6,
             ),
             route=("memory", "fallback"),
@@ -212,6 +225,7 @@ def plan_lifecycle_sequence(
     initial_memory_path_cost_m: float,
     repaired_memory_path_cost_m: float,
     fallback_path_cost_m: float,
+    fallback_from_memory_path_cost_m: float | None = None,
     initial_memory_verification: LifecycleVerification,
     repaired_memory_verification: LifecycleVerification,
     fallback_verification: LifecycleVerification,
@@ -227,6 +241,7 @@ def plan_lifecycle_sequence(
                 mode=mode,
                 memory_path_cost_m=repaired_memory_path_cost_m,
                 fallback_path_cost_m=fallback_path_cost_m,
+                fallback_from_memory_path_cost_m=fallback_from_memory_path_cost_m,
                 memory_verification=repaired_memory_verification,
                 fallback_verifications=(fallback_verification,),
             )
@@ -235,6 +250,7 @@ def plan_lifecycle_sequence(
                 mode=mode,
                 memory_path_cost_m=initial_memory_path_cost_m,
                 fallback_path_cost_m=fallback_path_cost_m,
+                fallback_from_memory_path_cost_m=fallback_from_memory_path_cost_m,
                 memory_verification=initial_memory_verification,
                 fallback_verifications=(fallback_verification,),
                 naive_prior_positive_count=naive_prior_positive_count,
@@ -595,6 +611,16 @@ def run_habitat_memory_lifecycle_objectnav(
                             end=memory_candidate.position,
                         )
                     )
+                    (
+                        fallback_from_memory_path_cost,
+                        fallback_from_memory_waypoint_count,
+                    ) = _search_proxy_path_distance(
+                        sim=sim,
+                        start=memory_candidate.position,
+                        goal=fallback_candidate.position,
+                        seed=seed + scene_index * 1000 + group_index + 500000,
+                        waypoint_count=search_proxy_waypoints,
+                    )
                     fallback_verification = _verify_lifecycle_view(
                         sim=sim,
                         position=fallback_candidate.position,
@@ -625,6 +651,9 @@ def run_habitat_memory_lifecycle_objectnav(
                                 mode=mode,
                                 memory_path_cost_m=active_memory_path_cost,
                                 fallback_path_cost_m=fallback_path_cost,
+                                fallback_from_memory_path_cost_m=(
+                                    fallback_from_memory_path_cost
+                                ),
                                 memory_verification=active_memory_verification,
                                 fallback_verifications=(fallback_verification,),
                                 naive_prior_positive_count=(
@@ -647,8 +676,14 @@ def run_habitat_memory_lifecycle_objectnav(
                                     memory_anchor_source=memory_candidate.source,
                                     memory_path_cost=active_memory_path_cost,
                                     fallback_path_cost=fallback_path_cost,
+                                    fallback_from_memory_path_cost=(
+                                        fallback_from_memory_path_cost
+                                    ),
                                     oracle_goal_path_cost=oracle_goal_path_cost,
                                     search_proxy_waypoint_count=search_proxy_waypoint_count,
+                                    fallback_from_memory_waypoint_count=(
+                                        fallback_from_memory_waypoint_count
+                                    ),
                                     memory_verification=active_memory_verification,
                                     fallback_verification=fallback_verification,
                                     result=result,
@@ -988,8 +1023,10 @@ def _lifecycle_row(
     memory_anchor_source: str,
     memory_path_cost: float,
     fallback_path_cost: float,
+    fallback_from_memory_path_cost: float,
     oracle_goal_path_cost: float,
     search_proxy_waypoint_count: int,
+    fallback_from_memory_waypoint_count: int,
     memory_verification: LifecycleVerification,
     fallback_verification: LifecycleVerification,
     result: LifecyclePlanResult,
@@ -1027,8 +1064,15 @@ def _lifecycle_row(
         "path_length_m": result.total_path_length_m,
         "memory_path_cost_m": round(memory_path_cost, 6),
         "fallback_path_cost_m": round(fallback_path_cost, 6),
+        "fallback_from_memory_path_cost_m": round(
+            fallback_from_memory_path_cost,
+            6,
+        ),
         "oracle_goal_path_cost_m": round(oracle_goal_path_cost, 6),
         "search_proxy_waypoint_count": int(search_proxy_waypoint_count),
+        "fallback_from_memory_waypoint_count": int(
+            fallback_from_memory_waypoint_count
+        ),
         "route": "|".join(result.route),
         "memory_attempted": result.memory_attempted,
         "memory_reused": result.memory_reused,
@@ -1183,6 +1227,7 @@ def _plan_naive_count_query(
     memory_path_cost_m: float | None,
     memory_verification: LifecycleVerification | None,
     fallback_path_cost_m: float,
+    fallback_from_memory_path_cost_m: float | None,
     fallback_verifications: Sequence[LifecycleVerification],
     prior_positive_count: int,
     positives_to_trust: int,
@@ -1201,7 +1246,12 @@ def _plan_naive_count_query(
             success = True
     if not success:
         route.append("fallback")
-        total_path_length += float(fallback_path_cost_m)
+        fallback_cost = (
+            fallback_path_cost_m
+            if not memory_attempted or fallback_from_memory_path_cost_m is None
+            else fallback_from_memory_path_cost_m
+        )
+        total_path_length += float(fallback_cost)
         for verification in fallback_verifications:
             if verification.evidence_type is EvidenceType.POSITIVE:
                 positive_count += 1
