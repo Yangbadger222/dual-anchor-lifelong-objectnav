@@ -7,9 +7,11 @@ from types import SimpleNamespace
 
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
+    _active_memory_anchor_source,
     _cached_action_route_sequence,
     _choose_lifecycle_anchor_candidate,
     _choose_lifecycle_fallback_candidate,
+    _episode_selection_key,
     _rank_lifecycle_anchor_candidates,
     _stale_memory_verification,
     _lifecycle_row,
@@ -179,6 +181,41 @@ def test_lifecycle_preflight_writes_summary(tmp_path: Path) -> None:
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert any("not official Habitat SPL" in limit for limit in summary["limits"])
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
+
+
+def test_episode_selection_key_includes_scene_for_scene_local_episode_ids() -> None:
+    first = SimpleNamespace(
+        original_scene_id="hm3d/val/scene-a/a.basis.glb",
+        episode_id="0",
+    )
+    second = SimpleNamespace(
+        original_scene_id="hm3d/val/scene-b/b.basis.glb",
+        episode_id="0",
+    )
+
+    assert _episode_selection_key(first) != _episode_selection_key(second)
+    assert _episode_selection_key(first) == "hm3d/val/scene-a/a.basis.glb|episode:0"
+
+
+def test_repaired_memory_anchor_source_points_to_repaired_fallback_anchor() -> None:
+    assert (
+        _active_memory_anchor_source(
+            mode="memory_guided",
+            repaired=True,
+            memory_anchor_source="goal_viewpoint:0",
+            fallback_anchor_source="goal_viewpoint:2",
+        )
+        == "goal_viewpoint:2"
+    )
+    assert (
+        _active_memory_anchor_source(
+            mode="naive_count",
+            repaired=True,
+            memory_anchor_source="goal_viewpoint:0",
+            fallback_anchor_source="goal_viewpoint:2",
+        )
+        == "goal_viewpoint:0"
+    )
 
 
 def test_lifecycle_trace_rows_record_evidence_reasons() -> None:

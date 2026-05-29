@@ -761,7 +761,12 @@ def run_habitat_memory_lifecycle_objectnav(
                                     noise_level=noise_level,
                                     detector=detector,
                                     detector_prompt_categories=prompt_categories,
-                                    memory_anchor_source=memory_candidate.source,
+                                    memory_anchor_source=_active_memory_anchor_source(
+                                        mode=mode,
+                                        repaired=repaired,
+                                        memory_anchor_source=memory_candidate.source,
+                                        fallback_anchor_source=fallback_candidate.source,
+                                    ),
                                     memory_path_cost=active_memory_path_cost,
                                     fallback_path_cost=fallback_path_cost,
                                     fallback_from_memory_path_cost=(
@@ -814,14 +819,14 @@ def run_habitat_memory_lifecycle_objectnav(
                 "candidate_episode_count": len(selected_episodes),
                 "selected_group_count": len(groups),
                 "selected_episode_ids": [
-                    str(group.query_episode.episode_id) for group in groups
+                    _episode_selection_key(group.query_episode) for group in groups
                 ],
                 "selected_category_counts": _category_counts_from_groups(groups),
             },
             **summarize_lifecycle_results(
                 rows=trace_rows,
                 selected_episode_ids=[
-                    str(group.query_episode.episode_id) for group in groups
+                    _episode_selection_key(group.query_episode) for group in groups
                 ],
                 selected_groups=len(groups),
             ),
@@ -1044,6 +1049,18 @@ def _choose_lifecycle_fallback_candidate(
         ranked_candidates,
         key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
     )
+
+
+def _active_memory_anchor_source(
+    *,
+    mode: str,
+    repaired: bool,
+    memory_anchor_source: str,
+    fallback_anchor_source: str,
+) -> str:
+    if mode == "memory_guided" and repaired:
+        return fallback_anchor_source
+    return memory_anchor_source
 
 
 def _stale_memory_verification(
@@ -1454,6 +1471,12 @@ def _instance_id(episode: Any) -> str:
     if closest_goal_object_id is not None:
         return f"goal_object:{closest_goal_object_id}"
     return f"category:{getattr(episode, 'object_category', 'unknown')}"
+
+
+def _episode_selection_key(episode: Any) -> str:
+    scene_id = str(getattr(episode, "original_scene_id", "unknown_scene"))
+    episode_id = str(getattr(episode, "episode_id", "unknown_episode"))
+    return f"{scene_id}|episode:{episode_id}"
 
 
 def _tuple3(value: Any) -> tuple[float, float, float] | None:

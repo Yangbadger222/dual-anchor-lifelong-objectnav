@@ -206,6 +206,9 @@ Passed on Linux:
   fallback action routes now follow the same search-proxy waypoint sequence
   used for geodesic `fallback_path_cost_m` and
   `fallback_from_memory_path_cost_m`.
+- Lifecycle summaries now qualify selected episode ids with scene ids because
+  HM3D episode ids can repeat across scenes. Repaired `memory_guided` repeat
+  rows also report the repaired fallback anchor as `memory_anchor_source`.
 
 ## Known Risks
 
@@ -235,6 +238,9 @@ Passed on Linux:
 - The first oracle `--action-metrics` smoke before this fix should not be used
   as evidence: it measured direct fallback action routes while path metrics used
   search-proxy routes.
+- Older lifecycle summaries that show selected episode ids such as `["0",
+  "0"]` may still be valid; inspect scene ids/group ids before assuming a
+  duplicate-selection bug.
 
 ## Next Recommended Step
 
