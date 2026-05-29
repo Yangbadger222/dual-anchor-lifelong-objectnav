@@ -121,6 +121,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-detector-confirmation-ablation-balanced3.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-balanced3-comparison.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-grounding-dino-smoke.md`
+- `docs/experiments/2026-05-29-habitat-event-posterior-stale-balanced3-comparison.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-stale-detector-pixels-smoke.md`
@@ -299,6 +300,15 @@ Passed locally before this handoff update:
   `frontier_only=1016` actions with no memory-guided hindsight regret.
   `event_posterior` lowered memory reliability by row (`chair=0.683481`,
   `plant=0.710654`, `toilet=0.81947`) but did not flip decisions.
+- Linux paired stale balanced3 Grounding-DINO comparison completed:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_balanced3_stale_evidence_v1`
+  versus
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_balanced3_stale_event_posterior_v1`.
+  Both modes produced `memory_guided=766`, `naive_count=782`, and
+  `frontier_only=1858` actions across six rows, with no memory-guided hindsight
+  regret. `event_posterior` kept repeat-0 stale/no-current rows at `0.225`
+  despite high detector-event posterior, then lowered repaired repeat-1
+  reliability from `0.96` to about `0.73` without flipping decisions.
 - Linux balanced6 evidence-reliability oracle navmesh smoke completed
   successfully. It produced `memory_guided=565`, `frontier_only=943`, and
   `naive_count=575` actions. `memory_guided` selected memory for chair, toilet,
@@ -574,13 +584,13 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
-   strong-positive floor does not mask harmful memory reuse.
+1. Build or select a weak-evidence, cost-close Grounding-DINO row where
+   `event_posterior` can plausibly flip memory-vs-frontier selection.
 2. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-3. Run larger paired `evidence` versus `event_posterior` comparisons only after
-   a decision-sensitive stale or weak-evidence case is defined.
+3. Use the decision-sensitive rows as supervision targets for a learned
+   reliability model before running larger paired comparisons.
 4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
 5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
