@@ -86,6 +86,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
+- `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
@@ -130,6 +131,7 @@ ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pul
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --frontier-mode navmesh_frontier --frontier-probe-count 5'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
 ```
 
 Linux commands run:
@@ -259,6 +261,11 @@ Passed locally before this handoff update:
   `frontier_shorter_selected=1`. The targeted `sofa` row selected memory at
   `98` actions; the targeted `plant` row still selected frontier at `125`
   actions.
+- Linux balanced6 Grounding-DINO candidate-view navmesh evidence calibration
+  smoke completed successfully. It produced `memory_guided=564`,
+  `naive_count=575`, and `frontier_only=946` actions. `memory_guided` again had
+  `total_hindsight_action_regret=0`, selected memory for `sofa`, and selected
+  frontier for `plant`.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -337,6 +344,9 @@ Passed locally before this handoff update:
   wrong-deferral row and kept `plant` frontier-selected, but this is still a
   tiny oracle navmesh smoke with a small 14-action gain over `naive_count`, not
   a benchmark claim.
+- The Grounding-DINO candidate-view calibration smoke preserved the same bucket
+  pattern with an 11-action gain over `naive_count`, but it still verifies only
+  selected candidate views and does not replace per-action perception.
 - The strong-positive floor is a hand-designed guardrail from hindsight-regret
   diagnostics. It should be treated as a calibration baseline, not the final
   algorithm, until it is validated on held-out scenes and replaced or supported
@@ -344,7 +354,8 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Run the same calibration audit with Grounding-DINO candidate-view evidence.
+1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+   strong-positive floor does not mask harmful memory reuse.
 2. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
