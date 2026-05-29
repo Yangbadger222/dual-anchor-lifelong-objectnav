@@ -172,6 +172,12 @@ Passed locally before this handoff update:
   `24` passed.
 - Full local core tests after cost-aware accepted-memory support: `210` passed.
 - `git diff --check` passed after cost-aware accepted-memory support.
+- Linux focused Habitat/CLI tests after pulling cost-aware accepted-memory
+  support: `24` passed.
+- Linux 1-group cost-aware oracle navmesh heading-sweep smoke completed
+  successfully. It produced `memory_guided=124`, `frontier_only=124`, and
+  `naive_count=139` actions. `memory_guided` selected `['frontier']` with
+  `memory_decision=frontier_first`; `naive_count` selected `['memory']`.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -235,16 +241,15 @@ Passed locally before this handoff update:
 - `memory_valid_prior=0.5` is a hand-set expected-utility prior. The sensitivity
   run with `0.8` was worse (`memory_guided=2151` actions on unbalanced max6
   versus `1917` at `0.5`), so this should become learned or evidence-derived.
-- The current accepted-memory policy fix should be rerun on Linux before
-  scaling. It is expected to make `memory_guided` choose frontier in the
-  1-group heading-sweep smoke because frontier-first is cheaper there.
+- The current accepted-memory policy fix has been rerun on Linux for 1 group.
+  It prevents costly memory reuse in that smoke, but does not yet show memory
+  beating a fair frontier baseline.
 
 ## Next Recommended Step
 
-1. Pull the cost-aware accepted-memory update on Linux and rerun the 1-group
-   Habitat heading-sweep smoke; confirm `memory_guided` records
-   `memory_decision=frontier_first` and selects frontier while `naive_count`
-   still reuses accepted memory.
+1. Scale the cost-aware navmesh-frontier smoke to a small balanced multi-group
+   run and separate cases where memory beats frontier from cases where
+   cost-aware deferral prevents harmful memory reuse.
 2. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
 3. Move Grounding-DINO from selected candidate-view verification to per-action
