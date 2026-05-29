@@ -29,6 +29,7 @@ DEFAULT_FRONTIER_PROXY_WAYPOINTS = 2
 SUPPORTED_FRONTIER_MODES: tuple[str, ...] = ("search_proxy", "navmesh_frontier")
 DEFAULT_FRONTIER_MODE = "search_proxy"
 DEFAULT_FRONTIER_PROBE_COUNT = 8
+DEFAULT_FRONTIER_PROBE_HEADING_COUNT = 4
 DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
 DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
 DEFAULT_QUERY_REPEATS = 1
@@ -112,6 +113,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     frontier_mode: str = DEFAULT_FRONTIER_MODE,
     frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
+    frontier_probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -141,6 +143,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
+        frontier_probe_heading_count=frontier_probe_heading_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -169,6 +172,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
+        frontier_probe_heading_count=frontier_probe_heading_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -204,6 +208,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     frontier_mode: str = DEFAULT_FRONTIER_MODE,
     frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
+    frontier_probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -233,6 +238,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
+        frontier_probe_heading_count=frontier_probe_heading_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -520,6 +526,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         start_rotation=group.query_episode.start_rotation,
                         seed=313 + len(rows),
                         probe_count=frontier_probe_count,
+                        probe_heading_count=frontier_probe_heading_count,
                         frame_index_base=base_frame_index + 300,
                     )
                     fallback_route = fallback_result.route
@@ -552,6 +559,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         start_rotation=memory_candidate.rotation,
                         seed=313 + len(rows) + 500000,
                         probe_count=frontier_probe_count,
+                        probe_heading_count=frontier_probe_heading_count,
                         frame_index_base=base_frame_index + 400,
                     )
                     fallback_from_memory_route = fallback_from_memory_result.route
@@ -723,6 +731,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
+        frontier_probe_heading_count=frontier_probe_heading_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -872,6 +881,7 @@ def _base_summary(
     frontier_proxy_waypoints: int,
     frontier_mode: str,
     frontier_probe_count: int,
+    frontier_probe_heading_count: int,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -902,6 +912,7 @@ def _base_summary(
         "frontier_proxy_waypoints": int(frontier_proxy_waypoints),
         "frontier_mode": frontier_mode,
         "frontier_probe_count": int(frontier_probe_count),
+        "frontier_probe_heading_count": int(frontier_probe_heading_count),
         "challenge": challenge,
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
@@ -951,6 +962,7 @@ def _validate_common(
     frontier_proxy_waypoints: int,
     frontier_mode: str,
     frontier_probe_count: int,
+    frontier_probe_heading_count: int,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -986,6 +998,8 @@ def _validate_common(
         )
     if frontier_probe_count <= 0:
         raise ValueError("frontier_probe_count must be positive")
+    if frontier_probe_heading_count <= 0:
+        raise ValueError("frontier_probe_heading_count must be positive")
     if challenge not in SUPPORTED_CHALLENGES:
         raise ValueError(
             "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
@@ -1284,7 +1298,10 @@ def _run_navmesh_frontier_probe_route(
     route_segment: Any,
     verify_probe: Any,
     route_error_types: tuple[type[BaseException], ...] = (),
+    probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
 ) -> NavmeshFrontierRouteResult:
+    if probe_heading_count <= 0:
+        raise ValueError("probe_heading_count must be positive")
     current_position = _tuple3(start_position)
     current_rotation = _tuple4(start_rotation)
     if current_position is None or current_rotation is None:
@@ -1317,16 +1334,32 @@ def _run_navmesh_frontier_probe_route(
         current_rotation = (
             _tuple4(getattr(segment, "final_rotation", None)) or current_rotation
         )
-        selected_source = f"navmesh_frontier_probe:{probe_index}"
-        verification_count += 1
-        selected_verification = verify_probe(
-            source=selected_source,
-            position=current_position,
-            rotation=current_rotation,
-            probe_index=probe_index,
-        )
-        selected_position = current_position
-        if bool(selected_verification.shared_gate_success):
+        for heading_index, heading_rotation in enumerate(
+            _probe_heading_rotations(
+                base_rotation=current_rotation,
+                heading_count=probe_heading_count,
+            )
+        ):
+            if heading_index > 0:
+                actions.append(f"scan_heading:{probe_index}:{heading_index}")
+            selected_source = (
+                f"navmesh_frontier_probe:{probe_index}:heading:{heading_index}"
+            )
+            verification_count += 1
+            selected_verification = verify_probe(
+                source=selected_source,
+                position=current_position,
+                rotation=heading_rotation,
+                probe_index=probe_index,
+            )
+            selected_position = current_position
+            current_rotation = heading_rotation
+            if bool(selected_verification.shared_gate_success):
+                break
+        if (
+            selected_verification is not None
+            and bool(selected_verification.shared_gate_success)
+        ):
             break
 
     if selected_verification is None:
@@ -1366,6 +1399,7 @@ def _navmesh_frontier_result(
     start_rotation: Sequence[float],
     seed: int,
     probe_count: int,
+    probe_heading_count: int,
     frame_index_base: int,
 ) -> NavmeshFrontierRouteResult:
     from objectnav_core.evaluation.habitat_action_follower import (
@@ -1445,6 +1479,7 @@ def _navmesh_frontier_result(
         route_segment=route_segment,
         verify_probe=verify_probe,
         route_error_types=(GreedyFollowerError,),
+        probe_heading_count=probe_heading_count,
     )
 
 
@@ -1468,6 +1503,54 @@ def _verify_oracle_pose(
         target_visible=target_pixels >= min_target_pixels,
         oracle_target_pixels=target_pixels,
     )
+
+
+def _probe_heading_rotations(
+    *,
+    base_rotation: tuple[float, float, float, float],
+    heading_count: int,
+) -> tuple[tuple[float, float, float, float], ...]:
+    if heading_count <= 0:
+        raise ValueError("heading_count must be positive")
+    base = _normalize_quaternion_xyzw(base_rotation)
+    rotations: list[tuple[float, float, float, float]] = []
+    for index in range(heading_count):
+        yaw = 2.0 * np.pi * float(index) / float(heading_count)
+        half_yaw = yaw / 2.0
+        rotations.append(
+            _multiply_quaternion_xyzw(
+                base,
+                _normalize_quaternion_xyzw(
+                    (0.0, float(np.sin(half_yaw)), 0.0, float(np.cos(half_yaw)))
+                ),
+            )
+        )
+    return tuple(rotations)
+
+
+def _multiply_quaternion_xyzw(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    x1, y1, z1, w1 = first
+    x2, y2, z2, w2 = second
+    return _normalize_quaternion_xyzw(
+        (
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        )
+    )
+
+
+def _normalize_quaternion_xyzw(
+    rotation: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    norm = float(np.sqrt(sum(value * value for value in rotation)))
+    if norm == 0.0:
+        return (0.0, 0.0, 0.0, 1.0)
+    return tuple(float(value / norm) for value in rotation)  # type: ignore[return-value]
 
 
 def _replace_candidate_pose(

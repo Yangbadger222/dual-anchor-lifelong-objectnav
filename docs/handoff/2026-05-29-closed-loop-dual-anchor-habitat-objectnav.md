@@ -40,7 +40,9 @@ Implemented foundation:
   `--frontier-mode search_proxy|navmesh_frontier`. `search_proxy` is still the
   default. `navmesh_frontier` samples target-agnostic pathfinder probes,
   follows and verifies them one at a time, and stops at the first positive
-  shared gate.
+  shared gate. It also supports a fixed local heading sweep at each probe via
+  `--frontier-probe-heading-count`; extra scanned headings are counted as
+  zero-translation scan actions.
 - Repaired-memory direct route accounting for repeated stale queries.
 - Expected-utility memory-vs-frontier decisions using `--memory-valid-prior`.
 - Category-balanced group selection before duplicate categories when
@@ -151,6 +153,10 @@ Passed locally before this handoff update:
 - Full local core tests after stale-proxy evidence correction: `201` passed.
 - Local closed-loop Habitat/CLI tests after navmesh frontier interface and
   helper wiring: `19` passed.
+- Local closed-loop Habitat/CLI tests after fixed-heading scan support:
+  `21` passed.
+- Full local core tests after fixed-heading scan support: `207` passed.
+- `git diff --check` passed after fixed-heading scan support.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -158,6 +164,11 @@ Passed locally before this handoff update:
   `habitat_sim.errors.GreedyFollowerError` during post-memory probe routing.
   Local follow-up regression now covers skipping skippable route errors; rerun
   the Linux smoke after pushing that fix.
+- Rerun after skipping unreachable probe segments completed successfully for
+  1 group with `--frontier-probe-count 5`: memory-guided and naive-count
+  succeeded through stable memory (`139` actions each), while frontier-only
+  failed after `339` actions because sampled probes had no positive evidence.
+  This run motivated local fixed-heading scan support before scaling.
 - Linux focused Habitat tests after the expected-utility CLI update: `9` passed.
 - Linux focused Habitat tests after Grounding-DINO candidate-gate support:
   `14` passed.
@@ -190,9 +201,10 @@ Passed locally before this handoff update:
 - `navmesh_frontier` is target-agnostic with respect to sampled route goals, but
   it is still a navmesh probe approximation, not an occupancy frontier built
   from depth observations. It has only been verified locally with unit tests and
-  still needs a passing Linux Habitat smoke. The first smoke exposed reachable
-  probe/follower brittleness; skipped route errors should be audited so a weak
-  frontier does not silently become an empty search.
+  still needs a passing Linux Habitat rerun after heading-scan support. The
+  first smoke exposed reachable probe/follower brittleness; skipped route errors
+  and scan-action counts should be audited so a weak frontier does not silently
+  become an empty or free-sensing search.
 - Early Linux smokes exposed invalid frontier accounting, partial challenge
   semantics, repaired-memory route mischarging, and stale-risk overprobing.
   These are fixed in the current branch and documented in the experiment
@@ -211,8 +223,9 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Run a Linux Habitat smoke with `--frontier-mode navmesh_frontier` and inspect
-   probe source/evidence fields before scaling.
+1. Pull the fixed-heading scan update on Linux and rerun a 1-group Habitat smoke
+   with `--frontier-mode navmesh_frontier`; inspect probe source/evidence fields
+   before scaling.
 2. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
 3. Move Grounding-DINO from selected candidate-view verification to per-action

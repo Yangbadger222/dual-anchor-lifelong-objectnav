@@ -186,6 +186,11 @@ Local implementation status:
 - The runner follows probes one at a time with the same GreedyGeodesic action
   follower used by the existing action smoke, verifies the reached probe pose,
   and stops on the first shared-gate positive.
+- Each reached probe can run a deterministic fixed-heading scan before the
+  next probe. This models a robot looking around from an exploration point
+  without using target pose or target visibility to choose the route. Extra
+  scan headings are counted as zero-translation scan actions so the fallback
+  is not credited with free sensing.
 - Query-start fallback and post-memory fallback use separate probe sequences.
   Repeated stale queries only reuse a repaired anchor if the post-memory probe
   route found a positive verification.

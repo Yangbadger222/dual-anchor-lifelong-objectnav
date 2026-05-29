@@ -12,6 +12,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_DETECTOR_WEIGHTS,
     DEFAULT_FRONTIER_MODE,
     DEFAULT_FRONTIER_PROBE_COUNT,
+    DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
     DEFAULT_GATE_THRESHOLD,
     DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
@@ -76,6 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--frontier-probe-count",
         type=int,
         default=DEFAULT_FRONTIER_PROBE_COUNT,
+    )
+    parser.add_argument(
+        "--frontier-probe-heading-count",
+        type=int,
+        default=DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
     )
     parser.add_argument("--query-repeats", type=int, default=DEFAULT_QUERY_REPEATS)
     parser.add_argument(
@@ -153,6 +159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         frontier_proxy_waypoints=args.frontier_proxy_waypoints,
         frontier_mode=args.frontier_mode,
         frontier_probe_count=args.frontier_probe_count,
+        frontier_probe_heading_count=args.frontier_probe_heading_count,
         challenge=args.challenge,
         query_repeats=args.query_repeats,
         memory_valid_prior=args.memory_valid_prior,

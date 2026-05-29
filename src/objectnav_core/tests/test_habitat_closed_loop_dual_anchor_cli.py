@@ -112,6 +112,8 @@ def test_habitat_closed_loop_cli_preflight_accepts_navmesh_frontier_config(
             "navmesh_frontier",
             "--frontier-probe-count",
             "5",
+            "--frontier-probe-heading-count",
+            "8",
             "--preflight-only",
         ]
     )
@@ -121,3 +123,4 @@ def test_habitat_closed_loop_cli_preflight_accepts_navmesh_frontier_config(
     assert exit_code == 0
     assert summary["frontier_mode"] == "navmesh_frontier"
     assert summary["frontier_probe_count"] == 5
+    assert summary["frontier_probe_heading_count"] == 8

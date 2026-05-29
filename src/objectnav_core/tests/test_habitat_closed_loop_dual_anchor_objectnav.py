@@ -81,10 +81,12 @@ def test_habitat_closed_loop_preflight_records_navmesh_frontier_config(tmp_path)
         max_groups=2,
         frontier_mode="navmesh_frontier",
         frontier_probe_count=5,
+        frontier_probe_heading_count=8,
     )
 
     assert summary["frontier_mode"] == "navmesh_frontier"
     assert summary["frontier_probe_count"] == 5
+    assert summary["frontier_probe_heading_count"] == 8
 
 
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
@@ -454,7 +456,7 @@ def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
         del position, rotation, probe_index
         visited_sources.append(source)
         return closed_loop._OracleVisible(
-            target_visible=source == "navmesh_frontier_probe:1"
+            target_visible=source == "navmesh_frontier_probe:1:heading:0"
         )
 
     result = closed_loop._run_navmesh_frontier_probe_route(
@@ -463,10 +465,14 @@ def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
         probe_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0), (3.0, 0.0, 0.0)),
         route_segment=route_segment,
         verify_probe=verify_probe,
+        probe_heading_count=1,
     )
 
-    assert visited_sources == ["navmesh_frontier_probe:0", "navmesh_frontier_probe:1"]
-    assert result.selected_probe_source == "navmesh_frontier_probe:1"
+    assert visited_sources == [
+        "navmesh_frontier_probe:0:heading:0",
+        "navmesh_frontier_probe:1:heading:0",
+    ]
+    assert result.selected_probe_source == "navmesh_frontier_probe:1:heading:0"
     assert result.selected_probe_position == (2.0, 0.0, 0.0)
     assert result.selected_verification.shared_gate_success is True
     assert result.route.action_count == 2
@@ -503,11 +509,61 @@ def test_navmesh_frontier_route_skips_unreachable_probe_segment() -> None:
         route_segment=route_segment,
         verify_probe=verify_probe,
         route_error_types=(RuntimeError,),
+        probe_heading_count=1,
     )
 
-    assert visited_sources == ["navmesh_frontier_probe:1"]
-    assert result.selected_probe_source == "navmesh_frontier_probe:1"
+    assert visited_sources == ["navmesh_frontier_probe:1:heading:0"]
+    assert result.selected_probe_source == "navmesh_frontier_probe:1:heading:0"
     assert result.route.action_count == 1
+
+
+def test_navmesh_frontier_probe_scans_headings_before_next_probe() -> None:
+    from types import SimpleNamespace
+
+    visited: list[tuple[str, int]] = []
+    visited_rotations: list[tuple[float, float, float, float]] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        return SimpleNamespace(
+            actions=(f"move_to_{goal_position[0]}",),
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 1.0, 0.0, 0.0),
+            executed_distance_m=float(goal_position[0]),
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position
+        visited.append((source, probe_index))
+        visited_rotations.append(rotation)
+        return closed_loop._OracleVisible(
+            target_visible=source == "navmesh_frontier_probe:0:heading:2"
+        )
+
+    result = closed_loop._run_navmesh_frontier_probe_route(
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        probe_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        probe_heading_count=4,
+    )
+
+    assert visited == [
+        ("navmesh_frontier_probe:0:heading:0", 0),
+        ("navmesh_frontier_probe:0:heading:1", 0),
+        ("navmesh_frontier_probe:0:heading:2", 0),
+    ]
+    assert visited_rotations[0] == (0.0, 1.0, 0.0, 0.0)
+    assert result.selected_probe_source == "navmesh_frontier_probe:0:heading:2"
+    assert result.selected_verification.shared_gate_success is True
+    assert result.route.actions == (
+        "move_to_1.0",
+        "scan_heading:0:1",
+        "scan_heading:0:2",
+    )
+    assert result.route.action_count == 3
 
 
 def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:
