@@ -241,6 +241,34 @@ focused model/exporter tests produced `11` passed, `py_compile` passed for the
 trainer/model modules, the full local core suite produced `276` passed, and
 `git diff --check` was clean.
 
+The end-to-end offline learning pipeline is now local:
+
+- Design: `docs/design/2026-05-30-memory-validity-learning-pipeline.md`
+- Plan:
+  `docs/superpowers/plans/2026-05-30-memory-validity-learning-pipeline.md`
+- API:
+  `run_memory_validity_learning_pipeline(inputs, output_dir=..., ...)`
+- CLI:
+  `python -m objectnav_core.cli.run_habitat_memory_validity_learning_pipeline <inputs...> --output-dir <dir>`
+
+The pipeline writes `dataset.json`, `examples.csv`, `model.json`,
+`scores.json`, `scores.csv`, and `pipeline_report.json`. Suggested first Linux
+run once SSH is reachable:
+
+```bash
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_memory_validity_learning_pipeline \
+  runs/habitat_closed_loop_dual_anchor/grounding_dino_goal_object_relocation_ranked_navmesh_event_posterior_balanced6_20260530_v1 \
+  --output-dir runs/habitat_closed_loop_dual_anchor/memory_validity_learning_grounding_dino_ranked_relocation_balanced6_20260530_v1 \
+  --features memory_evidence_detector_precision,memory_action_count,fallback_action_count,fallback_from_memory_action_count,relocation_pair_distance_m,memory_reliability_current_evidence,memory_reliability_matching,memory_reliability_transform_covariance,memory_reliability_recency,memory_detector_event_count,memory_detector_event_confirmed_weight,memory_detector_event_suppressed_weight,memory_detector_event_posterior \
+  --holdout-field category \
+  --holdout-values toilet
+```
+
+Local verification after adding the pipeline: focused pipeline/model/exporter
+tests produced `13` passed, `py_compile` passed for the pipeline API and CLI,
+the full local core suite produced `278` passed, and `git diff --check` was
+clean.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -250,6 +278,7 @@ trainer/model modules, the full local core suite produced `276` passed, and
 - `docs/design/2026-05-30-memory-validity-logistic-baseline.md`
 - `docs/design/2026-05-30-memory-validity-learned-decision-scorer.md`
 - `docs/design/2026-05-30-memory-validity-heldout-evaluation.md`
+- `docs/design/2026-05-30-memory-validity-learning-pipeline.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
@@ -274,6 +303,8 @@ trainer/model modules, the full local core suite produced `276` passed, and
 - `docs/superpowers/plans/2026-05-30-memory-validity-logistic-baseline.md`
 - `docs/superpowers/plans/2026-05-30-memory-validity-learned-decision-scorer.md`
 - `docs/superpowers/plans/2026-05-30-memory-validity-heldout-evaluation.md`
+- `docs/superpowers/plans/2026-05-30-memory-validity-learning-pipeline.md`
+- `src/objectnav_core/objectnav_core/cli/run_habitat_memory_validity_learning_pipeline.py`
 - `src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py`
 - `src/objectnav_core/objectnav_core/cli/score_habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/cli/train_habitat_memory_validity_model.py`
@@ -282,6 +313,7 @@ trainer/model modules, the full local core suite produced `276` passed, and
 - `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_decision_sensitivity.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_memory_validity_model.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_memory_validity_pipeline.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
@@ -295,6 +327,7 @@ trainer/model modules, the full local core suite produced `276` passed, and
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py`
 - `src/objectnav_core/tests/test_habitat_decision_sensitivity.py`
 - `src/objectnav_core/tests/test_habitat_memory_validity_model.py`
+- `src/objectnav_core/tests/test_habitat_memory_validity_pipeline.py`
 - `src/objectnav_core/tests/test_habitat_action_follower.py`
 - `src/objectnav_core/tests/test_dual_anchor_geometry.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure.py`
