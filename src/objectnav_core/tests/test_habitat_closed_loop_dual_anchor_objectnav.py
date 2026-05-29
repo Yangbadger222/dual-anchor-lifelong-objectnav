@@ -25,6 +25,7 @@ def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> N
     assert summary["policies"] == ["memory_guided", "frontier_only", "naive_count"]
     assert summary["session_restart"]["frame_transform"]["dx"] != 0.0
     assert summary["session_restart"]["frame_transform"]["dy"] != 0.0
+    assert summary["frontier_proxy_waypoints"] == 2
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 

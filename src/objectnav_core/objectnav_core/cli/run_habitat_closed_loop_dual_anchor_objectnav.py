@@ -6,6 +6,7 @@ from typing import Sequence
 from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import (
     DEFAULT_AMBIGUITY_MARGIN,
     DEFAULT_GATE_THRESHOLD,
+    DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     DEFAULT_MAX_GROUPS,
     DEFAULT_SENSOR_HEIGHT,
     DEFAULT_SENSOR_WIDTH,
@@ -39,6 +40,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sensor-height", type=int, default=DEFAULT_SENSOR_HEIGHT)
     parser.add_argument("--gate-threshold", type=float, default=DEFAULT_GATE_THRESHOLD)
     parser.add_argument("--ambiguity-margin", type=float, default=DEFAULT_AMBIGUITY_MARGIN)
+    parser.add_argument(
+        "--frontier-proxy-waypoints",
+        type=int,
+        default=DEFAULT_FRONTIER_PROXY_WAYPOINTS,
+    )
     parser.add_argument("--preflight-only", action="store_true")
     return parser
 
@@ -61,6 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sensor_height=args.sensor_height,
         gate_threshold=args.gate_threshold,
         ambiguity_margin=args.ambiguity_margin,
+        frontier_proxy_waypoints=args.frontier_proxy_waypoints,
     )
     return 0
 

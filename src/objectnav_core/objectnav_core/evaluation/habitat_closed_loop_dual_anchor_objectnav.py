@@ -22,6 +22,7 @@ DEFAULT_SENSOR_HEIGHT = 720
 DEFAULT_MAX_GROUPS = 1
 DEFAULT_GATE_THRESHOLD = 5.991
 DEFAULT_AMBIGUITY_MARGIN = 0.5
+DEFAULT_FRONTIER_PROXY_WAYPOINTS = 2
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
+    frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -64,6 +66,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
+        frontier_proxy_waypoints=frontier_proxy_waypoints,
     )
     summary = _base_summary(
         task="habitat_closed_loop_dual_anchor_objectnav_preflight",
@@ -77,6 +80,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
+        frontier_proxy_waypoints=frontier_proxy_waypoints,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -94,6 +98,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
+    frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -105,11 +110,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
+        frontier_proxy_waypoints=frontier_proxy_waypoints,
     )
 
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
         _build_lifecycle_groups,
         _cached_action_route_sequence,
+        _search_proxy_route_goals,
         _choose_lifecycle_anchor_candidate,
         _choose_lifecycle_fallback_candidate,
         _episode_selection_key,
@@ -230,7 +237,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     sim=sim,
                     start_position=group.query_episode.start_position,
                     start_rotation=group.query_episode.start_rotation,
-                    route_goals=(fallback_candidate.position,),
+                    route_goals=_search_proxy_route_goals(
+                        sim=sim,
+                        start=group.query_episode.start_position,
+                        goal=fallback_candidate.position,
+                        seed=313 + len(rows),
+                        waypoint_count=frontier_proxy_waypoints,
+                    )[0],
                 )
                 fallback_from_memory_route = _cached_action_route_sequence(
                     cache=action_route_cache,
@@ -279,6 +292,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         sensor_height=sensor_height,
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
+        frontier_proxy_waypoints=frontier_proxy_waypoints,
     )
     summary.update(
         {
@@ -382,6 +396,7 @@ def _base_summary(
     sensor_height: int,
     gate_threshold: float,
     ambiguity_margin: float,
+    frontier_proxy_waypoints: int,
 ) -> dict[str, Any]:
     return {
         "task": task,
@@ -394,6 +409,7 @@ def _base_summary(
         "sensor_resolution": {"width": int(sensor_width), "height": int(sensor_height)},
         "gate_threshold": float(gate_threshold),
         "ambiguity_margin": float(ambiguity_margin),
+        "frontier_proxy_waypoints": int(frontier_proxy_waypoints),
         "session_restart": {
             "memory_frame_id": "map_session_1",
             "runtime_frame_id": "map_session_2",
@@ -417,6 +433,7 @@ def _validate_common(
     sensor_height: int,
     gate_threshold: float,
     ambiguity_margin: float,
+    frontier_proxy_waypoints: int,
 ) -> None:
     unknown_policies = sorted(set(policies) - set(POLICIES))
     if unknown_policies:
@@ -432,6 +449,8 @@ def _validate_common(
         raise ValueError("gate_threshold must be positive")
     if ambiguity_margin < 0.0:
         raise ValueError("ambiguity_margin must be non-negative")
+    if frontier_proxy_waypoints < 0:
+        raise ValueError("frontier_proxy_waypoints must be non-negative")
 
 
 def _session_restart_transform() -> FrameTransform2D:

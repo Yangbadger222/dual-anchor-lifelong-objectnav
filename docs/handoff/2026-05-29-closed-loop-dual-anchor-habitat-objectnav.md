@@ -125,6 +125,10 @@ Pending:
 - The Habitat closed-loop runner is currently oracle/action-level. It executes
   real Habitat GreedyGeodesic routes, but it does not yet run Grounding-DINO
   per-step perception or true frontier mapping.
+- The first Linux Habitat smoke selected a plant group where direct memory and
+  direct fallback routes were identical. `frontier_only` has since been changed
+  to use deterministic `frontier_proxy_waypoints` before the fallback goal;
+  rerun the smoke before interpreting policy deltas.
 - The current grid smoke does not beat `naive_count`; after the shared gate,
   memory-guided and naive-count tie. Treat this as plumbing/pressure validation,
   not a headline result.
@@ -138,7 +142,7 @@ Pending:
 
 1. Push the closed-loop grid harness.
 2. Verify it on Linux in the `habitat` conda environment.
-3. Run the Habitat oracle/action smoke with `--max-groups 1`.
+3. Rerun the Habitat oracle/action smoke with `--max-groups 1`.
 4. Replace oracle visibility with Grounding-DINO observations and add object
    relocation/removal pressure.
 
