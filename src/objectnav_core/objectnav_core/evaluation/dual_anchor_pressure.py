@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Sequence
 
 from objectnav_core.geometry.dual_anchor import (
@@ -66,3 +68,32 @@ def run_dual_anchor_matching_pressure(
         "outside_gate_count": sum(1 for row in rows if row["reason"] == "outside_gate"),
         "rows": rows,
     }
+
+
+def run_dual_anchor_matching_pressure_report(
+    output_dir: str | Path,
+    *,
+    cases: Sequence[DualAnchorPressureCase],
+    gate_threshold: float,
+    ambiguity_margin: float,
+) -> dict[str, object]:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    summary = run_dual_anchor_matching_pressure(
+        cases=cases,
+        gate_threshold=gate_threshold,
+        ambiguity_margin=ambiguity_margin,
+    )
+    summary.update(
+        {
+            "task": "dual_anchor_matching_pressure",
+            "gate_threshold": float(gate_threshold),
+            "ambiguity_margin": float(ambiguity_margin),
+            "artifact_files": {"summary": "summary.json"},
+        }
+    )
+    (output_path / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return summary
