@@ -786,7 +786,9 @@ def make_habitat_closed_loop_option_row(
         distance = plan.fallback_executed_distance_m
         success = plan.fallback_verified
         memory_reused = False
-    elif plan.matching_reason in {"ambiguous", "expected_utility_frontier"}:
+    elif plan.matching_reason in {"ambiguous", "expected_utility_frontier"} or (
+        plan.policy == "memory_guided" and plan.memory_decision == "frontier_first"
+    ):
         selected = ["frontier"]
         action_count = plan.fallback_action_count
         distance = plan.fallback_executed_distance_m
@@ -1178,9 +1180,9 @@ def _memory_decision_for_row(
     matching_reason: str,
     raw_memory_decision: str,
 ) -> str:
-    if policy != "memory_guided":
+    if policy == "frontier_only":
         return "memory_first"
-    if matching_reason == "accepted":
+    if policy == "naive_count":
         return "memory_first"
     return raw_memory_decision
 

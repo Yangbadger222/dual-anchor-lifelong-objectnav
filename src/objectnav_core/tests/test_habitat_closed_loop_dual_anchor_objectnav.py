@@ -300,14 +300,14 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
     assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22
 
 
-def test_accepted_repaired_memory_records_memory_first_decision() -> None:
+def test_memory_guided_accepted_memory_keeps_expected_utility_frontier_decision() -> None:
     assert (
         closed_loop._memory_decision_for_row(
             policy="memory_guided",
             matching_reason="accepted",
             raw_memory_decision="frontier_first",
         )
-        == "memory_first"
+        == "frontier_first"
     )
     assert (
         closed_loop._memory_decision_for_row(
@@ -317,6 +317,72 @@ def test_accepted_repaired_memory_records_memory_first_decision() -> None:
         )
         == "frontier_first"
     )
+
+
+def test_naive_count_accepted_memory_ignores_expected_utility_frontier_decision() -> None:
+    assert (
+        closed_loop._memory_decision_for_row(
+            policy="naive_count",
+            matching_reason="accepted",
+            raw_memory_decision="frontier_first",
+        )
+        == "memory_first"
+    )
+
+
+def test_memory_guided_row_selects_frontier_when_expected_utility_prefers_it() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=139,
+            memory_executed_distance_m=22.45,
+            fallback_action_count=124,
+            fallback_executed_distance_m=20.22,
+            fallback_from_memory_action_count=400,
+            fallback_from_memory_executed_distance_m=60.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            fallback_from_memory_verified=False,
+            memory_decision="frontier_first",
+            expected_memory_first_action_count=339.0,
+            expected_frontier_first_action_count=124.0,
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["frontier"]
+    assert row["memory_reused"] is False
+    assert row["action_count"] == 124
+    assert row["success"] is True
+
+
+def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="naive_count",
+            memory_action_count=139,
+            memory_executed_distance_m=22.45,
+            fallback_action_count=124,
+            fallback_executed_distance_m=20.22,
+            fallback_from_memory_action_count=400,
+            fallback_from_memory_executed_distance_m=60.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            fallback_from_memory_verified=False,
+            memory_decision="memory_first",
+            expected_memory_first_action_count=339.0,
+            expected_frontier_first_action_count=124.0,
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["memory"]
+    assert row["memory_reused"] is True
+    assert row["action_count"] == 139
 
 
 def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> None:

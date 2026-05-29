@@ -45,6 +45,9 @@ Implemented foundation:
   zero-translation scan actions.
 - Repaired-memory direct route accounting for repeated stale queries.
 - Expected-utility memory-vs-frontier decisions using `--memory-valid-prior`.
+  `memory_guided` can defer from an accepted memory to frontier when expected
+  action cost prefers frontier-first; `naive_count` remains the always-reuse
+  accepted-memory baseline.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
@@ -157,6 +160,18 @@ Passed locally before this handoff update:
   `21` passed.
 - Full local core tests after fixed-heading scan support: `207` passed.
 - `git diff --check` passed after fixed-heading scan support.
+- Linux focused Habitat tests after pulling fixed-heading scan support:
+  `21` passed.
+- Linux 1-group oracle navmesh heading-sweep smoke completed successfully with
+  `--frontier-probe-count 5 --frontier-probe-heading-count 4`. It produced
+  `frontier_only=124` actions and success through
+  `navmesh_frontier_probe:1:heading:3`, while `memory_guided` and
+  `naive_count` used accepted memory at `139` actions. This is a mechanism
+  validation, not evidence that memory is better.
+- Local closed-loop Habitat/CLI tests after cost-aware accepted-memory support:
+  `24` passed.
+- Full local core tests after cost-aware accepted-memory support: `210` passed.
+- `git diff --check` passed after cost-aware accepted-memory support.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -220,12 +235,16 @@ Passed locally before this handoff update:
 - `memory_valid_prior=0.5` is a hand-set expected-utility prior. The sensitivity
   run with `0.8` was worse (`memory_guided=2151` actions on unbalanced max6
   versus `1917` at `0.5`), so this should become learned or evidence-derived.
+- The current accepted-memory policy fix should be rerun on Linux before
+  scaling. It is expected to make `memory_guided` choose frontier in the
+  1-group heading-sweep smoke because frontier-first is cheaper there.
 
 ## Next Recommended Step
 
-1. Pull the fixed-heading scan update on Linux and rerun a 1-group Habitat smoke
-   with `--frontier-mode navmesh_frontier`; inspect probe source/evidence fields
-   before scaling.
+1. Pull the cost-aware accepted-memory update on Linux and rerun the 1-group
+   Habitat heading-sweep smoke; confirm `memory_guided` records
+   `memory_decision=frontier_first` and selects frontier while `naive_count`
+   still reuses accepted memory.
 2. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
 3. Move Grounding-DINO from selected candidate-view verification to per-action

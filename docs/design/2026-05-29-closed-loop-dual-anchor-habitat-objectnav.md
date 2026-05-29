@@ -194,6 +194,10 @@ Local implementation status:
 - Query-start fallback and post-memory fallback use separate probe sequences.
   Repeated stale queries only reuse a repaired anchor if the post-memory probe
   route found a positive verification.
+- `memory_guided` should treat an accepted memory as an option, not a command:
+  if the expected memory-first action cost is higher than frontier-first,
+  it should defer to frontier while `naive_count` remains the always-reuse
+  memory baseline.
 
 Scope for this slice:
 
