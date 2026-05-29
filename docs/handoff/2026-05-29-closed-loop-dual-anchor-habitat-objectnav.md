@@ -200,6 +200,12 @@ Passed locally before this handoff update:
   frontier for plant, and succeeded in all 3 episodes. This is the first
   navmesh smoke in this slice where memory-guided beats both frontier-only and
   naive-count, but it is still only a 3-group oracle smoke.
+- Linux balanced6 evidence-reliability oracle navmesh smoke completed
+  successfully. It produced `memory_guided=565`, `frontier_only=943`, and
+  `naive_count=575` actions. `memory_guided` selected memory for chair, toilet,
+  bed, and tv_monitor; frontier for plant and sofa; and succeeded in all 6
+  episodes. The gain over naive-count is small (`10` actions), so this is a
+  useful direction check, not a benchmark claim.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -271,9 +277,9 @@ Passed locally before this handoff update:
   chair memory. Treat this as evidence for learning/estimating memory
   reliability, not as a reason to manually tune the prior.
 - Evidence reliability mode now has a Linux balanced3 smoke. It improves this
-  tiny oracle run, but it uses oracle/Grounding-DINO candidate-view evidence
-  rather than per-action perception and remains a transparent heuristic, not
-  learned calibration.
+  tiny oracle run and a balanced6 direction check, but it uses
+  oracle/Grounding-DINO candidate-view evidence rather than per-action
+  perception and remains a transparent heuristic, not learned calibration.
 
 ## Next Recommended Step
 
