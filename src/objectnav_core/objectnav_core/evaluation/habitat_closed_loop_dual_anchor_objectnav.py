@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
+
+import numpy as np
 
 from objectnav_core.geometry.dual_anchor import FrameTransform2D
 
@@ -24,6 +26,11 @@ DEFAULT_MAX_GROUPS = 1
 DEFAULT_GATE_THRESHOLD = 5.991
 DEFAULT_AMBIGUITY_MARGIN = 0.5
 DEFAULT_FRONTIER_PROXY_WAYPOINTS = 2
+SUPPORTED_FRONTIER_MODES: tuple[str, ...] = ("search_proxy", "navmesh_frontier")
+DEFAULT_FRONTIER_MODE = "search_proxy"
+DEFAULT_FRONTIER_PROBE_COUNT = 8
+DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
+DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
 DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
@@ -66,6 +73,7 @@ class HabitatClosedLoopOptionPlan:
     matching_reason: str
     memory_verified: bool
     fallback_verified: bool
+    fallback_from_memory_verified: bool | None = None
     stale_repair: bool = False
     query_repeat_index: int = 0
     memory_decision: str = "memory_first"
@@ -74,8 +82,19 @@ class HabitatClosedLoopOptionPlan:
     expected_frontier_first_action_count: float | None = None
     memory_anchor_source: str = ""
     fallback_anchor_source: str = ""
+    fallback_from_memory_anchor_source: str = ""
     memory_evidence: dict[str, Any] | None = None
     fallback_evidence: dict[str, Any] | None = None
+    fallback_from_memory_evidence: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class NavmeshFrontierRouteResult:
+    route: Any
+    selected_probe_source: str
+    selected_probe_position: tuple[float, float, float] | None
+    selected_verification: Any
+    verification_count: int
 
 
 def run_habitat_closed_loop_dual_anchor_preflight(
@@ -91,6 +110,8 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
+    frontier_mode: str = DEFAULT_FRONTIER_MODE,
+    frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -118,6 +139,8 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
+        frontier_mode=frontier_mode,
+        frontier_probe_count=frontier_probe_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -144,6 +167,8 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
+        frontier_mode=frontier_mode,
+        frontier_probe_count=frontier_probe_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -177,6 +202,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     gate_threshold: float = DEFAULT_GATE_THRESHOLD,
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
+    frontier_mode: str = DEFAULT_FRONTIER_MODE,
+    frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -204,6 +231,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
+        frontier_mode=frontier_mode,
+        frontier_probe_count=frontier_probe_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -435,38 +464,117 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     start_rotation=group.query_episode.start_rotation,
                     route_goals=(fallback_candidate.position,),
                 )
-                fallback_route = _cached_action_route_sequence(
-                    cache=action_route_cache,
-                    habitat_sim=habitat_sim,
-                    sim=sim,
-                    start_position=group.query_episode.start_position,
-                    start_rotation=group.query_episode.start_rotation,
-                    route_goals=_search_proxy_route_goals(
+                fallback_from_memory_verification = fallback_verification
+                fallback_from_memory_anchor_source = fallback_candidate.source
+                fallback_from_memory_evidence_source = fallback_verification
+                if frontier_mode == "search_proxy":
+                    fallback_route = _cached_action_route_sequence(
+                        cache=action_route_cache,
+                        habitat_sim=habitat_sim,
                         sim=sim,
-                        start=group.query_episode.start_position,
-                        goal=fallback_candidate.position,
+                        start_position=group.query_episode.start_position,
+                        start_rotation=group.query_episode.start_rotation,
+                        route_goals=_search_proxy_route_goals(
+                            sim=sim,
+                            start=group.query_episode.start_position,
+                            goal=fallback_candidate.position,
+                            seed=313 + len(rows),
+                            waypoint_count=frontier_proxy_waypoints,
+                        )[0],
+                    )
+                    fallback_from_memory_route = _cached_action_route_sequence(
+                        cache=action_route_cache,
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        start_position=memory_candidate.position,
+                        start_rotation=memory_candidate.rotation,
+                        route_goals=_search_proxy_route_goals(
+                            sim=sim,
+                            start=memory_candidate.position,
+                            goal=fallback_candidate.position,
+                            seed=313 + len(rows) + 500000,
+                            waypoint_count=(
+                                frontier_proxy_waypoints
+                                if challenge == "stale_proxy"
+                                else 0
+                            ),
+                        )[0],
+                    )
+                else:
+                    fallback_result = _navmesh_frontier_result(
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        helpers=helper_bundle,
+                        start_position=group.query_episode.start_position,
+                        start_rotation=group.query_episode.start_rotation,
                         seed=313 + len(rows),
-                        waypoint_count=frontier_proxy_waypoints,
-                    )[0],
-                )
-                fallback_from_memory_route = _cached_action_route_sequence(
-                    cache=action_route_cache,
-                    habitat_sim=habitat_sim,
-                    sim=sim,
-                    start_position=memory_candidate.position,
-                    start_rotation=memory_candidate.rotation,
-                    route_goals=_search_proxy_route_goals(
-                        sim=sim,
-                        start=memory_candidate.position,
-                        goal=fallback_candidate.position,
-                        seed=313 + len(rows) + 500000,
-                        waypoint_count=(
-                            frontier_proxy_waypoints
-                            if challenge == "stale_proxy"
-                            else 0
+                        probe_count=frontier_probe_count,
+                        frame_index_base=base_frame_index + 300,
+                    )
+                    fallback_route = fallback_result.route
+                    fallback_verification = fallback_result.selected_verification
+                    fallback_candidate = _replace_candidate_pose(
+                        fallback_candidate,
+                        source=fallback_result.selected_probe_source,
+                        position=(
+                            fallback_result.selected_probe_position
+                            or fallback_candidate.position
                         ),
-                    )[0],
-                )
+                        rotation=tuple(fallback_route.final_rotation),
+                    )
+                    fallback_from_memory_result = _navmesh_frontier_result(
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        helpers=helper_bundle,
+                        start_position=memory_candidate.position,
+                        start_rotation=memory_candidate.rotation,
+                        seed=313 + len(rows) + 500000,
+                        probe_count=frontier_probe_count,
+                        frame_index_base=base_frame_index + 400,
+                    )
+                    fallback_from_memory_route = fallback_from_memory_result.route
+                    fallback_from_memory_verification = (
+                        fallback_from_memory_result.selected_verification
+                    )
+                    fallback_from_memory_anchor_source = (
+                        fallback_from_memory_result.selected_probe_source
+                    )
+                    fallback_from_memory_evidence_source = (
+                        fallback_from_memory_result.selected_verification
+                    )
+                    if fallback_from_memory_result.selected_probe_position is not None:
+                        repaired_memory_route = _cached_action_route_sequence(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=group.query_episode.start_position,
+                            start_rotation=group.query_episode.start_rotation,
+                            route_goals=(
+                                fallback_from_memory_result.selected_probe_position,
+                            ),
+                        )
                 for policy in policies:
                     for repeat_index in range(query_repeats):
                         matching_reason = _matching_reason_for_repeat(
@@ -474,12 +582,26 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             policy=policy,
                             repeat_index=repeat_index,
                         )
+                        repair_succeeded = bool(
+                            fallback_from_memory_verification.shared_gate_success
+                        )
+                        if (
+                            challenge == "stale_proxy"
+                            and policy == "memory_guided"
+                            and repeat_index > 0
+                            and not repair_succeeded
+                        ):
+                            matching_reason = "no_current_observation"
                         active_memory_route = _active_memory_route_for_repeat(
                             challenge=challenge,
                             policy=policy,
                             repeat_index=repeat_index,
                             initial_memory_route=memory_route,
-                            repaired_memory_route=repaired_memory_route,
+                            repaired_memory_route=(
+                                repaired_memory_route
+                                if repair_succeeded
+                                else memory_route
+                            ),
                             fallback_route=fallback_route,
                         )
                         expected_memory_first = _expected_memory_first_action_count(
@@ -509,7 +631,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             policy=policy,
                             repeat_index=repeat_index,
                             initial_memory_verification=initial_memory_verification,
-                            repaired_memory_verification=fallback_verification,
+                            repaired_memory_verification=(
+                                fallback_from_memory_verification
+                                if repair_succeeded
+                                else initial_memory_verification
+                            ),
                         )
                         rows.append(
                             make_habitat_closed_loop_option_row(
@@ -542,6 +668,9 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     fallback_verified=(
                                         fallback_verification.shared_gate_success
                                     ),
+                                    fallback_from_memory_verified=(
+                                        fallback_from_memory_verification.shared_gate_success
+                                    ),
                                     stale_repair=(
                                         policy != "frontier_only"
                                         and matching_reason == "no_current_observation"
@@ -561,11 +690,17 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     ),
                                     memory_anchor_source=memory_candidate.source,
                                     fallback_anchor_source=fallback_candidate.source,
+                                    fallback_from_memory_anchor_source=(
+                                        fallback_from_memory_anchor_source
+                                    ),
                                     memory_evidence=_verification_payload(
                                         active_memory_verification
                                     ),
                                     fallback_evidence=_verification_payload(
                                         fallback_verification
+                                    ),
+                                    fallback_from_memory_evidence=_verification_payload(
+                                        fallback_from_memory_evidence_source
                                     ),
                                 )
                             )
@@ -586,6 +721,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         gate_threshold=gate_threshold,
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
+        frontier_mode=frontier_mode,
+        frontier_probe_count=frontier_probe_count,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -652,7 +789,11 @@ def make_habitat_closed_loop_option_row(
         distance = plan.memory_executed_distance_m
         success = True
         memory_reused = True
-    elif plan.fallback_verified:
+    elif (
+        plan.fallback_from_memory_verified
+        if plan.fallback_from_memory_verified is not None
+        else plan.fallback_verified
+    ):
         selected = ["memory", "frontier"]
         action_count = plan.memory_action_count + plan.fallback_from_memory_action_count
         distance = (
@@ -696,8 +837,10 @@ def make_habitat_closed_loop_option_row(
         ),
         "memory_anchor_source": plan.memory_anchor_source,
         "fallback_anchor_source": plan.fallback_anchor_source,
+        "fallback_from_memory_anchor_source": plan.fallback_from_memory_anchor_source,
         "memory_evidence": plan.memory_evidence,
         "fallback_evidence": plan.fallback_evidence,
+        "fallback_from_memory_evidence": plan.fallback_from_memory_evidence,
         "memory_decision": plan.memory_decision,
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
         "expected_memory_first_action_count": (
@@ -727,6 +870,8 @@ def _base_summary(
     gate_threshold: float,
     ambiguity_margin: float,
     frontier_proxy_waypoints: int,
+    frontier_mode: str,
+    frontier_probe_count: int,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -755,6 +900,8 @@ def _base_summary(
         "gate_threshold": float(gate_threshold),
         "ambiguity_margin": float(ambiguity_margin),
         "frontier_proxy_waypoints": int(frontier_proxy_waypoints),
+        "frontier_mode": frontier_mode,
+        "frontier_probe_count": int(frontier_probe_count),
         "challenge": challenge,
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
@@ -787,7 +934,7 @@ def _base_summary(
             "Preflight does not import Habitat or detector weights.",
             "Current Habitat slice is option-level action smoke, not official SPL.",
             "Grounding-DINO is applied at selected memory/fallback candidate views, not every action step yet.",
-            "Frontier remains a deterministic search proxy until the next benchmark slice.",
+            "navmesh_frontier samples deterministic navmesh probes but is not an occupancy-grid frontier.",
         ],
     }
 
@@ -802,6 +949,8 @@ def _validate_common(
     gate_threshold: float,
     ambiguity_margin: float,
     frontier_proxy_waypoints: int,
+    frontier_mode: str,
+    frontier_probe_count: int,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -831,6 +980,12 @@ def _validate_common(
         raise ValueError("ambiguity_margin must be non-negative")
     if frontier_proxy_waypoints < 0:
         raise ValueError("frontier_proxy_waypoints must be non-negative")
+    if frontier_mode not in SUPPORTED_FRONTIER_MODES:
+        raise ValueError(
+            "frontier_mode must be one of: " + ", ".join(SUPPORTED_FRONTIER_MODES)
+        )
+    if frontier_probe_count <= 0:
+        raise ValueError("frontier_probe_count must be positive")
     if challenge not in SUPPORTED_CHALLENGES:
         raise ValueError(
             "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
@@ -1080,6 +1235,245 @@ def _verify_candidate_views(
     }
 
 
+def _navmesh_frontier_probe_goals(
+    *,
+    sim: Any,
+    start: Sequence[float],
+    seed: int,
+    probe_count: int,
+    min_distance_m: float = DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M,
+    sample_attempts: int = DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS,
+) -> tuple[tuple[float, float, float], ...]:
+    if probe_count <= 0:
+        raise ValueError("probe_count must be positive")
+    if min_distance_m < 0.0:
+        raise ValueError("min_distance_m must be non-negative")
+    if sample_attempts <= 0:
+        raise ValueError("sample_attempts must be positive")
+    start_tuple = _tuple3(start)
+    if start_tuple is None:
+        raise ValueError("start must be a 3D position")
+
+    pathfinder = sim.pathfinder
+    if hasattr(sim, "seed"):
+        sim.seed(seed)
+    elif hasattr(pathfinder, "seed"):
+        pathfinder.seed(seed)
+    goals: list[tuple[float, float, float]] = []
+    for _ in range(sample_attempts):
+        if len(goals) >= probe_count:
+            break
+        point = _tuple3(pathfinder.get_random_navigable_point())
+        if point is None:
+            continue
+        if not bool(pathfinder.is_navigable(point)):
+            continue
+        if _distance3(start_tuple, point) < min_distance_m:
+            continue
+        if any(_distance3(point, existing) < min_distance_m for existing in goals):
+            continue
+        goals.append(point)
+    return tuple(goals)
+
+
+def _run_navmesh_frontier_probe_route(
+    *,
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    probe_goals: Sequence[Sequence[float]],
+    route_segment: Any,
+    verify_probe: Any,
+) -> NavmeshFrontierRouteResult:
+    current_position = _tuple3(start_position)
+    current_rotation = _tuple4(start_rotation)
+    if current_position is None or current_rotation is None:
+        raise ValueError("start position and rotation must be valid")
+
+    actions: list[str] = []
+    executed_distance_m = 0.0
+    reached_stop = bool(probe_goals)
+    selected_verification: Any | None = None
+    selected_source = "navmesh_frontier_probe:none"
+    selected_position: tuple[float, float, float] | None = None
+    verification_count = 0
+
+    for probe_index, raw_goal in enumerate(probe_goals):
+        goal = _tuple3(raw_goal)
+        if goal is None:
+            raise ValueError("probe_goals must contain valid 3D positions")
+        segment = route_segment(
+            start_position=current_position,
+            start_rotation=current_rotation,
+            goal_position=goal,
+        )
+        actions.extend(str(action) for action in getattr(segment, "actions", ()))
+        executed_distance_m += float(getattr(segment, "executed_distance_m", 0.0) or 0.0)
+        reached_stop = reached_stop and bool(getattr(segment, "reached_stop", False))
+        current_position = _tuple3(getattr(segment, "final_position", None)) or goal
+        current_rotation = (
+            _tuple4(getattr(segment, "final_rotation", None)) or current_rotation
+        )
+        selected_source = f"navmesh_frontier_probe:{probe_index}"
+        verification_count += 1
+        selected_verification = verify_probe(
+            source=selected_source,
+            position=current_position,
+            rotation=current_rotation,
+            probe_index=probe_index,
+        )
+        selected_position = current_position
+        if bool(selected_verification.shared_gate_success):
+            break
+
+    if selected_verification is None:
+        selected_verification = _OracleVisible(target_visible=False)
+    return NavmeshFrontierRouteResult(
+        route=_RouteAggregate(
+            actions=tuple(actions),
+            reached_stop=reached_stop,
+            final_position=current_position,
+            final_rotation=current_rotation,
+            executed_distance_m=round(executed_distance_m, 6),
+        ),
+        selected_probe_source=selected_source,
+        selected_probe_position=selected_position,
+        selected_verification=selected_verification,
+        verification_count=verification_count,
+    )
+
+
+def _navmesh_frontier_result(
+    *,
+    habitat_sim: Any,
+    sim: Any,
+    target_semantic_ids: Sequence[int],
+    target_category: str,
+    detector: str,
+    detector_adapter: Any,
+    accepted_detection_labels: set[str],
+    noise_level: str,
+    rgb_noise: Any,
+    depth_noise: Any,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    helpers: dict[str, Any],
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    seed: int,
+    probe_count: int,
+    frame_index_base: int,
+) -> NavmeshFrontierRouteResult:
+    from objectnav_core.evaluation.habitat_action_follower import (
+        follow_greedy_geodesic_route,
+    )
+    from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
+        DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
+        _verify_lifecycle_view,
+    )
+
+    probe_goals = _navmesh_frontier_probe_goals(
+        sim=sim,
+        start=start_position,
+        seed=seed,
+        probe_count=probe_count,
+    )
+
+    def route_segment(
+        *,
+        start_position: Sequence[float],
+        start_rotation: Sequence[float],
+        goal_position: Sequence[float],
+    ) -> Any:
+        return follow_greedy_geodesic_route(
+            habitat_sim=habitat_sim,
+            sim=sim,
+            start_position=start_position,
+            start_rotation=start_rotation,
+            goal_position=goal_position,
+            max_steps=DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
+            goal_radius=0.2,
+        )
+
+    def verify_probe(
+        *,
+        source: str,
+        position: tuple[float, float, float],
+        rotation: tuple[float, float, float, float],
+        probe_index: int,
+    ) -> Any:
+        del source
+        if detector == "oracle_semantic_visibility":
+            return _verify_oracle_pose(
+                sim=sim,
+                position=position,
+                rotation=rotation,
+                target_semantic_ids=target_semantic_ids,
+                min_target_pixels=min_target_pixels,
+            )
+        return _verify_lifecycle_view(
+            sim=sim,
+            position=position,
+            rotation=rotation,
+            target_semantic_ids=target_semantic_ids,
+            target_category=target_category,
+            detector=detector,
+            detector_adapter=detector_adapter,
+            accepted_detection_labels=accepted_detection_labels,
+            noise_level=noise_level,
+            rgb_noise=rgb_noise,
+            depth_noise=depth_noise,
+            frame_index=frame_index_base + probe_index,
+            min_target_pixels=min_target_pixels,
+            min_detector_pixels=min_detector_pixels,
+            max_detection_area_ratio=max_detection_area_ratio,
+            helpers=helpers,
+        )
+
+    return _run_navmesh_frontier_probe_route(
+        start_position=start_position,
+        start_rotation=start_rotation,
+        probe_goals=probe_goals,
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+    )
+
+
+def _verify_oracle_pose(
+    *,
+    sim: Any,
+    position: tuple[float, float, float],
+    rotation: tuple[float, float, float, float],
+    target_semantic_ids: Sequence[int],
+    min_target_pixels: int,
+) -> _OracleVisible:
+    agent = sim.initialize_agent(0)
+    state = agent.get_state()
+    state.position = np.asarray(position, dtype=float)
+    state.rotation = list(rotation)
+    agent.set_state(state)
+    observations = sim.get_sensor_observations()
+    semantic = np.asarray(observations["semantic"])
+    target_pixels = int(np.isin(semantic, list(target_semantic_ids)).sum())
+    return _OracleVisible(
+        target_visible=target_pixels >= min_target_pixels,
+        oracle_target_pixels=target_pixels,
+    )
+
+
+def _replace_candidate_pose(
+    candidate: Any,
+    *,
+    source: str,
+    position: tuple[float, float, float],
+    rotation: tuple[float, float, float, float],
+) -> Any:
+    try:
+        return replace(candidate, source=source, position=position, rotation=rotation)
+    except TypeError:
+        return candidate
+
+
 def _verification_payload(verification: Any) -> dict[str, Any]:
     evidence_type = getattr(verification, "evidence_type", None)
     if evidence_type is None:
@@ -1131,6 +1525,33 @@ def _transform_payload(transform: FrameTransform2D) -> dict[str, Any]:
     }
 
 
+def _tuple3(value: Any) -> tuple[float, float, float] | None:
+    if value is None:
+        return None
+    try:
+        values = tuple(float(part) for part in value)
+    except TypeError:
+        return None
+    return values if len(values) == 3 else None
+
+
+def _tuple4(value: Any) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    try:
+        values = tuple(float(part) for part in value)
+    except TypeError:
+        return None
+    return values if len(values) == 4 else None
+
+
+def _distance3(
+    first: Sequence[float],
+    second: Sequence[float],
+) -> float:
+    return float(np.linalg.norm(np.asarray(first, dtype=float) - np.asarray(second, dtype=float)))
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -1168,6 +1589,19 @@ class _StaleProxyVerification:
     @property
     def shared_gate_success(self) -> bool:
         return False
+
+
+@dataclass(frozen=True)
+class _RouteAggregate:
+    actions: tuple[str, ...]
+    reached_stop: bool
+    final_position: tuple[float, float, float]
+    final_rotation: tuple[float, float, float, float]
+    executed_distance_m: float
+
+    @property
+    def action_count(self) -> int:
+        return len(self.actions)
 
 
 def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:

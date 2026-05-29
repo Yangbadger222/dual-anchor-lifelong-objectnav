@@ -36,6 +36,11 @@ Implemented foundation:
   It reuses existing Habitat episode/group selection and GreedyGeodesic route
   execution. It now supports `--challenge stable|ambiguous|stale_proxy` and
   `--detector oracle_semantic_visibility|grounding_dino`.
+- The Habitat smoke now supports
+  `--frontier-mode search_proxy|navmesh_frontier`. `search_proxy` is still the
+  default. `navmesh_frontier` samples target-agnostic pathfinder probes,
+  follows and verifies them one at a time, and stops at the first positive
+  shared gate.
 - Repaired-memory direct route accounting for repeated stale queries.
 - Expected-utility memory-vs-frontier decisions using `--memory-valid-prior`.
 - Category-balanced group selection before duplicate categories when
@@ -98,6 +103,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest 
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_dual_anchor_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --preflight-only
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_grounding_dino_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.2 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level mild --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --preflight-only
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
 ```
 
 Linux commands run:
@@ -141,6 +147,8 @@ Passed locally before this handoff update:
 - Full local core tests after Grounding-DINO candidate-gate support: `200`
   passed.
 - Full local core tests after stale-proxy evidence correction: `201` passed.
+- Local closed-loop Habitat/CLI tests after navmesh frontier interface and
+  helper wiring: `19` passed.
 - Linux focused Habitat tests after the expected-utility CLI update: `9` passed.
 - Linux focused Habitat tests after Grounding-DINO candidate-gate support:
   `14` passed.
@@ -170,6 +178,10 @@ Passed locally before this handoff update:
   Habitat GreedyGeodesic routes and can use Grounding-DINO at selected
   memory/fallback candidate views, but it does not yet run per-action perception
   or true frontier mapping.
+- `navmesh_frontier` is target-agnostic with respect to sampled route goals, but
+  it is still a navmesh probe approximation, not an occupancy frontier built
+  from depth observations. It has only been verified locally with unit tests and
+  still needs a Linux Habitat smoke.
 - Early Linux smokes exposed invalid frontier accounting, partial challenge
   semantics, repaired-memory route mischarging, and stale-risk overprobing.
   These are fixed in the current branch and documented in the experiment
@@ -188,16 +200,18 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add a true occupancy/frontier exploration policy; the current frontier is a
-   deterministic search proxy.
-2. Move Grounding-DINO from selected candidate-view verification to per-action
+1. Run a Linux Habitat smoke with `--frontier-mode navmesh_frontier` and inspect
+   probe source/evidence fields before scaling.
+2. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+   an intermediate target-agnostic probe baseline.
+3. Move Grounding-DINO from selected candidate-view verification to per-action
    observation and stopping decisions.
-3. Implement natural Habitat object relocation/removal or a clearly labeled
+4. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-4. Scale the balanced runs beyond six groups and report confidence intervals.
-5. Estimate `memory_valid_prior` from evidence, covariance, object class, and
+5. Scale the balanced runs beyond six groups and report confidence intervals.
+6. Estimate `memory_valid_prior` from evidence, covariance, object class, and
    session age instead of fixing it by hand.
-6. Convert the smoke metrics into SPL-like metrics only after per-action
+7. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

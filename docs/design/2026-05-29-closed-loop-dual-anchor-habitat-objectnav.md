@@ -168,6 +168,56 @@ rediscovered fallback/repaired anchor becomes detector-positive. This is stronge
 than the oracle/action smoke, but it remains a proxy because the detector is not
 run at every action step and frontier is still search-proxy based.
 
+## Navmesh Frontier Slice
+
+The next implementation slice should replace the target-aware search-proxy
+frontier with a Habitat navmesh-frontier approximation. This is an intermediate
+baseline, not the final occupancy-grid frontier. Its purpose is to remove the
+most obvious unfairness: `frontier_only` should no longer receive the known
+fallback target pose as its final route goal.
+
+Local implementation status:
+
+- `--frontier-mode search_proxy|navmesh_frontier` is wired through the CLI,
+  preflight summary, and Habitat runner; `search_proxy` remains the default.
+- `navmesh_frontier` samples deterministic navigable probes from Habitat
+  `pathfinder.get_random_navigable_point()` using the requested seed, start
+  pose, minimum spacing, and probe budget.
+- The runner follows probes one at a time with the same GreedyGeodesic action
+  follower used by the existing action smoke, verifies the reached probe pose,
+  and stops on the first shared-gate positive.
+- Query-start fallback and post-memory fallback use separate probe sequences.
+  Repeated stale queries only reuse a repaired anchor if the post-memory probe
+  route found a positive verification.
+
+Scope for this slice:
+
+- support `--frontier-mode search_proxy|navmesh_frontier`;
+- keep `search_proxy` as the default for comparability with existing reports;
+- in `navmesh_frontier`, sample navigable frontier probes from the Habitat
+  pathfinder using only start pose, scene bounds, seed, and navigability;
+- route to sampled probes in a deterministic order that does not use target
+  pose or target visibility;
+- verify each probe with the same oracle/Grounding-DINO shared gate already
+  used for memory/fallback candidates;
+- stop at the first positive probe, otherwise report failure after the probe
+  budget is exhausted;
+- use the same frontier procedure for `frontier_only`, memory fallback, and
+  `naive_count` fallback.
+
+Non-scope for this slice:
+
+- building occupancy directly from depth;
+- per-action mapping and detector decisions;
+- learned frontier scoring;
+- claiming official ObjectNav SPL.
+
+This slice is expected to make `frontier_only` weaker and more realistic than
+the current search proxy, because it must discover a positive target view rather
+than routing to a target-derived fallback candidate. It is still not final paper
+evidence; it is a pressure test that should reveal how much of the current gain
+comes from repaired memory versus a target-aware fallback.
+
 ## Data Flow
 
 1. Session 1 starts in Habitat with an empty local map.

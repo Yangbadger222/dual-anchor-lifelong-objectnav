@@ -72,6 +72,21 @@ def test_habitat_closed_loop_preflight_records_grounding_dino_detector_config(
     assert summary["detector_prompt_mode"] == "target"
 
 
+def test_habitat_closed_loop_preflight_records_navmesh_frontier_config(tmp_path) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        frontier_mode="navmesh_frontier",
+        frontier_probe_count=5,
+    )
+
+    assert summary["frontier_mode"] == "navmesh_frontier"
+    assert summary["frontier_probe_count"] == 5
+
+
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
     from types import SimpleNamespace
 
@@ -369,6 +384,93 @@ def test_stale_proxy_forces_initial_memory_verification_to_non_confirmation() ->
     assert stale.evidence_reason == "stale_proxy_memory_absent"
     assert closed_loop._verification_payload(stale)["evidence_type"] == "non_confirmation"
     assert closed_loop._verification_payload(stale)["oracle_target_pixels"] == 100
+
+
+def test_navmesh_frontier_probe_goals_are_seeded_and_target_agnostic() -> None:
+    class PathFinder:
+        def __init__(self) -> None:
+            self.points = [
+                (0.0, 0.0, 0.0),
+                (5.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (7.0, 0.0, 0.0),
+                (2.0, 0.0, 0.0),
+                (9.0, 0.0, 0.0),
+            ]
+            self.index = 0
+
+        def get_random_navigable_point(self):
+            point = self.points[self.index % len(self.points)]
+            self.index += 1
+            return point
+
+        def is_navigable(self, point) -> bool:
+            return True
+
+    class Sim:
+        def __init__(self) -> None:
+            self.pathfinder = PathFinder()
+
+    sim_a = Sim()
+    sim_b = Sim()
+    goals_a = closed_loop._navmesh_frontier_probe_goals(
+        sim=sim_a,
+        start=(0.0, 0.0, 0.0),
+        seed=313,
+        probe_count=3,
+        min_distance_m=1.5,
+        sample_attempts=6,
+    )
+    goals_b = closed_loop._navmesh_frontier_probe_goals(
+        sim=sim_b,
+        start=(0.0, 0.0, 0.0),
+        seed=313,
+        probe_count=3,
+        min_distance_m=1.5,
+        sample_attempts=6,
+    )
+
+    assert goals_a == goals_b
+    assert goals_a == ((5.0, 0.0, 0.0), (7.0, 0.0, 0.0), (2.0, 0.0, 0.0))
+
+
+def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
+    from types import SimpleNamespace
+
+    visited_sources: list[str] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        return SimpleNamespace(
+            actions=(f"move_to_{goal_position[0]}",),
+            action_count=1,
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 0.0, 0.0, 1.0),
+            executed_distance_m=float(goal_position[0]),
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position, rotation, probe_index
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(
+            target_visible=source == "navmesh_frontier_probe:1"
+        )
+
+    result = closed_loop._run_navmesh_frontier_probe_route(
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        probe_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0), (3.0, 0.0, 0.0)),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+    )
+
+    assert visited_sources == ["navmesh_frontier_probe:0", "navmesh_frontier_probe:1"]
+    assert result.selected_probe_source == "navmesh_frontier_probe:1"
+    assert result.selected_probe_position == (2.0, 0.0, 0.0)
+    assert result.selected_verification.shared_gate_success is True
+    assert result.route.action_count == 2
+    assert result.route.executed_distance_m == 3.0
 
 
 def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:

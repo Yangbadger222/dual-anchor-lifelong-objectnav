@@ -91,3 +91,33 @@ def test_habitat_closed_loop_cli_preflight_accepts_grounding_dino_config(
     assert summary["grounding_dino_max_image_side"] == 384
     assert summary["noise_level"] == "mild"
     assert summary["min_detector_pixels"] == 20
+
+
+def test_habitat_closed_loop_cli_preflight_accepts_navmesh_frontier_config(
+    tmp_path,
+) -> None:
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--target-categories",
+            "plant,toilet",
+            "--max-groups",
+            "2",
+            "--frontier-mode",
+            "navmesh_frontier",
+            "--frontier-probe-count",
+            "5",
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert summary["frontier_mode"] == "navmesh_frontier"
+    assert summary["frontier_probe_count"] == 5
