@@ -149,6 +149,7 @@ def test_habitat_option_row_records_closed_loop_action_decision() -> None:
     assert row["action_count"] == 30
     assert row["executed_distance_m"] == 8.5
     assert row["frame_transform"]["dx"] != 0.0
+    assert row["memory_decision_bucket"] == "memory_missed_then_frontier_repaired"
 
 
 def test_habitat_option_row_defers_memory_under_ambiguous_match() -> None:
@@ -205,6 +206,7 @@ def test_habitat_option_row_defers_memory_when_expected_utility_prefers_frontier
     assert row["memory_decision"] == "frontier_first"
     assert row["memory_valid_prior"] == 0.5
     assert row["expected_memory_first_action_count"] == 21.0
+    assert row["memory_decision_bucket"] == "frontier_shorter_selected"
 
 
 def test_habitat_option_row_charges_post_memory_fallback_for_stale_repair() -> None:
@@ -315,6 +317,23 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
     assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22
 
 
+def test_summary_counts_memory_decision_buckets() -> None:
+    rows = [
+        {"policy": "memory_guided", "success": True, "action_count": 69, "executed_distance_m": 8.0, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_shorter_reused"},
+        {"policy": "memory_guided", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_shorter_selected"},
+        {"policy": "memory_guided", "success": True, "action_count": 179, "executed_distance_m": 26.9, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_rescued_frontier_failure"},
+        {"policy": "frontier_only", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_only"},
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    assert summary["policy_summaries"]["memory_guided"]["memory_decision_buckets"] == {
+        "frontier_shorter_selected": 1,
+        "memory_rescued_frontier_failure": 1,
+        "memory_shorter_reused": 1,
+    }
+
+
 def test_memory_guided_accepted_memory_keeps_expected_utility_frontier_decision() -> None:
     assert (
         closed_loop._memory_decision_for_row(
@@ -371,6 +390,7 @@ def test_memory_guided_row_selects_frontier_when_expected_utility_prefers_it() -
     assert row["memory_reused"] is False
     assert row["action_count"] == 124
     assert row["success"] is True
+    assert row["memory_decision_bucket"] == "frontier_shorter_selected"
 
 
 def test_option_row_records_memory_reliability_trace() -> None:
@@ -429,6 +449,55 @@ def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() 
     assert row["selected_candidate_types"] == ["memory"]
     assert row["memory_reused"] is True
     assert row["action_count"] == 139
+    assert row["memory_decision_bucket"] == "naive_memory_reuse"
+
+
+def test_memory_guided_bucket_records_memory_rescue_when_frontier_fails() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="toilet",
+            policy="memory_guided",
+            memory_action_count=179,
+            memory_executed_distance_m=26.9,
+            fallback_action_count=468,
+            fallback_executed_distance_m=69.4,
+            fallback_from_memory_action_count=400,
+            fallback_from_memory_executed_distance_m=60.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=False,
+            fallback_from_memory_verified=False,
+            memory_decision="memory_first",
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["memory"]
+    assert row["memory_decision_bucket"] == "memory_rescued_frontier_failure"
+
+
+def test_memory_guided_bucket_records_valid_memory_wrongly_deferred() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="chair",
+            policy="memory_guided",
+            memory_action_count=69,
+            memory_executed_distance_m=8.0,
+            fallback_action_count=115,
+            fallback_executed_distance_m=16.5,
+            fallback_from_memory_action_count=125,
+            fallback_from_memory_executed_distance_m=18.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            fallback_from_memory_verified=True,
+            memory_decision="frontier_first",
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["frontier"]
+    assert row["memory_decision_bucket"] == "valid_memory_wrongly_deferred"
 
 
 def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> None:

@@ -52,6 +52,9 @@ Implemented foundation:
   `--memory-reliability-mode evidence`; default remains `fixed`. Evidence mode
   records a row-level reliability trace and uses it as the expected-utility
   memory-valid probability.
+- Row-level `memory_decision_bucket` and per-policy bucket counts for separating
+  memory wins, frontier wins, harmful memory avoided, valid memory wrongly
+  deferred, naive reuse, and frontier-only rows.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
@@ -206,6 +209,10 @@ Passed locally before this handoff update:
   bed, and tv_monitor; frontier for plant and sofa; and succeeded in all 6
   episodes. The gain over naive-count is small (`10` actions), so this is a
   useful direction check, not a benchmark claim.
+- Local closed-loop Habitat/CLI tests after memory decision bucket support:
+  `32` passed.
+- Full local core tests after memory decision bucket support: `218` passed.
+- `git diff --check` passed after memory decision bucket support.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -283,19 +290,19 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Run a larger balanced evidence-mode navmesh smoke and report per-case
-   decision buckets: memory win, frontier win, harmful memory avoided, and
-   valid memory wrongly deferred.
-2. Replace oracle/candidate-view reliability evidence with detector/per-action
+1. Pull memory decision bucket support on Linux and run focused tests.
+2. Run a larger balanced evidence-mode navmesh smoke and report per-case
+   bucket counts directly from the summary.
+3. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-3. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-4. Move Grounding-DINO from selected candidate-view verification to per-action
+5. Move Grounding-DINO from selected candidate-view verification to per-action
    observation and stopping decisions.
-5. Implement natural Habitat object relocation/removal or a clearly labeled
+6. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-6. Scale the balanced runs beyond six groups and report confidence intervals.
-7. Convert the smoke metrics into SPL-like metrics only after per-action
+7. Scale the balanced runs beyond six groups and report confidence intervals.
+8. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

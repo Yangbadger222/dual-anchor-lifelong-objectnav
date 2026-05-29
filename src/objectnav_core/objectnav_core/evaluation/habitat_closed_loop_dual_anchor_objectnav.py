@@ -850,6 +850,11 @@ def make_habitat_closed_loop_option_row(
         distance = plan.memory_executed_distance_m
         success = False
         memory_reused = False
+    decision_bucket = _memory_decision_bucket(
+        plan=plan,
+        selected=selected,
+        success=bool(success),
+    )
     return {
         "group_id": plan.group_id,
         "category": plan.category,
@@ -859,6 +864,7 @@ def make_habitat_closed_loop_option_row(
         "selected_candidate_types": selected,
         "matching_reason": plan.matching_reason,
         "memory_reused": memory_reused,
+        "memory_decision_bucket": decision_bucket,
         "stale_repair_recorded": bool(plan.stale_repair),
         "action_count": int(action_count),
         "executed_distance_m": round(float(distance), 6),
@@ -1355,6 +1361,40 @@ def _memory_decision_for_row(
     if policy == "naive_count":
         return "memory_first"
     return raw_memory_decision
+
+
+def _memory_decision_bucket(
+    *,
+    plan: HabitatClosedLoopOptionPlan,
+    selected: Sequence[str],
+    success: bool,
+) -> str:
+    selected_tuple = tuple(selected)
+    if plan.policy == "frontier_only":
+        return "frontier_only"
+    if plan.policy == "naive_count":
+        return "naive_memory_reuse" if selected_tuple == ("memory",) else "naive_other"
+    if plan.matching_reason == "ambiguous":
+        return "ambiguous_memory_deferred"
+    if plan.matching_reason == "expected_utility_frontier":
+        return "frontier_shorter_selected"
+    if selected_tuple == ("memory", "frontier"):
+        return "memory_missed_then_frontier_repaired" if success else "memory_then_frontier_failed"
+    if selected_tuple == ("frontier",):
+        if plan.memory_verified and plan.memory_action_count < plan.fallback_action_count:
+            return "valid_memory_wrongly_deferred"
+        if not plan.memory_verified:
+            return "harmful_memory_reuse_avoided"
+        return "frontier_shorter_selected"
+    if selected_tuple == ("memory",):
+        if plan.memory_verified and not plan.fallback_verified:
+            return "memory_rescued_frontier_failure"
+        if plan.memory_verified and plan.memory_action_count <= plan.fallback_action_count:
+            return "memory_shorter_reused"
+        if plan.memory_verified:
+            return "memory_reused_despite_shorter_frontier"
+        return "memory_attempt_failed"
+    return "other"
 
 
 def _memory_verified_by_shared_gate(
@@ -1887,8 +1927,17 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 row["selected_candidate_types"].count("frontier")
                 for row in policy_rows
             ),
+            "memory_decision_buckets": _count_memory_decision_buckets(policy_rows),
         }
     return summaries
+
+
+def _count_memory_decision_buckets(rows: Sequence[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        bucket = str(row.get("memory_decision_bucket", "unknown"))
+        counts[bucket] = counts.get(bucket, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _compare_policy_summaries(summaries: dict[str, Any]) -> dict[str, Any]:
