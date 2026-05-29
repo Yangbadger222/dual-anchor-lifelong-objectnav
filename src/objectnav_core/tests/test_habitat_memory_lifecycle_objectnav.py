@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
+    _choose_lifecycle_anchor_candidate,
     _lifecycle_row,
     plan_lifecycle_query,
     plan_lifecycle_sequence,
@@ -188,6 +189,7 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
         noise_level="clean",
         detector="grounding_dino",
         detector_prompt_categories=("chair",),
+        memory_anchor_source="goal_viewpoint:0",
         memory_path_cost=3.0,
         fallback_path_cost=7.0,
         oracle_goal_path_cost=2.0,
@@ -200,6 +202,44 @@ def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
 
     assert row["memory_evidence_reason"] == "edge_touch_breakthrough"
     assert row["fallback_evidence_reason"] == "detector_positive_mask"
+
+
+def test_detector_qualified_anchor_prefers_positive_over_first_viewpoint() -> None:
+    first = SimpleNamespace(source="goal_viewpoint:0", target_pixels=500)
+    better_visible = SimpleNamespace(source="goal_viewpoint:1", target_pixels=1200)
+    qualified = SimpleNamespace(source="goal_viewpoint:2", target_pixels=900)
+    verifications = {
+        "goal_viewpoint:0": _verification(EvidenceType.NON_CONFIRMATION, target_visible=True),
+        "goal_viewpoint:1": _verification(EvidenceType.UNKNOWN, target_visible=True),
+        "goal_viewpoint:2": _verification(EvidenceType.POSITIVE, target_visible=True),
+    }
+
+    selected = _choose_lifecycle_anchor_candidate(
+        candidates=(first, better_visible, qualified),
+        verifications=verifications,
+        strategy="detector_positive",
+        min_target_pixels=24,
+    )
+
+    assert selected is qualified
+
+
+def test_detector_qualified_anchor_falls_back_to_most_visible_viewpoint() -> None:
+    first = SimpleNamespace(source="goal_viewpoint:0", target_pixels=500)
+    better_visible = SimpleNamespace(source="goal_viewpoint:1", target_pixels=1200)
+    verifications = {
+        "goal_viewpoint:0": _verification(EvidenceType.NON_CONFIRMATION, target_visible=True),
+        "goal_viewpoint:1": _verification(EvidenceType.UNKNOWN, target_visible=True),
+    }
+
+    selected = _choose_lifecycle_anchor_candidate(
+        candidates=(first, better_visible),
+        verifications=verifications,
+        strategy="most_visible",
+        min_target_pixels=24,
+    )
+
+    assert selected is better_visible
 
 
 def test_summarize_lifecycle_results_reports_mode_comparison() -> None:

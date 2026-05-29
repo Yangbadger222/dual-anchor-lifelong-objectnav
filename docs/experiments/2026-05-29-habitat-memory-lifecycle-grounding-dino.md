@@ -214,3 +214,100 @@ Supported now:
   and frontier/search policies with no oracle goal.
 - Keep `naive_count` positive-only; do not grant it stale repair or
   non-confirmation.
+
+## Full HM3D Val Bootstrap and Detector Debug
+
+Date: 2026-05-29
+Machine: Linux `badger@100.88.131.52`, conda env `habitat`
+Branch / commit: `codex/habitat-memory-lifecycle`, after `d5eab7b`
+
+### Dataset Setup
+
+The full HM3D `val` scene assets were unpacked into
+`datasets/habitat/versioned_data/hm3d-0.2/hm3d/val`:
+
+- `hm3d-val-habitat-v0.2.tar`
+- `hm3d-val-semantic-annots-v0.2.tar`
+- `hm3d-val-semantic-configs-v0.2.tar`
+
+Post-extract audit:
+
+- `hm3d/val` scene directories: `100` plus root directory.
+- relevant scene/semantic files counted under `hm3d/val`: `272`.
+- full ObjectNav `val` episodes: `2000`.
+- strict lifecycle groups under default structured filters: `88` total,
+  covering all six categories: `bed=17`, `chair=16`, `plant=3`, `sofa=17`,
+  `toilet=21`, `tv_monitor=14`.
+
+### Oracle Val Smoke
+
+Run:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_oracle_smoke`
+
+Parameters: full HM3D `val`, six categories, one group per category, clean,
+`query_repeats=2`, `oracle_bbox`.
+
+Result:
+
+- `memory_guided`: `12/12`, `171.492954 m`
+- `naive_count`: `12/12`, `171.492954 m`
+- `no_memory`: `12/12`, `424.086844 m`
+- memory vs no-memory path reduction: `59.5618%`
+- memory vs naive: tie, as expected when all anchors remain valid.
+
+### Grounding-DINO Val Clean Smoke
+
+Run:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_6cat_clean_smoke`
+
+Parameters: full HM3D `val`, six categories, one group per category, clean,
+`query_repeats=2`, Grounding-DINO tiny, detector prompt mode `target`.
+
+Result:
+
+- `memory_guided`: `8/12`, `292.560370 m`
+- `naive_count`: `8/12`, `292.560370 m`
+- `no_memory`: `8/12`, `424.086844 m`
+- memory vs no-memory path reduction: `31.0140%`
+- memory vs naive: tie.
+
+Failure attribution:
+
+- `chair`: detector produced a large overlapping box (`precision=0.73196`,
+  `recall=0.366132`) but the evidence classifier rejected it as
+  `fragmented_detector_mask` after the trace was extended with evidence
+  reasons. This is a gate/calibration issue, not a pure detector absence.
+- `tv_monitor`: Grounding-DINO produced no accepted detection at the selected
+  viewpoint (`detector_pixels=0`, `oracle_target_pixels=684994`), so this is a
+  detector/prompt/viewpoint failure.
+
+### Alias Prompt Control
+
+Run:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_6cat_alias_clean_smoke`
+
+Parameters: same as above, but `--detector-prompt-mode target_aliases`.
+
+Result:
+
+- `memory_guided`: `6/12`, `398.033676 m`
+- `naive_count`: `6/12`, `398.033676 m`
+- `no_memory`: `6/12`, `424.086844 m`
+
+The alias prompt did not fix `tv_monitor` and caused `sofa` to miss. Therefore
+global synonym prompts are not a valid fix. The next protocol revision is to
+choose memory anchors from detector-qualified discovery viewpoints instead of
+blindly using the first Habitat goal viewpoint.
+
+### Protocol Revision
+
+The runner now records `detector_prompt_mode`, `anchor_strategy`,
+`memory_anchor_source`, `memory_evidence_reason`, and
+`fallback_evidence_reason`. The default anchor strategy is now
+`detector_positive`: select a discovery viewpoint that actually passes
+detector-backed verification before treating it as memory. This aligns the
+simulation with the intended robot memory system: no object is remembered unless
+the robot saw and confirmed it.

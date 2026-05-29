@@ -159,3 +159,27 @@ detector, or episode-selection problems.
   geodesic protocol produces enough traces?
 - Which public ObjectNav baselines are realistic to reproduce on the available
   Linux GPU before a paper deadline?
+
+## 2026-05-29 Update: Detector-Qualified Anchors
+
+The first full HM3D `val` Grounding-DINO smoke exposed a protocol flaw: the
+runner treated the first Habitat goal viewpoint as a stored memory anchor even
+when the detector had not positively verified that viewpoint. A real lifelong
+memory system should only store an object anchor after detector-backed
+confirmation.
+
+The lifecycle runner now supports an anchor strategy:
+
+- `first_goal_viewpoint`: legacy behavior, useful only as a control.
+- `most_visible`: choose the candidate with the largest Habitat semantic target
+  footprint, independent of detector success.
+- `detector_positive`: default research protocol. It evaluates discovery
+  candidate viewpoints and selects a detector-positive, target-visible anchor
+  when available; otherwise it falls back to the most visible candidate and
+  records the failed evidence in the trace.
+
+This makes the protocol closer to the intended robot system boundary: memory is
+created by perception-confirmed experience, not by privileged Habitat goal
+metadata. It also keeps failures attributable: if no detector-positive anchor
+exists for a category/viewpoint set, the trace now records evidence reasons and
+the selected `memory_anchor_source`.

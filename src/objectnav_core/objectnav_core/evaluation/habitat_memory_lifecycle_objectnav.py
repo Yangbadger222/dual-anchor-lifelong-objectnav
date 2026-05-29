@@ -46,6 +46,12 @@ DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_SEARCH_PROXY_WAYPOINTS = 3
 DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS = 48
 DEFAULT_DETECTOR_PROMPT_MODE = "target"
+SUPPORTED_ANCHOR_STRATEGIES: tuple[str, ...] = (
+    "first_goal_viewpoint",
+    "most_visible",
+    "detector_positive",
+)
+DEFAULT_ANCHOR_STRATEGY = "detector_positive"
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 
 
@@ -258,6 +264,7 @@ def run_habitat_memory_lifecycle_preflight(
     grounding_dino_text_threshold: float = 0.25,
     grounding_dino_max_image_side: int | None = 384,
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
+    anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
 ) -> dict[str, Any]:
@@ -275,6 +282,7 @@ def run_habitat_memory_lifecycle_preflight(
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
         detector_prompt_mode=detector_prompt_mode,
+        anchor_strategy=anchor_strategy,
     )
     summary: dict[str, Any] = {
         "task": "habitat_memory_lifecycle_objectnav_preflight",
@@ -290,6 +298,7 @@ def run_habitat_memory_lifecycle_preflight(
         "grounding_dino_text_threshold": float(grounding_dino_text_threshold),
         "grounding_dino_max_image_side": grounding_dino_max_image_side,
         "detector_prompt_mode": detector_prompt_mode,
+        "anchor_strategy": anchor_strategy,
         "modes": list(modes),
         "target_categories": list(target_categories),
         "episodes_per_category": episodes_per_category,
@@ -337,6 +346,7 @@ def run_habitat_memory_lifecycle_objectnav(
     grounding_dino_text_threshold: float = 0.25,
     grounding_dino_max_image_side: int | None = 384,
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
+    anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -367,6 +377,7 @@ def run_habitat_memory_lifecycle_objectnav(
         grounding_dino_text_threshold=grounding_dino_text_threshold,
         grounding_dino_max_image_side=grounding_dino_max_image_side,
         detector_prompt_mode=detector_prompt_mode,
+        anchor_strategy=anchor_strategy,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
     )
@@ -388,6 +399,7 @@ def run_habitat_memory_lifecycle_objectnav(
         _detector_for_target,
         _detector_mask,
         _first_goal_view_candidate,
+        _sample_replay_view_candidates,
         _normalize_yolo_label,
         _select_episodes,
         _shortest_path_points,
@@ -475,13 +487,6 @@ def run_habitat_memory_lifecycle_objectnav(
                     episode=group.query_episode,
                     target_semantic_ids=target_semantic_ids,
                 )
-                memory_path_cost = _path_distance(
-                    _shortest_path_points(
-                        sim=sim,
-                        start=group.query_episode.start_position,
-                        end=group.memory_position,
-                    )
-                )
                 oracle_goal_path_cost = _path_distance(
                     _shortest_path_points(
                         sim=sim,
@@ -525,23 +530,46 @@ def run_habitat_memory_lifecycle_objectnav(
                     base_frame_index = (
                         scene_index * 100000 + group_index * 1000 + noise_index * 10
                     )
-                    memory_verification = _verify_lifecycle_view(
+                    discovery_candidates = _sample_replay_view_candidates(
                         sim=sim,
-                        position=group.memory_position,
-                        rotation=group.memory_rotation,
+                        agent=sim.initialize_agent(0),
+                        episode=group.discovery_episode,
                         target_semantic_ids=target_semantic_ids,
-                        target_category=group.category,
-                        detector=detector,
-                        detector_adapter=detector_adapter,
-                        accepted_detection_labels=accepted_labels,
-                        noise_level=noise_level,
-                        rgb_noise=rgb_noise,
-                        depth_noise=depth_noise,
-                        frame_index=base_frame_index,
+                    )
+                    memory_verifications = {
+                        candidate.source: _verify_lifecycle_view(
+                            sim=sim,
+                            position=candidate.position,
+                            rotation=candidate.rotation,
+                            target_semantic_ids=target_semantic_ids,
+                            target_category=group.category,
+                            detector=detector,
+                            detector_adapter=detector_adapter,
+                            accepted_detection_labels=accepted_labels,
+                            noise_level=noise_level,
+                            rgb_noise=rgb_noise,
+                            depth_noise=depth_noise,
+                            frame_index=base_frame_index + 100 + candidate_index,
+                            min_target_pixels=min_target_pixels,
+                            min_detector_pixels=min_detector_pixels,
+                            max_detection_area_ratio=max_detection_area_ratio,
+                            helpers=helper_bundle,
+                        )
+                        for candidate_index, candidate in enumerate(discovery_candidates)
+                    }
+                    memory_candidate = _choose_lifecycle_anchor_candidate(
+                        candidates=discovery_candidates,
+                        verifications=memory_verifications,
+                        strategy=anchor_strategy,
                         min_target_pixels=min_target_pixels,
-                        min_detector_pixels=min_detector_pixels,
-                        max_detection_area_ratio=max_detection_area_ratio,
-                        helpers=helper_bundle,
+                    )
+                    memory_verification = memory_verifications[memory_candidate.source]
+                    memory_path_cost = _path_distance(
+                        _shortest_path_points(
+                            sim=sim,
+                            start=group.query_episode.start_position,
+                            end=memory_candidate.position,
+                        )
                     )
                     fallback_verification = _verify_lifecycle_view(
                         sim=sim,
@@ -592,6 +620,7 @@ def run_habitat_memory_lifecycle_objectnav(
                                     noise_level=noise_level,
                                     detector=detector,
                                     detector_prompt_categories=prompt_categories,
+                                    memory_anchor_source=memory_candidate.source,
                                     memory_path_cost=active_memory_path_cost,
                                     fallback_path_cost=fallback_path_cost,
                                     oracle_goal_path_cost=oracle_goal_path_cost,
@@ -625,6 +654,7 @@ def run_habitat_memory_lifecycle_objectnav(
             "search_proxy_waypoints": int(search_proxy_waypoints),
             "query_repeats": int(query_repeats),
             "detector_prompt_mode": detector_prompt_mode,
+            "anchor_strategy": anchor_strategy,
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -773,6 +803,45 @@ def _limit_groups_per_category(
     return selected
 
 
+def _choose_lifecycle_anchor_candidate(
+    *,
+    candidates: Sequence[Any],
+    verifications: dict[str, LifecycleVerification],
+    strategy: str,
+    min_target_pixels: int,
+) -> Any:
+    if not candidates:
+        raise ValueError("At least one lifecycle anchor candidate is required")
+    if strategy not in SUPPORTED_ANCHOR_STRATEGIES:
+        raise ValueError(
+            "anchor_strategy must be one of: " + ", ".join(SUPPORTED_ANCHOR_STRATEGIES)
+        )
+    if strategy == "first_goal_viewpoint":
+        return candidates[0]
+    visible_candidates = [
+        candidate
+        for candidate in candidates
+        if int(getattr(candidate, "target_pixels", 0) or 0) >= min_target_pixels
+    ]
+    ranked_candidates = visible_candidates or list(candidates)
+    if strategy == "detector_positive":
+        positive_candidates = [
+            candidate
+            for candidate in ranked_candidates
+            if verifications.get(str(getattr(candidate, "source")), None) is not None
+            and verifications[str(getattr(candidate, "source"))].shared_gate_success
+        ]
+        if positive_candidates:
+            return max(
+                positive_candidates,
+                key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+            )
+    return max(
+        ranked_candidates,
+        key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+    )
+
+
 def _verify_lifecycle_view(
     *,
     sim: Any,
@@ -852,6 +921,7 @@ def _lifecycle_row(
     noise_level: str,
     detector: str,
     detector_prompt_categories: Sequence[str],
+    memory_anchor_source: str,
     memory_path_cost: float,
     fallback_path_cost: float,
     oracle_goal_path_cost: float,
@@ -879,6 +949,7 @@ def _lifecycle_row(
         "query_repeat_index": int(query_repeat_index),
         "detector": detector,
         "detector_prompt_categories": "|".join(detector_prompt_categories),
+        "memory_anchor_source": memory_anchor_source,
         "success": result.success,
         "path_length_m": result.total_path_length_m,
         "memory_path_cost_m": round(memory_path_cost, 6),
@@ -1247,6 +1318,7 @@ def _validate_preflight_inputs(
     min_target_pixels: int,
     min_detector_pixels: int,
     detector_prompt_mode: str,
+    anchor_strategy: str,
 ) -> None:
     if not noise_levels:
         raise ValueError("At least one noise level is required")
@@ -1280,6 +1352,10 @@ def _validate_preflight_inputs(
     )
 
     _validate_yolo_prompt_mode(detector_prompt_mode)
+    if anchor_strategy not in SUPPORTED_ANCHOR_STRATEGIES:
+        raise ValueError(
+            "anchor_strategy must be one of: " + ", ".join(SUPPORTED_ANCHOR_STRATEGIES)
+        )
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

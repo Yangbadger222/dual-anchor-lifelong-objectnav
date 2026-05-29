@@ -2,12 +2,17 @@
 
 Date: 2026-05-29  
 Owner: Codex  
-Status: Ready for Larger-Scale Habitat Follow-up
+Status: In Progress - Full Val Enabled, Detector-Qualified Anchor Follow-up Pending
 
 ## Current State
 
 Branch `codex/habitat-memory-lifecycle` contains a Habitat-backed geodesic
 lifecycle protocol for ObjectNav memory.
+
+Full HM3D `val` scene assets have now been unpacked on the Linux machine under
+`datasets/habitat/versioned_data/hm3d-0.2/hm3d/val`. Full `val` lifecycle group
+coverage is available: `88` strict same-instance groups across all six target
+categories.
 
 The strongest completed run is:
 
@@ -24,6 +29,19 @@ Headline:
 This is not official Habitat SPL. It is a geodesic lifecycle proxy with
 teleport-to-verification views.
 
+New full-val sanity results:
+
+- Oracle clean six-category smoke:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_oracle_smoke`
+  produced `12/12` success for all modes; memory path reduction vs no-memory
+  was `59.5618%`.
+- Grounding-DINO clean six-category smoke:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_6cat_clean_smoke`
+  produced `8/12` success. Failures were `chair` gate rejection and
+  `tv_monitor` detector miss.
+- Global `target_aliases` prompt control worsened to `6/12`, so do not use it
+  as a blanket fix.
+
 ## Files Touched
 
 - `docs/design/2026-05-28-habitat-memory-lifecycle-objectnav.md`
@@ -36,6 +54,12 @@ teleport-to-verification views.
 - `src/objectnav_core/setup.py`
 - `src/objectnav_core/tests/test_habitat_memory_lifecycle_objectnav.py`
 - `src/objectnav_core/tests/test_cli_runner.py`
+
+Recent code also adds:
+
+- `--detector-prompt-mode`
+- `--anchor-strategy`
+- trace fields for `memory_anchor_source` and evidence reasons
 
 ## Commands Run
 
@@ -109,21 +133,29 @@ Passed on Linux:
 - `search_proxy` is a deterministic proxy for no-memory search cost, not a
   learned or frontier closed-loop policy.
 - `val_mini` only forms three strict same-instance lifecycle groups:
-  `chair`, `plant`, and `toilet`.
+  `chair`, `plant`, and `toilet`; full `val` now solves coverage but is more
+  detector-sensitive.
 - The memory-vs-naive advantage is modest (`9.8739%` path reduction) and appears
   only in repeated stale-repair cells.
 - The detector can still dominate outcomes. Grounding-DINO is adequate for the
   selected groups, but larger splits may expose new category failures.
+- Grounding-DINO full-val clean smoke exposed `chair` gate calibration and
+  `tv_monitor` viewpoint/prompt failures. The next run should use the new
+  `detector_positive` anchor strategy, then export PNGs for remaining failures.
 
 ## Next Recommended Step
 
-1. Run the lifecycle protocol on a larger HM3D split to cover all six
-   categories and many more instance groups.
-2. Add explicit object removal/relocation lifecycle scenarios instead of only
+1. Pull the latest branch on Linux and run the full-val six-category clean
+   Grounding-DINO smoke with `--anchor-strategy detector_positive` and default
+   `--detector-prompt-mode target`.
+2. Inspect `summary.json["episode_selection"]` and trace rows for remaining
+   failures, especially `chair` and `tv_monitor`.
+3. Export PNGs for failed detector-qualified anchors before tuning thresholds.
+4. Add explicit object removal/relocation lifecycle scenarios instead of only
    relying on detector misses at stale anchors.
-3. Replace teleport-to-viewpoint with an action-level Habitat follower and
+5. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
-4. Only after those pass, compare against stronger semantic-map and frontier
+6. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor

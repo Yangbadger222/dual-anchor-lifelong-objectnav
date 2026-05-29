@@ -12,6 +12,8 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     DEFAULT_DETECTOR_PROMPT_MODE,
+    DEFAULT_ANCHOR_STRATEGY,
+    SUPPORTED_ANCHOR_STRATEGIES,
     SUPPORTED_LIFECYCLE_DETECTORS,
     SUPPORTED_LIFECYCLE_MODES,
     TARGET_CATEGORIES,
@@ -79,6 +81,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Detector prompt policy. target uses only the ObjectNav category; "
             "target_aliases adds category synonyms such as tv/television/monitor."
+        ),
+    )
+    parser.add_argument(
+        "--anchor-strategy",
+        default=DEFAULT_ANCHOR_STRATEGY,
+        choices=SUPPORTED_ANCHOR_STRATEGIES,
+        help=(
+            "Memory anchor policy. detector_positive selects a discovery viewpoint "
+            "that actually passes detector-backed verification before storing memory."
         ),
     )
     parser.add_argument(
@@ -184,6 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         grounding_dino_text_threshold=args.grounding_dino_text_threshold,
         grounding_dino_max_image_side=args.grounding_dino_max_image_side,
         detector_prompt_mode=args.detector_prompt_mode,
+        anchor_strategy=args.anchor_strategy,
         min_target_pixels=args.min_target_pixels,
         min_detector_pixels=args.min_detector_pixels,
     )
