@@ -984,6 +984,210 @@ def test_detector_reliability_uses_detector_pixels_not_oracle_pixels() -> None:
     assert estimate.value < 0.9
 
 
+def _detector_confirmation_event(
+    *,
+    outcome: str,
+    context: str = "memory",
+    detector_pixels: int = 1024,
+    mask_iou: float = 0.5,
+    pending_count: int = 2,
+    translation_m: float = 0.1,
+    rotation_deg: float = 8.0,
+    overlap_pixels: int = 0,
+    oracle_recall: float = 0.0,
+) -> dict[str, object]:
+    return {
+        "outcome": outcome,
+        "context": context,
+        "candidate_reason": "detector_positive_mask",
+        "detector_pixels": detector_pixels,
+        "mask_iou": mask_iou,
+        "pending_count": pending_count,
+        "translation_m": translation_m,
+        "rotation_deg": rotation_deg,
+        "overlap_pixels": overlap_pixels,
+        "oracle_recall": oracle_recall,
+    }
+
+
+def test_event_posterior_reliability_boosts_confirmed_memory_events() -> None:
+    verification = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=500_000,
+        detector_pixels=1024,
+    )
+    evidence = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="event_posterior",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+        detector_confirmation_events=[
+            _detector_confirmation_event(outcome="confirmed", detector_pixels=2048),
+            _detector_confirmation_event(outcome="confirmed", detector_pixels=4096),
+        ],
+        detector_confirmation_context="memory",
+    )
+
+    assert estimate.reason == "event_posterior_weighted"
+    assert estimate.value > evidence.value
+    assert estimate.components["detector_event_count"] == 2
+    assert estimate.components["detector_event_confirmed_weight"] > 0
+    assert estimate.components["detector_event_suppressed_weight"] == 0
+    assert estimate.components["detector_event_posterior"] > 0.75
+
+
+def test_event_posterior_reliability_reduces_suppressed_dominant_memory() -> None:
+    verification = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=500_000,
+        detector_pixels=8192,
+    )
+    evidence = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="event_posterior",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+        detector_confirmation_events=[
+            _detector_confirmation_event(outcome="suppressed", detector_pixels=8192),
+            _detector_confirmation_event(outcome="suppressed", detector_pixels=4096),
+            _detector_confirmation_event(outcome="suppressed", detector_pixels=2048),
+        ],
+        detector_confirmation_context="memory",
+    )
+
+    assert evidence.reason == "strong_current_evidence_floor"
+    assert estimate.value < evidence.value
+    assert estimate.components["detector_event_suppressed_weight"] > (
+        estimate.components["detector_event_confirmed_weight"]
+    )
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=100,
+            fallback_from_memory_action_count=200,
+            fallback_action_count=150,
+            memory_valid_prior=estimate.value,
+        )
+        == "frontier_first"
+    )
+
+
+def test_event_posterior_filters_events_by_active_memory_context() -> None:
+    verification = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=500_000,
+        detector_pixels=2048,
+    )
+
+    memory_estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="event_posterior",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+        detector_confirmation_events=[
+            _detector_confirmation_event(outcome="suppressed", context="memory"),
+            _detector_confirmation_event(
+                outcome="confirmed",
+                context="fallback_from_memory",
+                detector_pixels=4096,
+            ),
+        ],
+        detector_confirmation_context="memory",
+    )
+    repaired_estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="event_posterior",
+        matching_reason="accepted",
+        verification=verification,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+        detector_confirmation_events=[
+            _detector_confirmation_event(outcome="suppressed", context="memory"),
+            _detector_confirmation_event(
+                outcome="confirmed",
+                context="fallback_from_memory",
+                detector_pixels=4096,
+            ),
+        ],
+        detector_confirmation_context="fallback_from_memory",
+    )
+
+    assert memory_estimate.components["detector_event_count"] == 1
+    assert repaired_estimate.components["detector_event_count"] == 1
+    assert repaired_estimate.value > memory_estimate.value
+
+
+def test_event_posterior_ignores_oracle_audit_fields() -> None:
+    verification = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=500_000,
+        detector_pixels=2048,
+    )
+    common_kwargs = {
+        "base_prior": 0.5,
+        "mode": "event_posterior",
+        "matching_reason": "accepted",
+        "verification": verification,
+        "category": "plant",
+        "transform": closed_loop._session_restart_transform(),
+        "repeat_index": 0,
+        "detector_confirmation_context": "memory",
+    }
+
+    no_overlap = closed_loop._estimate_memory_valid_prior(
+        **common_kwargs,
+        detector_confirmation_events=[
+            _detector_confirmation_event(
+                outcome="confirmed",
+                overlap_pixels=0,
+                oracle_recall=0.0,
+            )
+        ],
+    )
+    high_overlap = closed_loop._estimate_memory_valid_prior(
+        **common_kwargs,
+        detector_confirmation_events=[
+            _detector_confirmation_event(
+                outcome="confirmed",
+                overlap_pixels=999_999,
+                oracle_recall=1.0,
+            )
+        ],
+    )
+
+    assert high_overlap.value == no_overlap.value
+    assert high_overlap.components == no_overlap.components
+
+
 def test_multiview_confirmation_suppresses_single_frame_detector_positive() -> None:
     positive = DetectorVerification(
         target_visible=True,

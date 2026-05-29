@@ -35,7 +35,11 @@ DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
 DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
 DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
-SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = ("fixed", "evidence")
+SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = (
+    "fixed",
+    "evidence",
+    "event_posterior",
+)
 DEFAULT_MEMORY_RELIABILITY_MODE = "fixed"
 SUPPORTED_ROUTE_OBSERVATION_MODES: tuple[str, ...] = ("option_end", "per_action")
 DEFAULT_ROUTE_OBSERVATION_MODE = "option_end"
@@ -982,6 +986,17 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             category=group.category,
                             transform=_session_restart_transform(),
                             repeat_index=repeat_index,
+                            detector_confirmation_events=(
+                                detector_confirmation_events
+                            ),
+                            detector_confirmation_context=(
+                                _memory_reliability_detector_confirmation_context(
+                                    challenge=challenge,
+                                    policy=policy,
+                                    repeat_index=repeat_index,
+                                    repair_succeeded=repair_succeeded,
+                                )
+                            ),
                         )
                         expected_memory_first = _expected_memory_first_action_count(
                             memory_action_count=active_memory_route.action_count,
@@ -1869,6 +1884,23 @@ def _active_memory_verification_for_repeat(
     return initial_memory_verification
 
 
+def _memory_reliability_detector_confirmation_context(
+    *,
+    challenge: str,
+    policy: str,
+    repeat_index: int,
+    repair_succeeded: bool,
+) -> str:
+    if (
+        challenge == "stale_proxy"
+        and policy == "memory_guided"
+        and repeat_index > 0
+        and repair_succeeded
+    ):
+        return "fallback_from_memory"
+    return "memory"
+
+
 def _stale_proxy_initial_memory_verification(verification: Any) -> Any:
     return _StaleProxyVerification(
         oracle_target_pixels=int(getattr(verification, "oracle_target_pixels", 0) or 0),
@@ -1926,6 +1958,8 @@ def _estimate_memory_valid_prior(
     category: str,
     transform: FrameTransform2D,
     repeat_index: int,
+    detector_confirmation_events: Sequence[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "memory",
 ) -> MemoryReliabilityEstimate:
     if not 0.0 <= base_prior <= 1.0:
         raise ValueError("base_prior must be in [0, 1]")
@@ -1942,6 +1976,33 @@ def _estimate_memory_valid_prior(
             reason="fixed_prior",
         )
 
+    evidence_estimate = _evidence_memory_reliability_estimate(
+        base_prior=base_prior,
+        matching_reason=matching_reason,
+        verification=verification,
+        category=category,
+        transform=transform,
+        repeat_index=repeat_index,
+    )
+    if mode == "evidence":
+        return evidence_estimate
+    return _event_posterior_memory_reliability_estimate(
+        base_prior=base_prior,
+        evidence_estimate=evidence_estimate,
+        detector_confirmation_events=detector_confirmation_events,
+        detector_confirmation_context=detector_confirmation_context,
+    )
+
+
+def _evidence_memory_reliability_estimate(
+    *,
+    base_prior: float,
+    matching_reason: str,
+    verification: Any,
+    category: str,
+    transform: FrameTransform2D,
+    repeat_index: int,
+) -> MemoryReliabilityEstimate:
     matching = _matching_reliability_component(matching_reason)
     current_evidence = _current_evidence_reliability_component(verification)
     covariance = _transform_covariance_reliability_component(transform)
@@ -1975,10 +2036,108 @@ def _estimate_memory_valid_prior(
         "recency": round(recency, 6),
     }
     return MemoryReliabilityEstimate(
-        mode=mode,
+        mode="evidence",
         value=round(_clamp01(value), 6),
         components=components,
         reason=reason,
+    )
+
+
+def _event_posterior_memory_reliability_estimate(
+    *,
+    base_prior: float,
+    evidence_estimate: MemoryReliabilityEstimate,
+    detector_confirmation_events: Sequence[dict[str, Any]] | None,
+    detector_confirmation_context: str,
+) -> MemoryReliabilityEstimate:
+    event_components = _detector_confirmation_event_posterior_components(
+        base_prior=base_prior,
+        detector_confirmation_events=detector_confirmation_events,
+        detector_confirmation_context=detector_confirmation_context,
+    )
+    components = dict(evidence_estimate.components)
+    components.update(event_components)
+    if event_components["detector_event_count"] <= 0.0:
+        return MemoryReliabilityEstimate(
+            mode="event_posterior",
+            value=evidence_estimate.value,
+            components=components,
+            reason="event_posterior_no_events",
+        )
+
+    posterior = event_components["detector_event_posterior"]
+    value = 0.45 * float(evidence_estimate.value) + 0.55 * float(posterior)
+    reason = "event_posterior_weighted"
+    if components.get("matching", 1.0) < 0.5:
+        value = min(value, float(evidence_estimate.value))
+        reason = "event_posterior_matching_limited"
+    elif components.get("current_evidence", 1.0) < 0.5:
+        value = min(value, float(evidence_estimate.value))
+        reason = "event_posterior_weak_evidence_limited"
+    return MemoryReliabilityEstimate(
+        mode="event_posterior",
+        value=round(_clamp01(value), 6),
+        components=components,
+        reason=reason,
+    )
+
+
+def _detector_confirmation_event_posterior_components(
+    *,
+    base_prior: float,
+    detector_confirmation_events: Sequence[dict[str, Any]] | None,
+    detector_confirmation_context: str,
+) -> dict[str, float]:
+    alpha = max(0.01, float(base_prior))
+    beta = max(0.01, 1.0 - float(base_prior))
+    confirmed_weight = 0.0
+    suppressed_weight = 0.0
+    event_count = 0
+    for event in detector_confirmation_events or ():
+        if str(event.get("context", "")) != detector_confirmation_context:
+            continue
+        outcome = str(event.get("outcome", ""))
+        quality = _detector_confirmation_event_quality(event)
+        if outcome == "confirmed":
+            confirmed_weight += 1.0 + quality
+        elif outcome == "suppressed":
+            suppressed_weight += 0.75 + quality
+        else:
+            continue
+        event_count += 1
+    posterior = (
+        (alpha + confirmed_weight)
+        / (alpha + beta + confirmed_weight + suppressed_weight)
+        if event_count
+        else float(base_prior)
+    )
+    return {
+        "detector_event_count": float(event_count),
+        "detector_event_confirmed_weight": round(confirmed_weight, 6),
+        "detector_event_suppressed_weight": round(suppressed_weight, 6),
+        "detector_event_posterior": round(_clamp01(posterior), 6),
+    }
+
+
+def _detector_confirmation_event_quality(event: dict[str, Any]) -> float:
+    detector_pixels = max(0, int(event.get("detector_pixels", 0) or 0))
+    pixel_quality = (
+        _clamp01(math.log1p(detector_pixels) / math.log1p(4096.0))
+        if detector_pixels > 0
+        else 0.0
+    )
+    mask_quality = _clamp01(float(event.get("mask_iou", 0.0) or 0.0))
+    translation_quality = _clamp01(
+        float(event.get("translation_m", 0.0) or 0.0) / 0.25
+    )
+    rotation_quality = _clamp01(float(event.get("rotation_deg", 0.0) or 0.0) / 10.0)
+    view_quality = max(translation_quality, rotation_quality)
+    pending_quality = _clamp01(float(event.get("pending_count", 0.0) or 0.0) / 2.0)
+    return _clamp01(
+        0.35 * pixel_quality
+        + 0.25 * mask_quality
+        + 0.25 * view_quality
+        + 0.15 * pending_quality
     )
 
 

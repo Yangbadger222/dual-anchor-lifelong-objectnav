@@ -296,6 +296,97 @@ Non-scope for this slice:
 - no learned reliability model yet. This creates the ablation-ready interface
   and event diagnostics that a learned confirmer can replace later.
 
+## Adaptive Detector Event Reliability Slice
+
+The verified runtime event probe showed that selected evidence alone is too
+thin for reliability: a row may end with confirmed evidence while earlier route
+views contained suppressed detector positives. The next policy-facing step is
+to turn this event stream into an adaptive memory-valid estimate without using
+oracle semantic overlap.
+
+Goal:
+
+- add an explicit `event_posterior` memory reliability mode that estimates the
+  probability that a remembered object is still worth trying from detector
+  confirmation events plus the existing matching, covariance, category, and
+  recency evidence;
+- make the estimator conservative when suppressed detector positives dominate,
+  but allow confirmed multiview evidence to raise confidence above the fixed
+  prior;
+- keep the estimator transparent and logged so it can be used as a calibration
+  baseline before replacing it with a learned model.
+
+Non-goals:
+
+- no detector-threshold or category-specific tuning from one smoke;
+- no privileged oracle overlap in policy decisions;
+- no claim that `event_posterior` is a final learned reliability model;
+- no change to `fixed` or `evidence` mode behavior.
+
+System boundary:
+
+- Inputs are the active memory verification payload, the row-level
+  `detector_confirmation_events` list, a target event context (`memory` for an
+  original memory and `fallback_from_memory` for a repaired memory), matching
+  reason, category, repeat index, and dual-anchor transform covariance.
+- Outputs are the same `MemoryReliabilityEstimate` payload already recorded in
+  rows: scalar `value`, component trace, and reason. The expected-utility
+  decision consumes only the scalar value.
+
+Interface:
+
+- extend `--memory-reliability-mode fixed|evidence` with
+  `event_posterior`;
+- extend `_estimate_memory_valid_prior(...)` with optional detector
+  confirmation events and event context;
+- report posterior components such as confirmed event weight, suppressed event
+  weight, event count, and event posterior in `memory_reliability.components`;
+- keep `detector_confirmation_event_counts` in summaries as diagnostics,
+  separate from the policy-facing posterior.
+
+Data flow:
+
+1. Detector candidate, route, and navmesh-probe verification records confirmed
+   or suppressed events.
+2. For each policy row, the active memory context selects the relevant event
+   subset.
+3. Confirmed events add positive evidence to a bounded beta-style posterior.
+   Suppressed events add weaker uncertainty evidence; they reduce confidence
+   but do not become hard negatives because a real robot lacks semantic truth.
+4. The posterior is blended with the existing evidence reliability estimate.
+   If no relevant detector events exist, `event_posterior` falls back to
+   `evidence` mode and records that reason.
+5. The expected-utility memory-vs-frontier decision uses the resulting
+   reliability value exactly as it already uses `fixed` and `evidence`.
+
+Failure modes:
+
+| Failure | Detection | Mitigation |
+|---|---|---|
+| Suppressed events treated as object absence | Rows with suppressed but later confirmed evidence are wrongly deferred | Use weak uncertainty weights, not hard negative labels |
+| Event counts from fallback leak into original memory reliability | Context-filtering test disagrees with selected memory source | Pass an explicit context and test memory vs repaired-memory rows separately |
+| Hand-designed posterior overfits tiny smoke | Held-out category/scenes regress versus `evidence` mode | Keep `event_posterior` as a transparent baseline and compare against learned calibration |
+| Oracle audit accidentally influences policy | Changing oracle overlap changes reliability | Unit test identical posterior when oracle audit fields vary |
+
+Verification plan:
+
+- unit tests showing confirmed events raise posterior reliability;
+- unit tests showing suppressed-dominant memory events lower reliability enough
+  to choose frontier when the expected action costs are close;
+- unit tests showing oracle audit fields do not change event posterior;
+- CLI/preflight test showing `event_posterior` is accepted and recorded;
+- local focused Habitat closed-loop tests before any Linux smoke;
+- later Linux Grounding-DINO smoke comparing `evidence` and `event_posterior`
+  on the same run configuration.
+
+Paper/research relevance:
+
+- This creates the first policy-facing bridge from raw detector-event traces to
+  memory-vs-frontier decisions. It is stronger than a global multiview gate
+  because it uses uncertainty accumulated along actual routes, but it is still
+  an interpretable baseline. A paper-ready version should replace or calibrate
+  this posterior with learned reliability on held-out scenes.
+
 Remaining non-scope for the current closed-loop smoke:
 
 - building occupancy directly from depth;

@@ -52,6 +52,12 @@ Implemented foundation:
   `--memory-reliability-mode evidence`; default remains `fixed`. Evidence mode
   records a row-level reliability trace and uses it as the expected-utility
   memory-valid probability.
+- Adaptive detector event reliability via
+  `--memory-reliability-mode event_posterior`. This mode blends the existing
+  evidence reliability estimate with a context-filtered posterior over
+  confirmed and suppressed detector confirmation events. It is oracle-free and
+  intended as an interpretable calibration baseline, not the final learned
+  model.
 - Detector-backed reliability uses detector pixels for current evidence instead
   of borrowing oracle semantic pixel counts. Oracle pixels remain in row payloads
   for audit/gate diagnostics, but must not inflate Grounding-DINO-backed policy
@@ -117,6 +123,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-stale-detector-pixels-smoke.md`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
+- `docs/superpowers/plans/2026-05-29-adaptive-detector-event-reliability.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
 - `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
@@ -268,6 +275,11 @@ Passed locally before this handoff update:
   frontier for plant, and succeeded in all 3 episodes. This is the first
   navmesh smoke in this slice where memory-guided beats both frontier-only and
   naive-count, but it is still only a 3-group oracle smoke.
+- Local adaptive detector event reliability tests passed after the
+  `event_posterior` implementation. The focused new tests produced `5` passed,
+  the reliability/confirmation subset produced `11` passed, the focused
+  Habitat route/CLI suite produced `65` passed, `py_compile` passed, and the
+  full local core suite produced `248` passed.
 - Linux balanced6 evidence-reliability oracle navmesh smoke completed
   successfully. It produced `memory_guided=565`, `frontier_only=943`, and
   `naive_count=575` actions. `memory_guided` selected memory for chair, toilet,
@@ -536,26 +548,32 @@ Passed locally before this handoff update:
   diagnostics. It should be treated as a calibration baseline, not the final
   algorithm, until it is validated on held-out scenes and replaced or supported
   by learned/evidence-derived reliability.
+- `event_posterior` is still an interpretable posterior with hand-designed
+  quality weights. It is a stronger adaptive baseline because it consumes
+  runtime detector-event traces, but it still needs Linux Habitat smokes,
+  held-out categories/scenes, and learned calibration before paper claims.
 
 ## Next Recommended Step
 
-1. Design an adaptive or learned detector reliability model that can trade off
-   multiview precision against frontier recall instead of using one global gate.
-2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Pull the `event_posterior` branch on Linux and run focused Habitat tests in
+   the `habitat` conda environment.
+2. Run paired Grounding-DINO smokes comparing `evidence` and `event_posterior`
+   on the same per-action navmesh configuration.
+3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-3. Continue calibrating the reliability estimator against bucket counts and
+4. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-4. Replace oracle/candidate-view reliability evidence with detector/per-action
+5. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-6. Move Grounding-DINO from selected candidate-view verification to larger
+7. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-7. Implement natural Habitat object relocation/removal or a clearly labeled
+8. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-8. Scale the balanced runs beyond six groups and report confidence intervals.
-9. Convert the smoke metrics into SPL-like metrics only after per-action
+9. Scale the balanced runs beyond six groups and report confidence intervals.
+10. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
