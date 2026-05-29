@@ -125,6 +125,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
+- `docs/experiments/2026-05-29-habitat-decision-sensitivity-broad-balanced6.md`
 - `docs/experiments/2026-05-29-habitat-detector-confirmation-ablation-balanced3.md`
 - `docs/experiments/2026-05-29-habitat-decision-sensitivity-mining-balanced3.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-balanced3-comparison.md`
@@ -550,6 +551,27 @@ Passed locally before this handoff update:
   warnings. Top rows were stable `chair` repeat 0
   (`margin=2.050443`, `0.96 -> 0.683481`) and stale `chair` repeat 1
   (`margin=3.808479`, `0.96 -> 0.730507`).
+- Local boundary-region refinement for the miner added an unclamped
+  decision-boundary reliability and boundary-region field. The red regression
+  failed before implementation; after implementation, focused analyzer tests
+  produced `5` passed, integration-adjacent tests produced `66` passed, and
+  the full local core suite produced `253` passed.
+- Linux broad mining after the boundary refinement completed at
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_broad_existing_v3_all`.
+  It mined `50` summaries, scanned `206` memory-guided rows, reported `144`
+  candidates, found `95` reliability-sensitive boundaries, and still found `0`
+  counterfactual flips.
+- Linux balanced6 per-action Grounding-DINO `event_posterior` run completed at
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_balanced6_event_posterior_v1`.
+  It produced `memory_guided=473`, `naive_count=473`, and
+  `frontier_only=1064` actions, with `memory_guided` success `6/6` and `0`
+  hindsight regret. Mining found `6` candidates and `0` flips.
+- Linux matched option-end balanced6 multiview runs completed for `evidence`
+  and `event_posterior`. Both produced identical decisions and aggregates:
+  `memory_guided=773`, `naive_count=573`, and `frontier_only=2079`, with
+  success `5/6`, `5/6`, and `1/6`. Mining found `0` counterfactual flips.
+  One earlier option-end command failed before metrics because the depth-noise
+  profile path was mistyped; it is excluded.
 
 ## Known Risks
 
@@ -637,28 +659,33 @@ Passed locally before this handoff update:
 - The first balanced3 mining smoke found no counterfactual decision flips.
   This reinforces that the existing balanced3 slices are still too stable for
   policy-gain claims.
+- Broad boundary-aware mining and targeted balanced6 event-posterior checks
+  still found no detector-event posterior decision flips. Current evidence
+  supports confidence calibration, not a policy-benefit claim.
+- Matched option-end evidence/event-posterior runs show that the weaker
+  multiview option-end aggregate is caused by detector-confirmation behavior,
+  not by the event-posterior rule alone.
 
 ## Next Recommended Step
 
-1. Mine a larger set of balanced6/stale/per-action summaries for
-   weak-evidence, cost-close candidates beyond the current balanced3 pair.
-2. Build or select a weak-evidence, cost-close Grounding-DINO row where
-   `event_posterior` can plausibly flip memory-vs-frontier selection.
+1. Build a targeted decision-boundary slice that deliberately combines an
+   interior reliability boundary, mixed detector-event evidence, and enough
+   posterior shift to cross the boundary.
+2. Investigate learned reliability calibration using mined rows as supervision,
+   rather than hand-tuning the event-posterior weights.
 3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-4. Use the decision-sensitive rows as supervision targets for a learned
-   reliability model before running larger paired comparisons.
-5. Replace oracle/candidate-view reliability evidence with detector/per-action
+4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-7. Move Grounding-DINO from selected candidate-view verification to larger
+6. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-8. Implement natural Habitat object relocation/removal or a clearly labeled
+7. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-9. Scale the balanced runs beyond six groups and report confidence intervals.
-10. Convert the smoke metrics into SPL-like metrics only after per-action
+8. Scale the balanced runs beyond six groups and report confidence intervals.
+9. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
