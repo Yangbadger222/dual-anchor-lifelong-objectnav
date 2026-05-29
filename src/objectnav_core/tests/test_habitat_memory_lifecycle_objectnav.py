@@ -174,6 +174,7 @@ def test_lifecycle_preflight_writes_summary(tmp_path: Path) -> None:
     assert summary["noise_levels"] == ["clean", "mild"]
     assert summary["target_categories"] == ["bed", "toilet"]
     assert summary["detector_prompt_mode"] == "target_aliases"
+    assert summary["action_metrics"] is False
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert any("not official Habitat SPL" in limit for limit in summary["limits"])
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
@@ -413,6 +414,43 @@ def test_summary_counts_detector_miss_only_when_attempted_route_misses() -> None
 
     assert summary["mode_metrics"]["memory_guided"]["detector_miss_count"] == 0
     assert summary["mode_metrics"]["no_memory"]["detector_miss_count"] == 1
+
+
+def test_summary_aggregates_optional_action_metrics() -> None:
+    rows = [
+        {
+            "mode": "memory_guided",
+            "success": True,
+            "path_length_m": 4.0,
+            "memory_reused": True,
+            "fallback_used": False,
+            "stale_check_count": 0,
+            "attempted_detector_miss": False,
+            "action_count": 12,
+            "executed_distance_m": 3.0,
+        },
+        {
+            "mode": "memory_guided",
+            "success": True,
+            "path_length_m": 10.0,
+            "memory_reused": False,
+            "fallback_used": True,
+            "stale_check_count": 1,
+            "attempted_detector_miss": False,
+            "action_count": 30,
+            "executed_distance_m": 7.5,
+        },
+    ]
+
+    summary = summarize_lifecycle_results(
+        rows=rows,
+        selected_episode_ids=("1",),
+        selected_groups=1,
+    )
+
+    assert summary["mode_metrics"]["memory_guided"]["total_action_count"] == 42
+    assert summary["mode_metrics"]["memory_guided"]["mean_action_count"] == 21.0
+    assert summary["mode_metrics"]["memory_guided"]["total_executed_distance_m"] == 10.5
 
 
 def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:

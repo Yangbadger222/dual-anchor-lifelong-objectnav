@@ -156,6 +156,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--action-metrics",
+        action="store_true",
+        help=(
+            "Enable optional Habitat action-level route metrics. This is off by "
+            "default so legacy geodesic/search-proxy runs remain unchanged."
+        ),
+    )
+    parser.add_argument(
         "--structured-min-goal-viewpoints",
         type=int,
         default=DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -208,6 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "structured_min_path_complexity_ratio": args.structured_min_path_complexity_ratio,
                 "search_proxy_waypoints": args.search_proxy_waypoints,
                 "query_repeats": args.query_repeats,
+                "action_metrics": args.action_metrics,
             }
         ),
         seed=args.seed,

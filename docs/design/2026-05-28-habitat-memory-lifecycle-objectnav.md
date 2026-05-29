@@ -265,3 +265,10 @@ This staged boundary keeps the geodesic lifecycle protocol stable while adding
 the first action-level measurement primitive. The follow-up is to run the same
 memory/fallback routes through this meter and report action counts and executed
 distances alongside geodesic/search-proxy costs.
+
+The lifecycle CLI now exposes this as an optional `--action-metrics` flag. When
+disabled, legacy geodesic/search-proxy traces are unchanged. When enabled, trace
+rows also include `action_count`, `executed_distance_m`, and
+`action_route_reached_stop`, and mode summaries aggregate total/mean action
+counts and executed distance. These are still follower-based action metrics, not
+official Habitat Challenge SPL.

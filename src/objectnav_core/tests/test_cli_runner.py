@@ -150,6 +150,7 @@ def test_habitat_memory_lifecycle_cli_full_run_calls_runner(
     def fake_run(output, **kwargs):
         assert output == str(output_dir)
         assert kwargs["detector"] == "oracle_bbox"
+        assert kwargs["action_metrics"] is True
         payload = {
             "task": "habitat_memory_lifecycle_objectnav",
             "full_habitat_run": True,
@@ -176,6 +177,7 @@ def test_habitat_memory_lifecycle_cli_full_run_calls_runner(
             "memory_guided,no_memory",
             "--target-categories",
             "bed",
+            "--action-metrics",
         ]
     ) == 0
 

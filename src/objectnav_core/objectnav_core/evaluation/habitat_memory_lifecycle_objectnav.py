@@ -289,6 +289,7 @@ def run_habitat_memory_lifecycle_preflight(
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
     lifecycle_challenge: str = DEFAULT_LIFECYCLE_CHALLENGE,
+    action_metrics: bool = False,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
 ) -> dict[str, Any]:
@@ -327,6 +328,7 @@ def run_habitat_memory_lifecycle_preflight(
         "anchor_strategy": anchor_strategy,
         "anchor_candidate_limit": anchor_candidate_limit,
         "lifecycle_challenge": lifecycle_challenge,
+        "action_metrics": bool(action_metrics),
         "modes": list(modes),
         "target_categories": list(target_categories),
         "episodes_per_category": episodes_per_category,
@@ -377,6 +379,7 @@ def run_habitat_memory_lifecycle_objectnav(
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
     lifecycle_challenge: str = DEFAULT_LIFECYCLE_CHALLENGE,
+    action_metrics: bool = False,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -410,6 +413,7 @@ def run_habitat_memory_lifecycle_objectnav(
         anchor_strategy=anchor_strategy,
         anchor_candidate_limit=anchor_candidate_limit,
         lifecycle_challenge=lifecycle_challenge,
+        action_metrics=action_metrics,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
     )
@@ -493,6 +497,10 @@ def run_habitat_memory_lifecycle_objectnav(
     )
     detector_cache: dict[tuple[str, tuple[str, ...]], Any] = {}
     habitat_sim = _load_habitat_sim()
+    action_route_cache: dict[
+        tuple[str, tuple[float, float, float], tuple[float, float, float], tuple[float, float, float, float]],
+        Any,
+    ] = {}
     trace_rows: list[dict[str, Any]] = []
     scene_to_groups: dict[Path, list[LifecycleGroup]] = {}
     for group in groups:
@@ -656,6 +664,34 @@ def run_habitat_memory_lifecycle_objectnav(
                         seed=seed + scene_index * 1000 + group_index + 500000,
                         waypoint_count=search_proxy_waypoints,
                     )
+                    memory_action_route = None
+                    fallback_action_route = None
+                    fallback_from_memory_action_route = None
+                    if action_metrics:
+                        memory_action_route = _cached_action_route(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=group.query_episode.start_position,
+                            start_rotation=group.query_episode.start_rotation,
+                            goal_position=memory_candidate.position,
+                        )
+                        fallback_action_route = _cached_action_route(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=group.query_episode.start_position,
+                            start_rotation=group.query_episode.start_rotation,
+                            goal_position=fallback_candidate.position,
+                        )
+                        fallback_from_memory_action_route = _cached_action_route(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=memory_candidate.position,
+                            start_rotation=memory_candidate.rotation,
+                            goal_position=fallback_candidate.position,
+                        )
                     for mode in modes:
                         repaired = False
                         for query_repeat_index in range(query_repeats):
@@ -675,6 +711,18 @@ def run_habitat_memory_lifecycle_objectnav(
                                 fallback_verifications=(fallback_verification,),
                                 naive_prior_positive_count=(
                                     1 if mode == "naive_count" else 0
+                                ),
+                            )
+                            action_metric_values = _route_action_metrics(
+                                result_route=result.route,
+                                memory_route=(
+                                    fallback_action_route
+                                    if mode == "memory_guided" and repaired
+                                    else memory_action_route
+                                ),
+                                fallback_route=fallback_action_route,
+                                fallback_from_memory_route=(
+                                    fallback_from_memory_action_route
                                 ),
                             )
                             if (
@@ -710,6 +758,7 @@ def run_habitat_memory_lifecycle_objectnav(
                                         group.category
                                     ),
                                     query_repeat_index=query_repeat_index,
+                                    action_metrics=action_metric_values,
                                 )
                             )
         finally:
@@ -735,6 +784,7 @@ def run_habitat_memory_lifecycle_objectnav(
             "anchor_strategy": anchor_strategy,
             "anchor_candidate_limit": anchor_candidate_limit,
             "lifecycle_challenge": lifecycle_challenge,
+            "action_metrics": bool(action_metrics),
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -991,6 +1041,87 @@ def _stale_memory_verification(
     )
 
 
+def _cached_action_route(
+    *,
+    cache: dict[
+        tuple[
+            str,
+            tuple[float, float, float],
+            tuple[float, float, float],
+            tuple[float, float, float, float],
+        ],
+        Any,
+    ],
+    habitat_sim: Any,
+    sim: Any,
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    goal_position: Sequence[float],
+) -> Any:
+    from objectnav_core.evaluation.habitat_action_follower import (
+        follow_greedy_geodesic_route,
+    )
+
+    start = _tuple3(start_position)
+    goal = _tuple3(goal_position)
+    rotation = _tuple4(start_rotation)
+    if start is None or goal is None or rotation is None:
+        raise ValueError("Action metrics require valid start pose and goal position")
+    key = ("greedy", start, goal, rotation)
+    if key not in cache:
+        cache[key] = follow_greedy_geodesic_route(
+            habitat_sim=habitat_sim,
+            sim=sim,
+            start_position=start,
+            start_rotation=rotation,
+            goal_position=goal,
+            max_steps=240,
+            goal_radius=0.2,
+        )
+    return cache[key]
+
+
+def _route_action_metrics(
+    *,
+    result_route: Sequence[str],
+    memory_route: Any | None,
+    fallback_route: Any | None,
+    fallback_from_memory_route: Any | None,
+) -> dict[str, Any] | None:
+    if (
+        memory_route is None
+        and fallback_route is None
+        and fallback_from_memory_route is None
+    ):
+        return None
+    action_count = 0
+    executed_distance = 0.0
+    reached_stop = True
+    if tuple(result_route) == ("memory",):
+        action_count += int(memory_route.action_count)
+        executed_distance += float(memory_route.executed_distance_m)
+        reached_stop = bool(memory_route.reached_stop)
+    elif tuple(result_route) == ("fallback",):
+        action_count += int(fallback_route.action_count)
+        executed_distance += float(fallback_route.executed_distance_m)
+        reached_stop = bool(fallback_route.reached_stop)
+    elif tuple(result_route) == ("memory", "fallback"):
+        action_count += int(memory_route.action_count)
+        action_count += int(fallback_from_memory_route.action_count)
+        executed_distance += float(memory_route.executed_distance_m)
+        executed_distance += float(fallback_from_memory_route.executed_distance_m)
+        reached_stop = bool(memory_route.reached_stop) and bool(
+            fallback_from_memory_route.reached_stop
+        )
+    else:
+        raise ValueError(f"Unsupported lifecycle route for action metrics: {result_route}")
+    return {
+        "action_count": int(action_count),
+        "executed_distance_m": round(executed_distance, 6),
+        "action_route_reached_stop": reached_stop,
+    }
+
+
 def _verify_lifecycle_view(
     *,
     sim: Any,
@@ -1084,6 +1215,7 @@ def _lifecycle_row(
     result: LifecyclePlanResult,
     normalized_category: str,
     query_repeat_index: int = 0,
+    action_metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     detector_miss = (
         fallback_verification.target_visible
@@ -1098,7 +1230,7 @@ def _lifecycle_row(
         and fallback_verification.target_visible
         and fallback_verification.evidence_type is not EvidenceType.POSITIVE
     )
-    return {
+    row = {
         "group_id": group.group_id,
         "scene_id": group.scene_key,
         "category": group.category,
@@ -1160,6 +1292,9 @@ def _lifecycle_row(
         "detector_miss": detector_miss,
         "attempted_detector_miss": attempted_detector_miss,
     }
+    if action_metrics is not None:
+        row.update(action_metrics)
+    return row
 
 
 def _first_goal_view_pose(
@@ -1338,7 +1473,7 @@ def _any_shared_gate_success(
 
 def _mode_metrics(rows: Sequence[dict[str, Any]], mode: str) -> dict[str, Any]:
     mode_rows = [row for row in rows if str(row.get("mode")) == mode]
-    return {
+    metrics: dict[str, Any] = {
         "episodes": len(mode_rows),
         "success_episodes": sum(int(bool(row.get("success"))) for row in mode_rows),
         "total_path_length_m": round(
@@ -1364,6 +1499,28 @@ def _mode_metrics(rows: Sequence[dict[str, Any]], mode: str) -> dict[str, Any]:
             for row in mode_rows
         ),
     }
+    if any("action_count" in row for row in mode_rows):
+        total_action_count = sum(
+            int(row.get("action_count", 0) or 0) for row in mode_rows
+        )
+        total_executed_distance = sum(
+            float(row.get("executed_distance_m", 0.0) or 0.0) for row in mode_rows
+        )
+        metrics.update(
+            {
+                "total_action_count": int(total_action_count),
+                "mean_action_count": round(
+                    _safe_div(float(total_action_count), len(mode_rows)),
+                    6,
+                ),
+                "total_executed_distance_m": round(total_executed_distance, 6),
+                "mean_executed_distance_m": round(
+                    _safe_div(total_executed_distance, len(mode_rows)),
+                    6,
+                ),
+            }
+        )
+    return metrics
 
 
 def _category_counts_from_groups(groups: Sequence[LifecycleGroup]) -> dict[str, int]:
