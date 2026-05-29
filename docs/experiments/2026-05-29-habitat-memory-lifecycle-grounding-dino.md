@@ -659,3 +659,48 @@ The code now routes action metrics through the same waypoint sequence used by
 `fallback_path_cost_m` and `fallback_from_memory_path_cost_m`. Rerun action
 smokes after the search-proxy-aligned action-metrics commit before reporting any
 action-count comparison.
+
+### Action-Metrics Clean Six-Category Smoke
+
+`runs/habitat_usability/habitat_memory_lifecycle_grounding_dino_action_metrics_clean_6cat_v2`
+
+Parameters: full HM3D `val`, `12` groups, two per category, `clean` only,
+`query_repeats=2`, Grounding-DINO tiny, detector-qualified memory anchors,
+shared detector-qualified fallback, deterministic search-proxy waypoints,
+synthetic stale relocation, and `--action-metrics`.
+
+Result:
+
+- `memory_guided`: `24/24`, `5571` actions, `777.854615 m` executed,
+  `774.196862 m` geodesic/search-proxy path.
+- `naive_count`: `24/24`, `9076` actions, `1246.567738 m` executed,
+  `1241.322688 m` path.
+- `no_memory`: `24/24`, `6492` actions, `897.211926 m` executed,
+  `899.146252 m` path.
+- memory vs `naive_count`: `38.6183%` fewer actions and `37.6003%` less
+  executed distance.
+- memory vs `no_memory`: `14.1867%` fewer actions and `13.3031%` less executed
+  distance.
+
+Trace audit:
+
+- `72/72` action routes emitted stop.
+- `memory_guided` routes: `12` first-query memory-then-fallback repairs and
+  `12` repaired memory-only repeats.
+- `naive_count` routes: `24` memory-then-fallback attempts.
+- `no_memory` routes: `24` fallback-only attempts.
+- Every `memory|fallback` row satisfied
+  `path_length_m = memory_path_cost_m + fallback_from_memory_path_cost_m`.
+- Detector misses were `0` for all modes.
+
+Per-category action-count caveat:
+
+- Memory beat `naive_count` in every category in this smoke.
+- Memory did not beat `no_memory` in every category: `sofa` and `toilet` were
+  worse because the first stale-memory visit costs extra before repair.
+- The stronger claim is therefore not "memory is always better than no memory";
+  it is that repaired lifelong memory amortizes repeated queries and strongly
+  beats a fair positive-only counting baseline under stale relocation.
+
+This is still not official Habitat SPL. It is an action-route accounting layer
+over fixed verification viewpoints.

@@ -822,6 +822,7 @@ def run_habitat_memory_lifecycle_objectnav(
                 "selected_episode_ids": [
                     _episode_selection_key(group.query_episode) for group in groups
                 ],
+                "selected_group_ids": [group.group_id for group in groups],
                 "selected_category_counts": _category_counts_from_groups(groups),
             },
             **summarize_lifecycle_results(
@@ -829,6 +830,7 @@ def run_habitat_memory_lifecycle_objectnav(
                 selected_episode_ids=[
                     _episode_selection_key(group.query_episode) for group in groups
                 ],
+                selected_group_ids=[group.group_id for group in groups],
                 selected_groups=len(groups),
             ),
             "artifact_files": {
@@ -858,6 +860,7 @@ def summarize_lifecycle_results(
     rows: Sequence[dict[str, Any]],
     selected_episode_ids: Sequence[str],
     selected_groups: int,
+    selected_group_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     mode_metrics = {
         mode: _mode_metrics(rows, mode)
@@ -882,6 +885,12 @@ def summarize_lifecycle_results(
         comparison["memory_guided_vs_no_memory_success_delta"] = int(
             memory_metrics.get("success_episodes", 0)
         ) - int(no_memory_metrics.get("success_episodes", 0))
+        _add_action_comparison(
+            comparison=comparison,
+            prefix="memory_guided_vs_no_memory",
+            memory_metrics=memory_metrics,
+            baseline_metrics=no_memory_metrics,
+        )
     if memory_metrics and naive_metrics:
         memory_path = float(memory_metrics.get("total_path_length_m", 0.0))
         naive_path = float(naive_metrics.get("total_path_length_m", 0.0))
@@ -896,9 +905,20 @@ def summarize_lifecycle_results(
         comparison["memory_guided_vs_naive_count_success_delta"] = int(
             memory_metrics.get("success_episodes", 0)
         ) - int(naive_metrics.get("success_episodes", 0))
+        _add_action_comparison(
+            comparison=comparison,
+            prefix="memory_guided_vs_naive_count",
+            memory_metrics=memory_metrics,
+            baseline_metrics=naive_metrics,
+        )
     return {
         "selected_groups": int(selected_groups),
         "selected_episode_ids": [str(episode_id) for episode_id in selected_episode_ids],
+        "selected_group_ids": (
+            [str(group_id) for group_id in selected_group_ids]
+            if selected_group_ids is not None
+            else []
+        ),
         "trace_rows": len(rows),
         "mode_metrics": mode_metrics,
         "comparison": comparison,
@@ -1565,6 +1585,39 @@ def _any_shared_gate_success(
     verifications: Sequence[LifecycleVerification],
 ) -> bool:
     return any(verification.shared_gate_success for verification in verifications)
+
+
+def _add_action_comparison(
+    *,
+    comparison: dict[str, Any],
+    prefix: str,
+    memory_metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any],
+) -> None:
+    if "total_action_count" in memory_metrics and "total_action_count" in baseline_metrics:
+        memory_actions = int(memory_metrics.get("total_action_count", 0) or 0)
+        baseline_actions = int(baseline_metrics.get("total_action_count", 0) or 0)
+        comparison[f"{prefix}_action_delta"] = baseline_actions - memory_actions
+        comparison[f"{prefix}_action_reduction_ratio"] = round(
+            _safe_div(float(baseline_actions - memory_actions), baseline_actions),
+            6,
+        )
+    if (
+        "total_executed_distance_m" in memory_metrics
+        and "total_executed_distance_m" in baseline_metrics
+    ):
+        memory_distance = float(memory_metrics.get("total_executed_distance_m", 0.0) or 0.0)
+        baseline_distance = float(
+            baseline_metrics.get("total_executed_distance_m", 0.0) or 0.0
+        )
+        comparison[f"{prefix}_executed_distance_delta_m"] = round(
+            baseline_distance - memory_distance,
+            6,
+        )
+        comparison[f"{prefix}_executed_distance_reduction_ratio"] = round(
+            _safe_div(baseline_distance - memory_distance, baseline_distance),
+            6,
+        )
 
 
 def _mode_metrics(rows: Sequence[dict[str, Any]], mode: str) -> dict[str, Any]:

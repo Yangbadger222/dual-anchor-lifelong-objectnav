@@ -243,6 +243,24 @@ def test_repaired_memory_anchor_source_points_to_repaired_fallback_anchor() -> N
     )
 
 
+def test_lifecycle_summary_can_record_selected_group_ids() -> None:
+    summary = summarize_lifecycle_results(
+        rows=[],
+        selected_episode_ids=("scene-a|episode:0", "scene-a|episode:0"),
+        selected_groups=2,
+        selected_group_ids=("scene-a|chair|goal_object:1", "scene-a|plant|goal_object:2"),
+    )
+
+    assert summary["selected_episode_ids"] == [
+        "scene-a|episode:0",
+        "scene-a|episode:0",
+    ]
+    assert summary["selected_group_ids"] == [
+        "scene-a|chair|goal_object:1",
+        "scene-a|plant|goal_object:2",
+    ]
+
+
 def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
     group = SimpleNamespace(
         group_id="scene|chair|goal_object:1",
@@ -395,6 +413,8 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
             "mode": "memory_guided",
             "success": True,
             "path_length_m": 4.0,
+            "action_count": 10,
+            "executed_distance_m": 4.5,
             "memory_reused": True,
             "fallback_used": False,
             "stale_check_count": 0,
@@ -404,6 +424,8 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
             "mode": "memory_guided",
             "success": True,
             "path_length_m": 13.0,
+            "action_count": 30,
+            "executed_distance_m": 13.5,
             "memory_reused": False,
             "fallback_used": True,
             "stale_check_count": 1,
@@ -413,6 +435,8 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
             "mode": "naive_count",
             "success": True,
             "path_length_m": 18.0,
+            "action_count": 80,
+            "executed_distance_m": 18.5,
             "memory_reused": False,
             "fallback_used": True,
             "stale_check_count": 0,
@@ -422,6 +446,8 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
             "mode": "no_memory",
             "success": True,
             "path_length_m": 24.0,
+            "action_count": 50,
+            "executed_distance_m": 24.5,
             "memory_reused": False,
             "fallback_used": True,
             "stale_check_count": 0,
@@ -443,6 +469,14 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
     assert summary["mode_metrics"]["memory_guided"]["stale_check_count"] == 1
     assert summary["mode_metrics"]["memory_guided"]["detector_miss_count"] == 1
     assert summary["comparison"]["memory_guided_vs_no_memory_path_reduction_ratio"] > 0.2
+    assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 40
+    assert summary["comparison"]["memory_guided_vs_naive_count_action_reduction_ratio"] == 0.5
+    assert (
+        summary["comparison"][
+            "memory_guided_vs_no_memory_executed_distance_reduction_ratio"
+        ]
+        > 0.2
+    )
 
 
 def test_summary_counts_detector_miss_only_when_attempted_route_misses() -> None:

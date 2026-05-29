@@ -213,6 +213,11 @@ Passed on Linux:
   bounds, `snap_point`, and `is_navigable` instead of Habitat pathfinder's
   internal random sampler. Action route sequences use a `720` step budget per
   route goal.
+- Current clean action-metrics smoke:
+  `runs/habitat_usability/habitat_memory_lifecycle_grounding_dino_action_metrics_clean_6cat_v2`.
+  It has `24/24` success for all modes and `72/72` action routes reached stop.
+  `memory_guided` used `5571` actions versus `9076` for `naive_count` and
+  `6492` for `no_memory`.
 
 ## Known Risks
 
@@ -248,6 +253,11 @@ Passed on Linux:
 - The first six-category clean action-metrics matrix had two `no_memory` rows
   where the follower did not emit stop. Treat that run as diagnostic until the
   deterministic search-proxy sampling and higher action step budget are rerun.
+- The v2 action smoke is still clean-only and only `12` groups. It is useful as
+  a pipeline/result sanity check, not as a paper-scale benchmark.
+- Memory beats `naive_count` in every category in the v2 action smoke, but does
+  not beat `no_memory` in every category (`sofa` and `toilet` are worse for
+  memory under two repeats).
 
 ## Next Recommended Step
 
