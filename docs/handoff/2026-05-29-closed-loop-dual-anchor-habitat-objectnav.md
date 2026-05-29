@@ -30,11 +30,15 @@ Implemented foundation:
   `python -m objectnav_core.cli.run_closed_loop_dual_anchor_benchmark --output <dir>`
   executes option-level memory-vs-frontier decisions across two sessions, with
   non-identity frame restart, ambiguity rejection, and stale repair.
+- Habitat closed-loop smoke entry:
+  `python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output <dir>`
+  has preflight and an oracle/action-level HM3D smoke path. It reuses existing
+  Habitat episode/group selection and GreedyGeodesic route execution.
 
 Not implemented yet:
 
-- Habitat closed-loop frontier policy.
-- Multi-session Habitat runner with map-frame restart/drift.
+- Grounding-DINO per-step Habitat closed-loop perception.
+- True Habitat frontier mapping/exploration policy.
 - Natural object relocation/removal in Habitat.
 - SPL-like action-level ObjectNav metrics for memory-vs-frontier decisions.
 
@@ -46,7 +50,10 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
+- `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
+- `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/cli/run_closed_loop_dual_anchor_benchmark.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
 - `src/objectnav_core/objectnav_core/evaluation/dual_anchor_pressure.py`
@@ -54,6 +61,8 @@ Not implemented yet:
 - `src/objectnav_core/objectnav_core/planning/memory_guided.py`
 - `src/objectnav_core/tests/test_closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py`
+- `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py`
+- `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py`
 - `src/objectnav_core/tests/test_dual_anchor_geometry.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure_cli.py`
@@ -71,6 +80,8 @@ python -m pytest src/objectnav_core/tests/test_dual_anchor_pressure.py src/objec
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_dual_anchor_pressure --output /tmp/dual_anchor_pressure_smoke
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_closed_loop_dual_anchor_benchmark.py src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_closed_loop_dual_anchor_benchmark --output /tmp/closed_loop_dual_anchor_grid_smoke
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_dual_anchor_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --preflight-only
 ```
 
 Linux command to run after push:
@@ -84,6 +95,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest 
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_dual_anchor_pressure --output runs/dual_anchor_pressure/pressure_cli_smoke_v1
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_closed_loop_dual_anchor_benchmark.py src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_closed_loop_dual_anchor_benchmark --output runs/dual_anchor_grid/closed_loop_smoke_v1
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_smoke_v1 --target-categories plant,toilet --max-groups 1
 ```
 
 ## Verification
@@ -98,15 +111,20 @@ Passed locally before this handoff update:
 - Closed-loop grid CLI smoke generated `summary.json` with:
   `memory_guided=67.210933 m`, `frontier_only=81.389524 m`,
   `naive_count=67.210933 m`.
+- Habitat closed-loop preflight/CLI focused tests: `3` passed locally.
+- Full local core tests after adding the Habitat smoke entry: `189` passed.
 
 Pending:
 
-- Linux pull, pressure CLI smoke, and closed-loop grid smoke after commit/push.
+- Linux pull and Habitat oracle/action smoke after commit/push.
 
 ## Known Risks
 
 - The current pressure runner is deterministic synthetic math, not Habitat.
 - The closed-loop grid harness is option-level and config-truth, not Habitat.
+- The Habitat closed-loop runner is currently oracle/action-level. It executes
+  real Habitat GreedyGeodesic routes, but it does not yet run Grounding-DINO
+  per-step perception or true frontier mapping.
 - The current grid smoke does not beat `naive_count`; after the shared gate,
   memory-guided and naive-count tie. Treat this as plumbing/pressure validation,
   not a headline result.
@@ -120,8 +138,9 @@ Pending:
 
 1. Push the closed-loop grid harness.
 2. Verify it on Linux in the `habitat` conda environment.
-3. Port the same summary/trace schema into Habitat with real action loops,
-   Grounding-DINO observations, and object relocation/removal.
+3. Run the Habitat oracle/action smoke with `--max-groups 1`.
+4. Replace oracle visibility with Grounding-DINO observations and add object
+   relocation/removal pressure.
 
 ## Context for Next Contributor
 
