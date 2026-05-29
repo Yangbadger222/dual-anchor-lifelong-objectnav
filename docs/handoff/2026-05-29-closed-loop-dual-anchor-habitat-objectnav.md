@@ -158,6 +158,8 @@ python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_action
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 git diff --check
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action'
 ```
 
 Linux commands run:
@@ -320,6 +322,15 @@ Passed locally before this handoff update:
 - `py_compile` for `habitat_action_follower.py`,
   `habitat_closed_loop_dual_anchor_objectnav.py`, and the Habitat CLI passed.
 - `git diff --check` passed after the per-action route observation update.
+- Linux focused Habitat route/CLI tests after pulling commit `847c66a`:
+  `46` passed.
+- Linux 1-group oracle navmesh smoke with `--route-observation-mode per_action`
+  completed successfully. It recorded `route_observation_mode=per_action` and
+  `frontier_mode=navmesh_frontier`. On the selected `plant` group,
+  `memory_guided=118` actions, `naive_count=118`, and `frontier_only=124`.
+  Memory-guided reused accepted memory; frontier-only succeeded through
+  `navmesh_frontier_probe:1:heading:3`; post-memory fallback had a per-action
+  positive at `navmesh_frontier_probe:0:step:0`.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -399,8 +410,8 @@ Passed locally before this handoff update:
   a benchmark claim.
 - The Grounding-DINO candidate-view calibration smoke preserved the same bucket
   pattern with an 11-action gain over `naive_count`. Per-action route
-  observation mode is now implemented locally but still needs Linux Habitat
-  smoke verification and larger detector-backed runs.
+  observation mode now has a Linux oracle smoke, but still needs larger
+  detector-backed runs.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -412,23 +423,21 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Push the per-action route observation slice, then run Linux focused tests and
-   a small `--route-observation-mode per_action` Habitat smoke.
-2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-3. Continue calibrating the reliability estimator against bucket counts and
+2. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-4. Replace oracle/candidate-view reliability evidence with detector/per-action
+3. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-6. Move Grounding-DINO from selected candidate-view verification to larger
+5. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-7. Implement natural Habitat object relocation/removal or a clearly labeled
+6. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-8. Scale the balanced runs beyond six groups and report confidence intervals.
-9. Convert the smoke metrics into SPL-like metrics only after per-action
+7. Scale the balanced runs beyond six groups and report confidence intervals.
+8. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
