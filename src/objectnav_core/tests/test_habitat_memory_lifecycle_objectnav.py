@@ -9,6 +9,7 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
     _choose_lifecycle_anchor_candidate,
     _rank_lifecycle_anchor_candidates,
+    _stale_memory_verification,
     _lifecycle_row,
     plan_lifecycle_query,
     plan_lifecycle_sequence,
@@ -254,6 +255,28 @@ def test_anchor_candidate_ranking_keeps_top_visible_candidates() -> None:
     )
 
     assert selected == (high, middle)
+
+
+def test_synthetic_stale_memory_verification_preserves_diagnostic_pixels() -> None:
+    original = LifecycleVerification(
+        evidence_type=EvidenceType.POSITIVE,
+        target_visible=True,
+        evidence_reason="detector_positive_mask",
+        oracle_target_pixels=123,
+        detector_pixels=99,
+        overlap_pixels=88,
+        detector_precision=0.8,
+        oracle_recall=0.7,
+        detection_count=1,
+    )
+
+    stale = _stale_memory_verification(original)
+
+    assert stale.evidence_type is EvidenceType.NON_CONFIRMATION
+    assert stale.target_visible is False
+    assert stale.evidence_reason == "synthetic_stale_relocation"
+    assert stale.oracle_target_pixels == 123
+    assert stale.detector_pixels == 99
 
 
 def test_summarize_lifecycle_results_reports_mode_comparison() -> None:

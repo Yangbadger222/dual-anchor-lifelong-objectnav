@@ -53,6 +53,11 @@ SUPPORTED_ANCHOR_STRATEGIES: tuple[str, ...] = (
     "detector_positive",
 )
 DEFAULT_ANCHOR_STRATEGY = "detector_positive"
+SUPPORTED_LIFECYCLE_CHALLENGES: tuple[str, ...] = (
+    "stable",
+    "synthetic_stale_relocation",
+)
+DEFAULT_LIFECYCLE_CHALLENGE = "stable"
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 
 
@@ -267,6 +272,7 @@ def run_habitat_memory_lifecycle_preflight(
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
+    lifecycle_challenge: str = DEFAULT_LIFECYCLE_CHALLENGE,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
 ) -> dict[str, Any]:
@@ -286,6 +292,7 @@ def run_habitat_memory_lifecycle_preflight(
         detector_prompt_mode=detector_prompt_mode,
         anchor_strategy=anchor_strategy,
         anchor_candidate_limit=anchor_candidate_limit,
+        lifecycle_challenge=lifecycle_challenge,
     )
     summary: dict[str, Any] = {
         "task": "habitat_memory_lifecycle_objectnav_preflight",
@@ -303,6 +310,7 @@ def run_habitat_memory_lifecycle_preflight(
         "detector_prompt_mode": detector_prompt_mode,
         "anchor_strategy": anchor_strategy,
         "anchor_candidate_limit": anchor_candidate_limit,
+        "lifecycle_challenge": lifecycle_challenge,
         "modes": list(modes),
         "target_categories": list(target_categories),
         "episodes_per_category": episodes_per_category,
@@ -352,6 +360,7 @@ def run_habitat_memory_lifecycle_objectnav(
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
     anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
+    lifecycle_challenge: str = DEFAULT_LIFECYCLE_CHALLENGE,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -384,6 +393,7 @@ def run_habitat_memory_lifecycle_objectnav(
         detector_prompt_mode=detector_prompt_mode,
         anchor_strategy=anchor_strategy,
         anchor_candidate_limit=anchor_candidate_limit,
+        lifecycle_challenge=lifecycle_challenge,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
     )
@@ -574,6 +584,10 @@ def run_habitat_memory_lifecycle_objectnav(
                         min_target_pixels=min_target_pixels,
                     )
                     memory_verification = memory_verifications[memory_candidate.source]
+                    if lifecycle_challenge == "synthetic_stale_relocation":
+                        memory_verification = _stale_memory_verification(
+                            memory_verification
+                        )
                     memory_path_cost = _path_distance(
                         _shortest_path_points(
                             sim=sim,
@@ -666,6 +680,7 @@ def run_habitat_memory_lifecycle_objectnav(
             "detector_prompt_mode": detector_prompt_mode,
             "anchor_strategy": anchor_strategy,
             "anchor_candidate_limit": anchor_candidate_limit,
+            "lifecycle_challenge": lifecycle_challenge,
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -695,6 +710,7 @@ def run_habitat_memory_lifecycle_objectnav(
                 "Fallback uses a search_proxy navmesh route, while oracle_goal_path_cost_m is kept only as a shortest-path lower bound.",
                 "The agent teleports to verification poses for measurement; action-level closed loop remains next.",
                 "naive_count is positive-only and shares the same memory route/fallback gate.",
+                "synthetic_stale_relocation, when enabled, marks the remembered anchor stale at query time and is not an official Habitat object relocation.",
             ],
         }
     )
@@ -869,6 +885,24 @@ def _choose_lifecycle_anchor_candidate(
     return max(
         ranked_candidates,
         key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+    )
+
+
+def _stale_memory_verification(
+    verification: LifecycleVerification,
+) -> LifecycleVerification:
+    return LifecycleVerification(
+        evidence_type=EvidenceType.NON_CONFIRMATION,
+        target_visible=False,
+        evidence_strength=1.0,
+        evidence_reason="synthetic_stale_relocation",
+        oracle_target_pixels=verification.oracle_target_pixels,
+        detector_pixels=verification.detector_pixels,
+        overlap_pixels=verification.overlap_pixels,
+        detector_precision=verification.detector_precision,
+        oracle_recall=verification.oracle_recall,
+        detection_count=verification.detection_count,
+        detection_filtered_count=verification.detection_filtered_count,
     )
 
 
@@ -1361,6 +1395,7 @@ def _validate_preflight_inputs(
     detector_prompt_mode: str,
     anchor_strategy: str,
     anchor_candidate_limit: int | None,
+    lifecycle_challenge: str,
 ) -> None:
     if not noise_levels:
         raise ValueError("At least one noise level is required")
@@ -1400,6 +1435,11 @@ def _validate_preflight_inputs(
         )
     if anchor_candidate_limit is not None and anchor_candidate_limit <= 0:
         raise ValueError("anchor_candidate_limit must be positive when provided")
+    if lifecycle_challenge not in SUPPORTED_LIFECYCLE_CHALLENGES:
+        raise ValueError(
+            "lifecycle_challenge must be one of: "
+            + ", ".join(SUPPORTED_LIFECYCLE_CHALLENGES)
+        )
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

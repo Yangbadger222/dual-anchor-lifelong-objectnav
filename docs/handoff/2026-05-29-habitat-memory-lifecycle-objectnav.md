@@ -65,6 +65,7 @@ Recent code also adds:
 - `--detector-prompt-mode`
 - `--anchor-strategy`
 - `--anchor-candidate-limit` with default `4`
+- `--lifecycle-challenge stable|synthetic_stale_relocation`
 - trace fields for `memory_anchor_source` and evidence reasons
 - `detector_miss_count` is based on `attempted_detector_miss`, so unused
   fallback misses do not pollute successful memory rows.
@@ -156,8 +157,9 @@ Passed on Linux:
 
 ## Next Recommended Step
 
-1. Add explicit object removal/relocation lifecycle scenarios instead of only
-   relying on detector misses at stale anchors.
+1. Run `--lifecycle-challenge synthetic_stale_relocation` with oracle first,
+   then Grounding-DINO on the full-val six-category subset. This is the first
+   protocol expected to separate `memory_guided` from fair `naive_count`.
 2. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
    claims; current Grounding-DINO tiny returns zero boxes under `mild/heavy` for
    one high-GT-pixel view.

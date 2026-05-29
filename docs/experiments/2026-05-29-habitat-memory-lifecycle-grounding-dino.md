@@ -366,3 +366,21 @@ Failure attribution:
   Clean `goal_viewpoint:3` is positive, but all top-4 memory candidates become
   non-confirmations under `mild` and `heavy`. This points to detector/noise
   robustness rather than missing Habitat GT.
+
+### Synthetic Stale Relocation Protocol
+
+After the detector-qualified stable matrix, `memory_guided` still ties
+`naive_count` because no stale lifecycle event occurs. The runner now supports
+`--lifecycle-challenge synthetic_stale_relocation` to isolate stale repair:
+
+- discovery still selects a detector-confirmed memory anchor;
+- at query time the old memory anchor is marked as stale;
+- the first query falls back to a detector-verified current target view;
+- `memory_guided` can repair the anchor and reuse the fallback anchor on the
+  second repeated query;
+- `naive_count` remains positive-only and does not receive repair state.
+
+This is explicitly a synthetic lifecycle stress test, not an official Habitat
+object relocation. It is the next required experiment because the stable matrix
+only proves memory helps versus no-memory search, not versus a fair count-only
+memory baseline.

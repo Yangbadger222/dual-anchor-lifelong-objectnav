@@ -188,3 +188,18 @@ created by perception-confirmed experience, not by privileged Habitat goal
 metadata. It also keeps failures attributable: if no detector-positive anchor
 exists for a category/viewpoint set, the trace now records evidence reasons and
 the selected `memory_anchor_source`.
+
+## 2026-05-29 Update: Synthetic Stale Relocation Challenge
+
+The stable-memory protocol cannot distinguish `memory_guided` from a fair
+positive-only `naive_count` baseline once both are allowed to visit the same
+confirmed anchor. To test the actual contribution, the runner now supports
+`--lifecycle-challenge synthetic_stale_relocation`.
+
+This challenge keeps discovery detector qualification intact, then marks the
+remembered anchor as stale at query time. The first query must pay the old
+memory attempt plus fallback verification. If fallback succeeds,
+`memory_guided` repairs the anchor and reuses it on later repeated queries;
+`naive_count` remains positive-only and does not receive repair state. This is a
+controlled lifecycle stress test, not an official Habitat object-relocation
+benchmark.

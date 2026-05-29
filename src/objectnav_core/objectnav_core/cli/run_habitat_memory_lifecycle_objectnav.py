@@ -14,7 +14,9 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     DEFAULT_DETECTOR_PROMPT_MODE,
     DEFAULT_ANCHOR_STRATEGY,
     DEFAULT_ANCHOR_CANDIDATE_LIMIT,
+    DEFAULT_LIFECYCLE_CHALLENGE,
     SUPPORTED_ANCHOR_STRATEGIES,
+    SUPPORTED_LIFECYCLE_CHALLENGES,
     SUPPORTED_LIFECYCLE_DETECTORS,
     SUPPORTED_LIFECYCLE_MODES,
     TARGET_CATEGORIES,
@@ -100,6 +102,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Maximum number of discovery viewpoints to detector-verify per group/noise "
             "cell, after sorting by Habitat target pixels."
+        ),
+    )
+    parser.add_argument(
+        "--lifecycle-challenge",
+        default=DEFAULT_LIFECYCLE_CHALLENGE,
+        choices=SUPPORTED_LIFECYCLE_CHALLENGES,
+        help=(
+            "Lifecycle challenge type. synthetic_stale_relocation marks the "
+            "remembered anchor stale at query time so repair behavior can be tested."
         ),
     )
     parser.add_argument(
@@ -207,6 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         detector_prompt_mode=args.detector_prompt_mode,
         anchor_strategy=args.anchor_strategy,
         anchor_candidate_limit=args.anchor_candidate_limit,
+        lifecycle_challenge=args.lifecycle_challenge,
         min_target_pixels=args.min_target_pixels,
         min_detector_pixels=args.min_detector_pixels,
     )
