@@ -1268,14 +1268,17 @@ def _estimate_memory_valid_prior(
         reason = "weak_current_evidence"
     else:
         value = (
-            0.15 * float(base_prior)
-            + 0.45 * current_evidence
-            + 0.20 * matching
-            + 0.10 * covariance
+            0.10 * float(base_prior)
+            + 0.50 * current_evidence
+            + 0.22 * matching
+            + 0.08 * covariance
             + 0.05 * category_prior
             + 0.05 * recency
         )
         reason = "evidence_weighted"
+        if current_evidence >= 0.95 and matching >= 1.0 and covariance >= 0.85:
+            value = max(value, 0.96)
+            reason = "strong_current_evidence_floor"
     components = {
         "base_prior": round(float(base_prior), 6),
         "current_evidence": round(current_evidence, 6),

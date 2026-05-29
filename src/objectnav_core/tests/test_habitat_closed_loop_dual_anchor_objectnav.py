@@ -569,6 +569,56 @@ def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> Non
     )
 
 
+def test_calibrated_memory_decision_keeps_strong_shorter_memory() -> None:
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=closed_loop._OracleVisible(
+            target_visible=True,
+            oracle_target_pixels=411114,
+        ),
+        category="sofa",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=98,
+            fallback_from_memory_action_count=87,
+            fallback_action_count=102,
+            memory_valid_prior=estimate.value,
+        )
+        == "memory_first"
+    )
+
+
+def test_calibrated_memory_decision_still_uses_frontier_when_frontier_is_shorter() -> None:
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=closed_loop._OracleVisible(
+            target_visible=True,
+            oracle_target_pixels=74268,
+        ),
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=139,
+            fallback_from_memory_action_count=166,
+            fallback_action_count=125,
+            memory_valid_prior=estimate.value,
+        )
+        == "frontier_first"
+    )
+
+
 def test_evidence_reliability_boosts_strong_current_positive_memory() -> None:
     estimate = closed_loop._estimate_memory_valid_prior(
         base_prior=0.5,

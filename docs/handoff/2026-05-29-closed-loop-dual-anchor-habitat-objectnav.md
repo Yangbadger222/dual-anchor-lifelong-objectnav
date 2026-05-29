@@ -57,6 +57,10 @@ Implemented foundation:
   deferred, naive reuse, and frontier-only rows.
 - Row-level hindsight best candidate and regret diagnostics for calibrating
   reliability by error magnitude, not just bucket count.
+- Strong-positive evidence reliability calibration for accepted, highly
+  visible, low-covariance memory candidates. This is designed to remove the
+  balanced6 `sofa` `valid_memory_wrongly_deferred` row without breaking the
+  `plant` shorter-frontier decision.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
@@ -118,6 +122,9 @@ PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_lo
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_grounding_dino_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.2 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level mild --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --preflight-only
 PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_calibrated_memory_decision_keeps_strong_shorter_memory src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_calibrated_memory_decision_still_uses_frontier_when_frontier_is_shorter src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_evidence_reliability_boosts_strong_current_positive_memory src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_evidence_reliability_rejects_nonpositive_or_ambiguous_memory -q
+python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --frontier-mode navmesh_frontier --frontier-probe-count 5'
 ```
@@ -232,6 +239,13 @@ Passed locally before this handoff update:
   produced `memory_guided=373`, `frontier_only=708`, and `naive_count=387`
   actions. `memory_guided` had `total_hindsight_action_regret=0`; `naive_count`
   had `14` action regret.
+- Local calibration tests after the strong-positive reliability update:
+  `4` passed. The new regressions cover keeping the shorter strong `sofa`
+  memory and preserving the shorter `plant` frontier decision.
+- Local closed-loop Habitat/CLI tests after the calibration update:
+  `36` passed.
+- Full local core tests after the calibration update: `222` passed.
+- `git diff --check` passed after the calibration update.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -306,17 +320,23 @@ Passed locally before this handoff update:
   tiny oracle run and a balanced6 direction check, but it uses
   oracle/Grounding-DINO candidate-view evidence rather than per-action
   perception and remains a transparent heuristic, not learned calibration.
-- Bucket counts show the current estimator still wrongly defers one valid sofa
-  memory on the balanced6 smoke, so the small aggregate gain should not be
-  presented as robust.
+- The local calibration targets the balanced6 `sofa` wrong-deferral row, but it
+  still needs a Linux balanced6 Habitat rerun before claiming the scene-level
+  behavior changed.
+- The strong-positive floor is a hand-designed guardrail from hindsight-regret
+  diagnostics. It should be treated as a calibration baseline, not the final
+  algorithm, until it is validated on held-out scenes and replaced or supported
+  by learned/evidence-derived reliability.
 
 ## Next Recommended Step
 
-1. Run hindsight regret diagnostics on larger balanced runs and use nonzero
-   regret rows as calibration cases.
-2. Calibrate the reliability estimator against bucket counts and regret,
-   especially valid memories wrongly deferred versus harmful memory reuse
-   avoided.
+1. Rerun the Linux balanced6 evidence-mode navmesh smoke after pulling the
+   calibration commit and check whether `sofa` changes from
+   `valid_memory_wrongly_deferred` to `memory_shorter_reused` while `plant`
+   remains `frontier_shorter_selected`.
+2. Continue calibrating the reliability estimator against bucket counts and
+   regret, especially valid memories wrongly deferred versus harmful memory
+   reuse avoided.
 3. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
 4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only

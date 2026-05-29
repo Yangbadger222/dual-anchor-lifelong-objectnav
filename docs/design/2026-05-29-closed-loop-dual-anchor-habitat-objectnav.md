@@ -109,6 +109,9 @@ Implemented in this slice:
   `naive_count` remains positive-only;
 - direct repaired-memory route accounting;
 - expected-utility memory-vs-frontier selection through `memory_valid_prior`;
+- optional evidence-derived memory reliability through
+  `--memory-reliability-mode evidence`;
+- row-level decision buckets and hindsight regret diagnostics for calibration;
 - balanced group selection that covers categories before taking duplicates.
 
 Latest balanced oracle/action smoke:
@@ -198,11 +201,17 @@ Local implementation status:
   if the expected memory-first action cost is higher than frontier-first,
   it should defer to frontier while `naive_count` remains the always-reuse
   memory baseline.
-- Fixed `memory_valid_prior` is only the reproducibility baseline. The next
-  policy mode should estimate per-memory reliability from current detector or
-  oracle evidence, dual-anchor matching quality, transform covariance,
-  category-level priors, and recent verification outcomes, and record the
-  reliability trace in every row.
+- Fixed `memory_valid_prior` remains the reproducibility baseline. Evidence
+  reliability mode estimates a per-memory valid probability from current
+  detector or oracle evidence, dual-anchor matching quality, transform
+  covariance, category-level priors, and recent verification outcomes, then
+  records the reliability trace in every row.
+- Evidence reliability currently includes a conservative strong-positive floor:
+  when current evidence is strong, matching is accepted, and transform
+  covariance remains low, the estimator should not defer a slightly shorter
+  valid memory simply because the post-memory fallback is expensive. This was
+  calibrated from hindsight-regret rows and must be replaced or validated by a
+  learned/evidence-derived calibration before paper claims.
 
 Scope for this slice:
 
@@ -262,6 +271,7 @@ comes from repaired memory versus a target-aware fallback.
 | Natural relocation unavailable in Habitat asset | Object mesh cannot be moved cleanly | Start with semantic-object hide/replace protocol and label as such |
 | Detector dominates all outcomes | Detector miss counts exceed memory decision effects | Run oracle plumbing, then Grounding-DINO, then report detector-limited cells separately |
 | Action loop still option-level | Trace lacks per-action observations | Label as option-level closed loop and add per-step perception before paper claims |
+| Reliability estimator overfits tiny smokes | Hindsight regret improves on balanced6 but fails on held-out categories/scenes | Keep row-level reliability traces, run held-out Habitat splits, and compare against learned calibration |
 
 ## Verification Plan
 
@@ -273,6 +283,8 @@ comes from repaired memory versus a target-aware fallback.
   the same interfaces.
 - Habitat oracle smoke for session restart and natural stale repair.
 - Habitat Grounding-DINO smoke on six categories.
+- Reliability calibration tests for valid-memory deferral and harmful-memory
+  avoidance, using row-level hindsight regret as the diagnostic target.
 - Full clean/mild/heavy matrix with frontier-only, nearest-frontier, no-memory,
   naive-count, and memory-guided baselines.
 
