@@ -359,6 +359,18 @@ def test_shared_detector_gate_controls_memory_verification_for_all_memory_polici
     )
 
 
+def test_stale_proxy_forces_initial_memory_verification_to_non_confirmation() -> None:
+    positive = closed_loop._OracleVisible(target_visible=True, oracle_target_pixels=100)
+
+    stale = closed_loop._stale_proxy_initial_memory_verification(positive)
+
+    assert stale.shared_gate_success is False
+    assert stale.target_visible is False
+    assert stale.evidence_reason == "stale_proxy_memory_absent"
+    assert closed_loop._verification_payload(stale)["evidence_type"] == "non_confirmation"
+    assert closed_loop._verification_payload(stale)["oracle_target_pixels"] == 100
+
+
 def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:
     initial_route = object()
     repaired_route = object()

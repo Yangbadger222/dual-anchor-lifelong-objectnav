@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -411,6 +412,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                 initial_memory_verification = memory_verifications[
                     memory_candidate.source
                 ]
+                if challenge == "stale_proxy":
+                    initial_memory_verification = _stale_proxy_initial_memory_verification(
+                        initial_memory_verification
+                    )
                 fallback_verification = fallback_verifications[
                     fallback_candidate.source
                 ]
@@ -950,6 +955,22 @@ def _active_memory_verification_for_repeat(
     return initial_memory_verification
 
 
+def _stale_proxy_initial_memory_verification(verification: Any) -> Any:
+    return _StaleProxyVerification(
+        oracle_target_pixels=int(getattr(verification, "oracle_target_pixels", 0) or 0),
+        detector_pixels=int(getattr(verification, "detector_pixels", 0) or 0),
+        overlap_pixels=int(getattr(verification, "overlap_pixels", 0) or 0),
+        detector_precision=float(
+            getattr(verification, "detector_precision", 0.0) or 0.0
+        ),
+        oracle_recall=float(getattr(verification, "oracle_recall", 0.0) or 0.0),
+        detection_count=int(getattr(verification, "detection_count", 0) or 0),
+        detection_filtered_count=int(
+            getattr(verification, "detection_filtered_count", 0) or 0
+        ),
+    )
+
+
 def _expected_memory_first_action_count(
     *,
     memory_action_count: int,
@@ -1125,6 +1146,28 @@ class _OracleVisible:
     @property
     def shared_gate_success(self) -> bool:
         return bool(self.target_visible)
+
+
+class _EvidenceLabel(str, Enum):
+    NON_CONFIRMATION = "non_confirmation"
+
+
+@dataclass(frozen=True)
+class _StaleProxyVerification:
+    target_visible: bool = False
+    evidence_type: _EvidenceLabel = _EvidenceLabel.NON_CONFIRMATION
+    evidence_reason: str = "stale_proxy_memory_absent"
+    oracle_target_pixels: int = 0
+    detector_pixels: int = 0
+    overlap_pixels: int = 0
+    detector_precision: float = 0.0
+    oracle_recall: float = 0.0
+    detection_count: int = 0
+    detection_filtered_count: int = 0
+
+    @property
+    def shared_gate_success(self) -> bool:
+        return False
 
 
 def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
