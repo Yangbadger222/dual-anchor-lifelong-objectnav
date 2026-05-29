@@ -45,6 +45,7 @@ DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_SEARCH_PROXY_WAYPOINTS = 3
 DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS = 48
+DEFAULT_DETECTOR_PROMPT_MODE = "target"
 DATASET_VERSION = "objectnav_hm3d_v1/val_mini"
 
 
@@ -256,6 +257,7 @@ def run_habitat_memory_lifecycle_preflight(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     grounding_dino_text_threshold: float = 0.25,
     grounding_dino_max_image_side: int | None = 384,
+    detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
 ) -> dict[str, Any]:
@@ -272,6 +274,7 @@ def run_habitat_memory_lifecycle_preflight(
         sensor_height=sensor_height,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
+        detector_prompt_mode=detector_prompt_mode,
     )
     summary: dict[str, Any] = {
         "task": "habitat_memory_lifecycle_objectnav_preflight",
@@ -286,6 +289,7 @@ def run_habitat_memory_lifecycle_preflight(
         "detector_conf": float(detector_conf),
         "grounding_dino_text_threshold": float(grounding_dino_text_threshold),
         "grounding_dino_max_image_side": grounding_dino_max_image_side,
+        "detector_prompt_mode": detector_prompt_mode,
         "modes": list(modes),
         "target_categories": list(target_categories),
         "episodes_per_category": episodes_per_category,
@@ -332,6 +336,7 @@ def run_habitat_memory_lifecycle_objectnav(
     sensor_height: int = DEFAULT_SENSOR_HEIGHT,
     grounding_dino_text_threshold: float = 0.25,
     grounding_dino_max_image_side: int | None = 384,
+    detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -361,6 +366,7 @@ def run_habitat_memory_lifecycle_objectnav(
         sensor_height=sensor_height,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
         grounding_dino_max_image_side=grounding_dino_max_image_side,
+        detector_prompt_mode=detector_prompt_mode,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
     )
@@ -386,6 +392,7 @@ def run_habitat_memory_lifecycle_objectnav(
         _select_episodes,
         _shortest_path_points,
         _target_view_metrics,
+        _validate_yolo_prompt_mode,
         _yolo_prompt_categories,
     )
     from objectnav_core.evaluation.habitat_objectnav_valmini_semantic_stress import (
@@ -402,6 +409,8 @@ def run_habitat_memory_lifecycle_objectnav(
         _make_simulator,
         _mask_metrics,
     )
+
+    _validate_yolo_prompt_mode(detector_prompt_mode)
 
     dataset_path = Path(dataset_dir).expanduser().resolve()
     scene_root_path = Path(scene_root).expanduser().resolve()
@@ -495,11 +504,11 @@ def run_habitat_memory_lifecycle_objectnav(
                     grounding_dino_text_threshold=grounding_dino_text_threshold,
                     grounding_dino_max_image_side=grounding_dino_max_image_side,
                     target_category=group.category,
-                    yolo_prompt_mode="target",
+                    yolo_prompt_mode=detector_prompt_mode,
                 )
                 accepted_labels = _accepted_yolo_detection_labels(
                     group.category,
-                    "target",
+                    detector_prompt_mode,
                 )
                 helper_bundle = {
                     "detector_mask": _detector_mask,
@@ -508,7 +517,10 @@ def run_habitat_memory_lifecycle_objectnav(
                     "classify": _classify_semantic_evidence,
                     "depth_valid_ratio": _depth_valid_ratio,
                 }
-                prompt_categories = _yolo_prompt_categories(group.category, "target")
+                prompt_categories = _yolo_prompt_categories(
+                    group.category,
+                    detector_prompt_mode,
+                )
                 for noise_index, noise_level in enumerate(noise_levels):
                     base_frame_index = (
                         scene_index * 100000 + group_index * 1000 + noise_index * 10
@@ -612,6 +624,7 @@ def run_habitat_memory_lifecycle_objectnav(
             ),
             "search_proxy_waypoints": int(search_proxy_waypoints),
             "query_repeats": int(query_repeats),
+            "detector_prompt_mode": detector_prompt_mode,
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -880,6 +893,7 @@ def _lifecycle_row(
         "naive_positive_count": result.naive_positive_count,
         "stop_reason": result.stop_reason,
         "memory_evidence_type": memory_verification.evidence_type.value,
+        "memory_evidence_reason": memory_verification.evidence_reason,
         "memory_target_visible": memory_verification.target_visible,
         "memory_oracle_target_pixels": memory_verification.oracle_target_pixels,
         "memory_detector_pixels": memory_verification.detector_pixels,
@@ -887,6 +901,7 @@ def _lifecycle_row(
         "memory_detector_precision": memory_verification.detector_precision,
         "memory_oracle_recall": memory_verification.oracle_recall,
         "fallback_evidence_type": fallback_verification.evidence_type.value,
+        "fallback_evidence_reason": fallback_verification.evidence_reason,
         "fallback_target_visible": fallback_verification.target_visible,
         "fallback_oracle_target_pixels": fallback_verification.oracle_target_pixels,
         "fallback_detector_pixels": fallback_verification.detector_pixels,
@@ -1231,6 +1246,7 @@ def _validate_preflight_inputs(
     sensor_height: int,
     min_target_pixels: int,
     min_detector_pixels: int,
+    detector_prompt_mode: str,
 ) -> None:
     if not noise_levels:
         raise ValueError("At least one noise level is required")
@@ -1259,6 +1275,11 @@ def _validate_preflight_inputs(
         raise ValueError("min_target_pixels must be positive")
     if min_detector_pixels <= 0:
         raise ValueError("min_detector_pixels must be positive")
+    from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+        _validate_yolo_prompt_mode,
+    )
+
+    _validate_yolo_prompt_mode(detector_prompt_mode)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

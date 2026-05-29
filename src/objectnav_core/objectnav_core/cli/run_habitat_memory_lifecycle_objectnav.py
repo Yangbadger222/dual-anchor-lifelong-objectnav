@@ -11,11 +11,15 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     DEFAULT_STRUCTURED_MIN_GEODESIC_DISTANCE,
     DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
     DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
+    DEFAULT_DETECTOR_PROMPT_MODE,
     SUPPORTED_LIFECYCLE_DETECTORS,
     SUPPORTED_LIFECYCLE_MODES,
     TARGET_CATEGORIES,
     run_habitat_memory_lifecycle_objectnav,
     run_habitat_memory_lifecycle_preflight,
+)
+from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+    SUPPORTED_YOLO_PROMPT_MODES,
 )
 
 
@@ -67,6 +71,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=int,
         default=384,
         help="Optional Grounding-DINO inference resize cap.",
+    )
+    parser.add_argument(
+        "--detector-prompt-mode",
+        default=DEFAULT_DETECTOR_PROMPT_MODE,
+        choices=SUPPORTED_YOLO_PROMPT_MODES,
+        help=(
+            "Detector prompt policy. target uses only the ObjectNav category; "
+            "target_aliases adds category synonyms such as tv/television/monitor."
+        ),
     )
     parser.add_argument(
         "--modes",
@@ -170,6 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sensor_height=args.sensor_height,
         grounding_dino_text_threshold=args.grounding_dino_text_threshold,
         grounding_dino_max_image_side=args.grounding_dino_max_image_side,
+        detector_prompt_mode=args.detector_prompt_mode,
         min_target_pixels=args.min_target_pixels,
         min_detector_pixels=args.min_detector_pixels,
     )

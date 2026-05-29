@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from types import SimpleNamespace
+
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
+    _lifecycle_row,
     plan_lifecycle_query,
     plan_lifecycle_sequence,
     run_habitat_memory_lifecycle_preflight,
@@ -136,6 +139,7 @@ def test_lifecycle_preflight_writes_summary(tmp_path: Path) -> None:
         modes=("memory_guided", "naive_count", "no_memory"),
         target_categories=("bed", "toilet"),
         episodes_per_category=2,
+        detector_prompt_mode="target_aliases",
         seed=313,
     )
 
@@ -145,9 +149,57 @@ def test_lifecycle_preflight_writes_summary(tmp_path: Path) -> None:
     assert summary["modes"] == ["memory_guided", "naive_count", "no_memory"]
     assert summary["noise_levels"] == ["clean", "mild"]
     assert summary["target_categories"] == ["bed", "toilet"]
+    assert summary["detector_prompt_mode"] == "target_aliases"
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert any("not official Habitat SPL" in limit for limit in summary["limits"])
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
+
+
+def test_lifecycle_trace_rows_record_evidence_reasons() -> None:
+    group = SimpleNamespace(
+        group_id="scene|chair|goal_object:1",
+        scene_key="scene",
+        category="chair",
+        instance_id="goal_object:1",
+        discovery_episode=SimpleNamespace(episode_id="discover"),
+        query_episode=SimpleNamespace(episode_id="query"),
+    )
+    memory_verification = LifecycleVerification(
+        evidence_type=EvidenceType.UNKNOWN,
+        target_visible=True,
+        evidence_reason="edge_touch_breakthrough",
+    )
+    fallback_verification = LifecycleVerification(
+        evidence_type=EvidenceType.POSITIVE,
+        target_visible=True,
+        evidence_reason="detector_positive_mask",
+    )
+    result = plan_lifecycle_query(
+        mode="memory_guided",
+        memory_path_cost_m=3.0,
+        fallback_path_cost_m=7.0,
+        memory_verification=memory_verification,
+        fallback_verifications=(fallback_verification,),
+    )
+
+    row = _lifecycle_row(
+        group=group,
+        mode="memory_guided",
+        noise_level="clean",
+        detector="grounding_dino",
+        detector_prompt_categories=("chair",),
+        memory_path_cost=3.0,
+        fallback_path_cost=7.0,
+        oracle_goal_path_cost=2.0,
+        search_proxy_waypoint_count=1,
+        memory_verification=memory_verification,
+        fallback_verification=fallback_verification,
+        result=result,
+        normalized_category="chair",
+    )
+
+    assert row["memory_evidence_reason"] == "edge_touch_breakthrough"
+    assert row["fallback_evidence_reason"] == "detector_positive_mask"
 
 
 def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
