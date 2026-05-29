@@ -767,3 +767,68 @@ This directly addresses the targeted sofa replay failure: the row had mixed
 events and a small action margin, but the decision boundary was just above the
 reliability interval. The next broad mining pass should prioritize rows with a
 small interval gap, not merely rows with small action margins.
+
+## 2026-05-29 Targeted Tv Monitor Replay / Replay-Control Finding
+
+The next interval-gap candidate was replayed on Linux:
+
+- `hm3d/val/00813-svBbv1Pavdk/svBbv1Pavdk.basis.glb|tv_monitor|goal_object:287`
+
+Artifacts:
+
+- Selected replay:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_tv_monitor_event_posterior_selected_group_v1/summary.json`
+- Mined report:
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_tv_monitor_selected_group_event_posterior_v1/report.json`
+- Experiment write-up:
+  `docs/experiments/2026-05-29-habitat-targeted-tv-monitor-event-posterior-replay.md`
+
+Result:
+
+- Explicit selection worked: `selected_group_count=1` and
+  `selection_mode=explicit_group_ids`.
+- Detector-event posterior moved reliability from `0.96` to `0.6078` with
+  `detector_event_count=4`, confirmed weight `1.77855`, and suppressed weight
+  `4.35`.
+- No flip occurred. The selected replay mined as
+  `decision_boundary_region=memory_always_no_worse` with
+  `memory_action_count=24`, `fallback_action_count=236`, and
+  `fallback_from_memory_action_count=2`.
+
+Important caveat:
+
+- This selected replay did not reproduce the broad balanced6 row's frontier
+  route accounting. The broad source row had `fallback_action_count=24` and
+  fallback source `navmesh_frontier_probe:0:step:23`; the selected replay had
+  `fallback_action_count=236` and fallback source
+  `navmesh_frontier_probe:4:step:21`.
+- Root cause: the runner derived navmesh frontier probe seeds and detector
+  frame-index bases from `len(rows)`. Isolating the sixth balanced row changed
+  row order and therefore changed target-agnostic frontier probes.
+
+Local fix in progress:
+
+- Added stable replay-control helpers in
+  `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`.
+- Future seeds are derived from `group_id` plus route context; detector frame
+  bases are derived from `group_id`.
+- Added regression coverage in
+  `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py`.
+- Updated the targeted replay design note with the determinism requirement.
+
+Verification already run locally for the fix:
+
+- Red test
+  `test_replay_control_values_are_stable_for_group_not_row_order` failed before
+  implementation.
+- Focused closed-loop/CLI suite passed: `65` tests.
+- Full local core suite passed: `258` tests.
+- `py_compile` passed for the runner and CLI module.
+- `git diff --check` passed.
+
+Next step:
+
+- Commit and push the replay-control fix.
+- Pull it on Linux and rerun focused tests.
+- Regenerate the relevant broad/selected artifacts under stable replay controls
+  before treating any interval-gap candidate as replayed.

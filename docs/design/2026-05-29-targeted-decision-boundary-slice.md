@@ -10,6 +10,11 @@ Add an explicit replay-selection interface to the Habitat closed-loop runner so
 exact mined `group_id` rows can be rerun without broad balanced-category
 sweeps. This is a research-control feature, not a policy change.
 
+Follow-up determinism requirement: changing only the replay slice must not
+change target-agnostic frontier probe seeds or detector frame-index bases for a
+given group. Otherwise an explicit one-group replay can alter the route
+accounting of the mined row it is supposed to reproduce.
+
 ## Non-Goals
 
 - Do not change the memory-vs-frontier decision logic.
@@ -53,8 +58,12 @@ observation, or reliability estimation.
 2. Build lifecycle groups as before.
 3. If `selected_group_ids` is provided, filter to those exact groups in the
    requested order and bypass balanced max-group sampling.
-4. Otherwise, keep the current balanced category selection path.
-5. Write the run summary with both requested and selected group ids.
+4. Derive replay-control seeds from stable row identity:
+   `group_id` plus route context, not from the current row count.
+5. Derive detector frame-index bases from stable `group_id` identity, not from
+   the current row count.
+6. Otherwise, keep the current balanced category selection path.
+7. Write the run summary with both requested and selected group ids.
 
 ## Failure Modes
 
@@ -64,11 +73,14 @@ observation, or reliability estimation.
 | Duplicate requested group ids | Validation error | Reject the slice as ambiguous |
 | Empty explicit slice | Validation error | Require at least one requested group |
 | Requested ids exceed current category filter | Validation error | Ask the user to widen categories or adjust the slice |
+| Replay slice changes row order | Unit test stable replay-control helper; inspect targeted replay artifacts | Keep seeds and frame bases independent of `len(rows)` |
 
 ## Verification Plan
 
 - Unit test the explicit group-id selection helper with synthetic groups.
 - Unit test that the CLI forwards `--selected-group-ids`.
+- Unit test stable replay-control seed/frame derivation so broad and explicit
+  slices use the same controls for the same group.
 - Run the focused Habitat runner test file and the CLI test file.
 - Run `python -m py_compile` on touched Python modules.
 
@@ -82,3 +94,5 @@ event-posterior reliability can actually cross a decision boundary in Habitat.
 
 - Whether we later need a file-based slice manifest, or whether CSV group ids
   are enough for the first targeted reruns.
+- Whether future mined candidates should record the replay-control seed and
+  frame base explicitly for artifact auditing.

@@ -1438,6 +1438,42 @@ def test_stale_proxy_forces_initial_memory_verification_to_non_confirmation() ->
     assert closed_loop._verification_payload(stale)["oracle_target_pixels"] == 100
 
 
+def test_replay_control_values_are_stable_for_group_not_row_order() -> None:
+    group_id = (
+        "hm3d/val/00813-svBbv1Pavdk/svBbv1Pavdk.basis.glb"
+        "|tv_monitor|goal_object:287"
+    )
+
+    fallback_seed = closed_loop._stable_replay_seed(
+        group_id=group_id,
+        context="fallback",
+    )
+    fallback_seed_again = closed_loop._stable_replay_seed(
+        group_id=group_id,
+        context="fallback",
+    )
+    repair_seed = closed_loop._stable_replay_seed(
+        group_id=group_id,
+        context="fallback_from_memory",
+    )
+    other_group_seed = closed_loop._stable_replay_seed(
+        group_id=(
+            "hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb"
+            "|sofa|goal_object:275"
+        ),
+        context="fallback",
+    )
+
+    assert fallback_seed == fallback_seed_again
+    assert fallback_seed != repair_seed
+    assert fallback_seed != other_group_seed
+    assert (
+        closed_loop._stable_replay_frame_index_base(group_id=group_id)
+        == closed_loop._stable_replay_frame_index_base(group_id=group_id)
+    )
+    assert closed_loop._stable_replay_frame_index_base(group_id=group_id) % 100 == 0
+
+
 def test_navmesh_frontier_probe_goals_are_seeded_and_target_agnostic() -> None:
     class PathFinder:
         def __init__(self) -> None:

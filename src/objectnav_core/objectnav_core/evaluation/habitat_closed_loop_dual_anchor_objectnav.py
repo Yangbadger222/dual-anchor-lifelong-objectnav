@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass, replace
@@ -33,6 +34,9 @@ DEFAULT_FRONTIER_PROBE_COUNT = 8
 DEFAULT_FRONTIER_PROBE_HEADING_COUNT = 4
 DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
 DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
+DEFAULT_REPLAY_SEED_BASE = 313
+_REPLAY_SEED_MODULUS = 2_000_000_000
+_REPLAY_FRAME_INDEX_MODULUS = 1_000_000
 DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
 SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = (
@@ -58,6 +62,38 @@ SUPPORTED_DETECTORS: tuple[str, ...] = (
     "oracle_semantic_visibility",
     "grounding_dino",
 )
+
+
+def _stable_replay_digest_value(*parts: object) -> int:
+    payload = "\0".join(str(part) for part in parts).encode("utf-8")
+    return int.from_bytes(hashlib.blake2s(payload, digest_size=8).digest(), "big")
+
+
+def _stable_replay_seed(
+    *,
+    group_id: str,
+    context: str,
+    base_seed: int = DEFAULT_REPLAY_SEED_BASE,
+) -> int:
+    return int(
+        base_seed
+        + (
+            _stable_replay_digest_value("replay-seed", group_id, context)
+            % _REPLAY_SEED_MODULUS
+        )
+    )
+
+
+def _stable_replay_frame_index_base(*, group_id: str) -> int:
+    return int(
+        (
+            _stable_replay_digest_value("replay-frame-index", group_id)
+            % _REPLAY_FRAME_INDEX_MODULUS
+        )
+        * 100
+    )
+
+
 DEFAULT_DETECTOR = "oracle_semantic_visibility"
 DEFAULT_DETECTOR_WEIGHTS = "IDEA-Research/grounding-dino-tiny"
 DEFAULT_DETECTOR_CONF = 0.25
@@ -601,7 +637,17 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     ),
                     limit=4,
                 )
-                base_frame_index = len(rows) * 100
+                base_frame_index = _stable_replay_frame_index_base(
+                    group_id=group.group_id
+                )
+                fallback_seed = _stable_replay_seed(
+                    group_id=group.group_id,
+                    context="fallback",
+                )
+                fallback_from_memory_seed = _stable_replay_seed(
+                    group_id=group.group_id,
+                    context="fallback_from_memory",
+                )
                 detector_confirmation_events: list[dict[str, Any]] = []
                 memory_verifications = _verify_candidate_views(
                     detector=detector,
@@ -747,7 +793,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             sim=sim,
                             start=group.query_episode.start_position,
                             goal=fallback_candidate.position,
-                            seed=313 + len(rows),
+                            seed=fallback_seed,
                             waypoint_count=frontier_proxy_waypoints,
                         )[0],
                     )
@@ -761,7 +807,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             sim=sim,
                             start=memory_candidate.position,
                             goal=fallback_candidate.position,
-                            seed=313 + len(rows) + 500000,
+                            seed=fallback_from_memory_seed,
                             waypoint_count=(
                                 frontier_proxy_waypoints
                                 if challenge == "stale_proxy"
@@ -873,7 +919,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         detector_confirmation_context="fallback",
                         start_position=group.query_episode.start_position,
                         start_rotation=group.query_episode.start_rotation,
-                        seed=313 + len(rows),
+                        seed=fallback_seed,
                         probe_count=frontier_probe_count,
                         probe_heading_count=frontier_probe_heading_count,
                         route_observation_mode=route_observation_mode,
@@ -914,7 +960,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         detector_confirmation_context="fallback_from_memory",
                         start_position=memory_candidate.position,
                         start_rotation=memory_candidate.rotation,
-                        seed=313 + len(rows) + 500000,
+                        seed=fallback_from_memory_seed,
                         probe_count=frontier_probe_count,
                         probe_heading_count=frontier_probe_heading_count,
                         route_observation_mode=route_observation_mode,
