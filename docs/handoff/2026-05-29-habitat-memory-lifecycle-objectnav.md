@@ -198,6 +198,10 @@ Passed on Linux:
   `memory_guided=72/72`, `naive_count=72/72`, `no_memory=72/72`; memory vs
   naive path reduction `36.4236%`; memory vs no-memory path reduction
   `24.8899%`; route-cost audit found `0` bad rows.
+- Action route meter Linux probe:
+  `runs/habitat_usability/action_follower_probe_v1/summary.json` recorded
+  `action_count=33`, `executed_distance_m=4.260707`, `reached_stop=true` for a
+  real HM3D `toilet` route.
 
 ## Known Risks
 
