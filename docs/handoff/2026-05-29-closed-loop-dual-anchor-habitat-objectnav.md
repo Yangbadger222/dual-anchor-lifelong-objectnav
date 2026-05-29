@@ -62,6 +62,10 @@ Implemented foundation:
   order, and truncates memory/fallback/navmesh-probe route cost at the first
   positive shared gate. Initial stale-proxy memory attempts are explicitly kept
   non-confirming and untruncated.
+- Summary rows now include `memory_route_observation`,
+  `fallback_route_observation`, and
+  `fallback_from_memory_route_observation` payloads so per-action route evidence
+  can be audited without parsing anchor strings.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -160,6 +164,7 @@ git diff --check
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
 ```
 
 Linux commands run:
@@ -331,6 +336,17 @@ Passed locally before this handoff update:
   Memory-guided reused accepted memory; frontier-only succeeded through
   `navmesh_frontier_probe:1:heading:3`; post-memory fallback had a per-action
   positive at `navmesh_frontier_probe:0:step:0`.
+- Linux 1-group Grounding-DINO navmesh smoke with
+  `--route-observation-mode per_action` completed successfully. It recorded
+  `detector=grounding_dino`, `route_observation_mode=per_action`, and
+  `frontier_mode=navmesh_frontier`. On the selected `plant` group,
+  `memory_guided=122`, `naive_count=122`, and `frontier_only=159` actions.
+  Memory, fallback, and post-memory fallback evidence were all
+  `detector_positive_mask`.
+- Local row trace tests after the Grounding-DINO smoke added explicit
+  `memory_route_observation`, `fallback_route_observation`, and
+  `fallback_from_memory_route_observation` payloads. Focused Habitat route/CLI
+  tests produced `49` passed; full local core tests produced `232` passed.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -410,8 +426,8 @@ Passed locally before this handoff update:
   a benchmark claim.
 - The Grounding-DINO candidate-view calibration smoke preserved the same bucket
   pattern with an 11-action gain over `naive_count`. Per-action route
-  observation mode now has a Linux oracle smoke, but still needs larger
-  detector-backed runs.
+  observation mode now has Linux oracle and 1-group Grounding-DINO smokes, but
+  still needs larger detector-backed runs.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still

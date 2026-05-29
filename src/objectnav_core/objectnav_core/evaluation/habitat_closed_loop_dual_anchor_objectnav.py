@@ -87,6 +87,16 @@ class HabitatClosedLoopOptionPlan:
     memory_reliability: dict[str, Any] | None = None
     expected_memory_first_action_count: float | None = None
     expected_frontier_first_action_count: float | None = None
+    route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE
+    memory_route_observation_source: str = ""
+    memory_route_observation_step_index: int | None = None
+    memory_route_observation_count: int = 0
+    fallback_route_observation_source: str = ""
+    fallback_route_observation_step_index: int | None = None
+    fallback_route_observation_count: int = 0
+    fallback_from_memory_route_observation_source: str = ""
+    fallback_from_memory_route_observation_step_index: int | None = None
+    fallback_from_memory_route_observation_count: int = 0
     memory_anchor_source: str = ""
     fallback_anchor_source: str = ""
     fallback_from_memory_anchor_source: str = ""
@@ -503,6 +513,15 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     start_rotation=group.query_episode.start_rotation,
                     route_goals=(fallback_candidate.position,),
                 )
+                memory_route_observation = RouteObservationResult(
+                    route=memory_route,
+                    selected_source=f"{memory_candidate.source}:route:option_end",
+                    selected_verification=initial_memory_verification,
+                    selected_step_index=None,
+                    observation_count=1,
+                )
+                fallback_route_observation: RouteObservationResult | None = None
+                fallback_from_memory_observation: RouteObservationResult | None = None
                 if route_observation_mode == "per_action":
                     memory_observation = _observe_initial_memory_route(
                         route=memory_route,
@@ -528,6 +547,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         ),
                     )
                     memory_route = memory_observation.route
+                    memory_route_observation = memory_observation
                     initial_memory_verification = (
                         memory_observation.selected_verification
                     )
@@ -590,6 +610,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             ),
                         )
                         fallback_route = fallback_observation.route
+                        fallback_route_observation = fallback_observation
                         fallback_verification = fallback_observation.selected_verification
                         fallback_candidate = _replace_candidate_pose(
                             fallback_candidate,
@@ -660,6 +681,9 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     )
                     fallback_route = fallback_result.route
                     fallback_verification = fallback_result.selected_verification
+                    fallback_route_observation = _route_observation_from_navmesh_result(
+                        fallback_result
+                    )
                     fallback_candidate = _replace_candidate_pose(
                         fallback_candidate,
                         source=fallback_result.selected_probe_source,
@@ -695,6 +719,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     fallback_from_memory_route = fallback_from_memory_result.route
                     fallback_from_memory_verification = (
                         fallback_from_memory_result.selected_verification
+                    )
+                    fallback_from_memory_observation = (
+                        _route_observation_from_navmesh_result(
+                            fallback_from_memory_result
+                        )
                     )
                     fallback_from_memory_anchor_source = (
                         fallback_from_memory_result.selected_probe_source
@@ -832,6 +861,49 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     memory_reliability_mode=memory_reliability_mode,
                                     memory_reliability=_memory_reliability_payload(
                                         reliability_estimate
+                                    ),
+                                    route_observation_mode=route_observation_mode,
+                                    memory_route_observation_source=(
+                                        memory_route_observation.selected_source
+                                    ),
+                                    memory_route_observation_step_index=(
+                                        memory_route_observation.selected_step_index
+                                    ),
+                                    memory_route_observation_count=(
+                                        memory_route_observation.observation_count
+                                    ),
+                                    fallback_route_observation_source=(
+                                        fallback_route_observation.selected_source
+                                        if fallback_route_observation is not None
+                                        else f"{fallback_candidate.source}:route:option_end"
+                                    ),
+                                    fallback_route_observation_step_index=(
+                                        fallback_route_observation.selected_step_index
+                                        if fallback_route_observation is not None
+                                        else None
+                                    ),
+                                    fallback_route_observation_count=(
+                                        fallback_route_observation.observation_count
+                                        if fallback_route_observation is not None
+                                        else 1
+                                    ),
+                                    fallback_from_memory_route_observation_source=(
+                                        fallback_from_memory_observation.selected_source
+                                        if fallback_from_memory_observation is not None
+                                        else (
+                                            f"{fallback_from_memory_anchor_source}"
+                                            ":route:option_end"
+                                        )
+                                    ),
+                                    fallback_from_memory_route_observation_step_index=(
+                                        fallback_from_memory_observation.selected_step_index
+                                        if fallback_from_memory_observation is not None
+                                        else None
+                                    ),
+                                    fallback_from_memory_route_observation_count=(
+                                        fallback_from_memory_observation.observation_count
+                                        if fallback_from_memory_observation is not None
+                                        else 1
                                     ),
                                     expected_memory_first_action_count=(
                                         expected_memory_first
@@ -1016,6 +1088,22 @@ def make_habitat_closed_loop_option_row(
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
         "memory_reliability_mode": plan.memory_reliability_mode,
         "memory_reliability": plan.memory_reliability,
+        "route_observation_mode": plan.route_observation_mode,
+        "memory_route_observation": _route_observation_payload(
+            source=plan.memory_route_observation_source,
+            step_index=plan.memory_route_observation_step_index,
+            observation_count=plan.memory_route_observation_count,
+        ),
+        "fallback_route_observation": _route_observation_payload(
+            source=plan.fallback_route_observation_source,
+            step_index=plan.fallback_route_observation_step_index,
+            observation_count=plan.fallback_route_observation_count,
+        ),
+        "fallback_from_memory_route_observation": _route_observation_payload(
+            source=plan.fallback_from_memory_route_observation_source,
+            step_index=plan.fallback_from_memory_route_observation_step_index,
+            observation_count=plan.fallback_from_memory_route_observation_count,
+        ),
         "expected_memory_first_action_count": (
             None
             if plan.expected_memory_first_action_count is None
@@ -1027,6 +1115,51 @@ def make_habitat_closed_loop_option_row(
             else round(float(plan.expected_frontier_first_action_count), 6)
         ),
     }
+
+
+def _route_observation_payload(
+    *,
+    source: str,
+    step_index: int | None,
+    observation_count: int,
+) -> dict[str, Any]:
+    return {
+        "source": str(source),
+        "step_index": None if step_index is None else int(step_index),
+        "observation_count": int(observation_count),
+    }
+
+
+def _route_observation_result_payload(result: RouteObservationResult) -> dict[str, Any]:
+    return _route_observation_payload(
+        source=result.selected_source,
+        step_index=result.selected_step_index,
+        observation_count=result.observation_count,
+    )
+
+
+def _route_observation_from_navmesh_result(
+    result: NavmeshFrontierRouteResult,
+) -> RouteObservationResult:
+    return RouteObservationResult(
+        route=result.route,
+        selected_source=result.selected_probe_source,
+        selected_verification=result.selected_verification,
+        selected_step_index=_step_index_from_observation_source(
+            result.selected_probe_source
+        ),
+        observation_count=result.verification_count,
+    )
+
+
+def _step_index_from_observation_source(source: str) -> int | None:
+    marker = ":step:"
+    if marker not in source:
+        return None
+    try:
+        return int(source.rsplit(marker, maxsplit=1)[1])
+    except ValueError:
+        return None
 
 
 def _base_summary(

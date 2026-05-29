@@ -250,6 +250,9 @@ Scope for this slice:
   the same oracle/Grounding-DINO shared gate used for candidate verification;
 - truncate the charged route at the first positive observation, rather than
   charging to a later endpoint after the target was already visible;
+- record row-level route-observation payloads for memory, fallback, and
+  post-memory fallback so experiment reports can audit which route step or
+  heading produced the selected evidence;
 - keep stale-proxy initial memory attempts non-confirming and untruncated, so a
   synthetic old-object positive cannot make stale memory look cheaper;
 - keep `search_proxy` and `navmesh_frontier` behavior comparable when

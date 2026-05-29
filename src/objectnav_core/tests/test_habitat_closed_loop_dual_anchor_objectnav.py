@@ -466,6 +466,52 @@ def test_option_row_records_memory_reliability_trace() -> None:
     assert row["memory_reliability"]["components"]["current_evidence"] == 0.98
 
 
+def test_option_row_records_route_observation_trace() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=12,
+            memory_executed_distance_m=3.0,
+            fallback_action_count=30,
+            fallback_executed_distance_m=9.0,
+            fallback_from_memory_action_count=5,
+            fallback_from_memory_executed_distance_m=1.2,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            route_observation_mode="per_action",
+            memory_route_observation_source="memory:step:3",
+            memory_route_observation_step_index=3,
+            memory_route_observation_count=4,
+            fallback_route_observation_source="frontier:step:6",
+            fallback_route_observation_step_index=6,
+            fallback_route_observation_count=7,
+            fallback_from_memory_route_observation_source="repair:step:0",
+            fallback_from_memory_route_observation_step_index=0,
+            fallback_from_memory_route_observation_count=1,
+        )
+    )
+
+    assert row["route_observation_mode"] == "per_action"
+    assert row["memory_route_observation"] == {
+        "source": "memory:step:3",
+        "step_index": 3,
+        "observation_count": 4,
+    }
+    assert row["fallback_route_observation"] == {
+        "source": "frontier:step:6",
+        "step_index": 6,
+        "observation_count": 7,
+    }
+    assert row["fallback_from_memory_route_observation"] == {
+        "source": "repair:step:0",
+        "step_index": 0,
+        "observation_count": 1,
+    }
+
+
 def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
@@ -943,6 +989,42 @@ def test_per_action_route_observation_truncates_at_first_positive_step() -> None
     assert result.route.action_count == 2
     assert result.route.executed_distance_m == 2.0
     assert result.route.final_position == (2.0, 0.0, 0.0)
+
+
+def test_route_observation_result_exposes_row_payload() -> None:
+    result = closed_loop.RouteObservationResult(
+        route=object(),
+        selected_source="memory:step:2",
+        selected_verification=closed_loop._OracleVisible(target_visible=True),
+        selected_step_index=2,
+        observation_count=3,
+    )
+
+    assert closed_loop._route_observation_result_payload(result) == {
+        "source": "memory:step:2",
+        "step_index": 2,
+        "observation_count": 3,
+    }
+
+
+def test_navmesh_route_result_exposes_route_observation_result() -> None:
+    route = object()
+    verification = closed_loop._OracleVisible(target_visible=True)
+    result = closed_loop.NavmeshFrontierRouteResult(
+        route=route,
+        selected_probe_source="navmesh_frontier_probe:3:step:6",
+        selected_probe_position=(1.0, 0.0, 2.0),
+        selected_verification=verification,
+        verification_count=9,
+    )
+
+    observation = closed_loop._route_observation_from_navmesh_result(result)
+
+    assert observation.route is route
+    assert observation.selected_source == "navmesh_frontier_probe:3:step:6"
+    assert observation.selected_verification is verification
+    assert observation.selected_step_index == 6
+    assert observation.observation_count == 9
 
 
 def test_stale_proxy_initial_memory_route_is_not_truncated_by_per_action_positive() -> None:
