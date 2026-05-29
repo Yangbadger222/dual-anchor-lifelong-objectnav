@@ -671,11 +671,10 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Build a targeted decision-boundary slice that deliberately combines an
-   interior reliability boundary, mixed detector-event evidence, and enough
-   posterior shift to cross the boundary. The explicit replay slice now
-   exists, so the next pass should use mined `group_id` values rather than
-   broad balanced sweeps.
+1. Add or use a selector that ranks candidates by distance between the
+   evidence/event-posterior reliability interval and the decision boundary.
+   The explicit replay slice has now been used on the targeted `sofa` row, but
+   that row stayed at `decision_boundary_reliability_raw=1.0`.
 2. Investigate learned reliability calibration using mined rows as supervision,
    rather than hand-tuning the event-posterior weights.
 3. Continue calibrating the reliability estimator against bucket counts and
@@ -715,6 +714,34 @@ Verification run just completed:
 - `git diff --check`
 
 Next step:
-- Rerun the mined boundary-near `group_id` rows through the new replay slice
-  and check whether `event_posterior` can now cross an interior boundary in
-  Habitat.
+- Use the replay slice with a stronger selector: prioritize candidates whose
+  decision boundary is close to, or bracketed by, the evidence/event-posterior
+  reliability interval.
+
+## 2026-05-29 Targeted Sofa Replay Result
+
+The new replay interface was exercised on Linux with the mined `sofa` group:
+
+- `hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb|sofa|goal_object:275`
+
+Artifacts:
+
+- Baseline:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_sofa_event_posterior_selected_group_v1/summary.json`
+- Sweep report:
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_sofa_selected_group_event_posterior_sweep_v1/report.json`
+- Experiment write-up:
+  `docs/experiments/2026-05-29-habitat-targeted-sofa-event-posterior-replay.md`
+
+Result:
+
+- Explicit selection worked: `selected_group_count=1` and
+  `selection_mode=explicit_group_ids`.
+- The row produced mixed detector events:
+  `detector_event_count=6`, confirmed weight `7.517547`, suppressed weight
+  `2.85`.
+- Event posterior moved reliability from `0.96` to `0.819916`.
+- No flip occurred. All five selected/sweep runs had
+  `memory_action_count=63`, `fallback_action_count=63`,
+  `fallback_from_memory_action_count=2`, and
+  `decision_boundary_reliability_raw=1.0`.
