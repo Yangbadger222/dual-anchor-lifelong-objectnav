@@ -8,6 +8,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     run_habitat_closed_loop_dual_anchor_preflight,
     summarize_habitat_closed_loop_rows,
 )
+from objectnav_core.evaluation import habitat_closed_loop_dual_anchor_objectnav as closed_loop
 
 
 def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> None:
@@ -192,3 +193,43 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
     assert summary["policy_summaries"]["memory_guided"]["total_action_count"] == 38
     assert summary["policy_summaries"]["naive_count"]["total_action_count"] == 60
     assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22
+
+
+def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:
+    initial_route = object()
+    repaired_route = object()
+    fallback_route = object()
+
+    assert (
+        closed_loop._active_memory_route_for_repeat(
+            challenge="stale_proxy",
+            policy="memory_guided",
+            repeat_index=1,
+            initial_memory_route=initial_route,
+            repaired_memory_route=repaired_route,
+            fallback_route=fallback_route,
+        )
+        is repaired_route
+    )
+    assert (
+        closed_loop._active_memory_route_for_repeat(
+            challenge="stale_proxy",
+            policy="memory_guided",
+            repeat_index=0,
+            initial_memory_route=initial_route,
+            repaired_memory_route=repaired_route,
+            fallback_route=fallback_route,
+        )
+        is initial_route
+    )
+    assert (
+        closed_loop._active_memory_route_for_repeat(
+            challenge="stale_proxy",
+            policy="naive_count",
+            repeat_index=1,
+            initial_memory_route=initial_route,
+            repaired_memory_route=repaired_route,
+            fallback_route=fallback_route,
+        )
+        is initial_route
+    )

@@ -245,6 +245,14 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     start_rotation=group.query_episode.start_rotation,
                     route_goals=(memory_candidate.position,),
                 )
+                repaired_memory_route = _cached_action_route_sequence(
+                    cache=action_route_cache,
+                    habitat_sim=habitat_sim,
+                    sim=sim,
+                    start_position=group.query_episode.start_position,
+                    start_rotation=group.query_episode.start_rotation,
+                    route_goals=(fallback_candidate.position,),
+                )
                 fallback_route = _cached_action_route_sequence(
                     cache=action_route_cache,
                     habitat_sim=habitat_sim,
@@ -284,14 +292,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             policy=policy,
                             repeat_index=repeat_index,
                         )
-                        active_memory_route = (
-                            fallback_route
-                            if (
-                                challenge == "stale_proxy"
-                                and policy == "memory_guided"
-                                and repeat_index > 0
-                            )
-                            else memory_route
+                        active_memory_route = _active_memory_route_for_repeat(
+                            challenge=challenge,
+                            policy=policy,
+                            repeat_index=repeat_index,
+                            initial_memory_route=memory_route,
+                            repaired_memory_route=repaired_memory_route,
+                            fallback_route=fallback_route,
                         )
                         rows.append(
                             make_habitat_closed_loop_option_row(
@@ -554,6 +561,20 @@ def _matching_reason_for_repeat(
     if challenge == "stale_proxy" and policy == "memory_guided" and repeat_index > 0:
         return "accepted"
     return _matching_reason_for_challenge(challenge)
+
+
+def _active_memory_route_for_repeat(
+    *,
+    challenge: str,
+    policy: str,
+    repeat_index: int,
+    initial_memory_route: Any,
+    repaired_memory_route: Any,
+    fallback_route: Any,
+) -> Any:
+    if challenge == "stale_proxy" and policy == "memory_guided" and repeat_index > 0:
+        return repaired_memory_route
+    return initial_memory_route
 
 
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
