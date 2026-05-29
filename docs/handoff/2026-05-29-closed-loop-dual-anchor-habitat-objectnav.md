@@ -118,6 +118,8 @@ Passed locally before this handoff update:
 - Full local core tests after challenge modes: `190` passed.
 - Habitat challenge semantics focused tests: `5` passed locally.
 - Full local core tests after challenge semantics fix: `191` passed.
+- Habitat repeated stale focused tests: `6` passed locally.
+- Full local core tests after repeated stale smoke: `192` passed.
 
 Pending:
 
@@ -154,6 +156,8 @@ Pending:
 4. Run `ambiguous` and `stale_proxy` challenge smokes, then replace oracle
    visibility with Grounding-DINO observations and add object relocation/removal
    pressure.
+5. Run `stale_proxy --query-repeats 2` to check repaired-memory reuse against
+   naive positive counting.
 
 ## Context for Next Contributor
 

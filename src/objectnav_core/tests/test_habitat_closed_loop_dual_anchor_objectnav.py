@@ -6,6 +6,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     HabitatClosedLoopOptionPlan,
     make_habitat_closed_loop_option_row,
     run_habitat_closed_loop_dual_anchor_preflight,
+    summarize_habitat_closed_loop_rows,
 )
 
 
@@ -27,6 +28,7 @@ def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> N
     assert summary["session_restart"]["frame_transform"]["dy"] != 0.0
     assert summary["frontier_proxy_waypoints"] == 2
     assert summary["challenge"] == "stable"
+    assert summary["query_repeats"] == 1
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 
@@ -107,3 +109,86 @@ def test_habitat_option_row_charges_post_memory_fallback_for_stale_repair() -> N
     assert row["action_count"] == 30
     assert row["executed_distance_m"] == 8.5
     assert row["stale_repair_recorded"] is True
+
+
+def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count() -> None:
+    rows = [
+        make_habitat_closed_loop_option_row(
+            HabitatClosedLoopOptionPlan(
+                group_id="scene|plant|1",
+                category="plant",
+                policy="memory_guided",
+                memory_action_count=12,
+                memory_executed_distance_m=3.5,
+                fallback_action_count=30,
+                fallback_executed_distance_m=9.0,
+                fallback_from_memory_action_count=18,
+                fallback_from_memory_executed_distance_m=5.0,
+                matching_reason="no_current_observation",
+                memory_verified=False,
+                fallback_verified=True,
+                stale_repair=True,
+                query_repeat_index=0,
+            )
+        ),
+        make_habitat_closed_loop_option_row(
+            HabitatClosedLoopOptionPlan(
+                group_id="scene|plant|1",
+                category="plant",
+                policy="memory_guided",
+                memory_action_count=8,
+                memory_executed_distance_m=2.0,
+                fallback_action_count=30,
+                fallback_executed_distance_m=9.0,
+                fallback_from_memory_action_count=18,
+                fallback_from_memory_executed_distance_m=5.0,
+                matching_reason="accepted",
+                memory_verified=True,
+                fallback_verified=True,
+                stale_repair=False,
+                query_repeat_index=1,
+            )
+        ),
+        make_habitat_closed_loop_option_row(
+            HabitatClosedLoopOptionPlan(
+                group_id="scene|plant|1",
+                category="plant",
+                policy="naive_count",
+                memory_action_count=12,
+                memory_executed_distance_m=3.5,
+                fallback_action_count=30,
+                fallback_executed_distance_m=9.0,
+                fallback_from_memory_action_count=18,
+                fallback_from_memory_executed_distance_m=5.0,
+                matching_reason="no_current_observation",
+                memory_verified=False,
+                fallback_verified=True,
+                stale_repair=True,
+                query_repeat_index=0,
+            )
+        ),
+        make_habitat_closed_loop_option_row(
+            HabitatClosedLoopOptionPlan(
+                group_id="scene|plant|1",
+                category="plant",
+                policy="naive_count",
+                memory_action_count=12,
+                memory_executed_distance_m=3.5,
+                fallback_action_count=30,
+                fallback_executed_distance_m=9.0,
+                fallback_from_memory_action_count=18,
+                fallback_from_memory_executed_distance_m=5.0,
+                matching_reason="no_current_observation",
+                memory_verified=False,
+                fallback_verified=True,
+                stale_repair=True,
+                query_repeat_index=1,
+            )
+        ),
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    assert summary["policy_summaries"]["memory_guided"]["total_action_count"] == 38
+    assert summary["policy_summaries"]["naive_count"]["total_action_count"] == 60
+    assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22

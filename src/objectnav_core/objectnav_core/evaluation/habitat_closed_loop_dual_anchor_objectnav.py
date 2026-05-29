@@ -23,6 +23,7 @@ DEFAULT_MAX_GROUPS = 1
 DEFAULT_GATE_THRESHOLD = 5.991
 DEFAULT_AMBIGUITY_MARGIN = 0.5
 DEFAULT_FRONTIER_PROXY_WAYPOINTS = 2
+DEFAULT_QUERY_REPEATS = 1
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
 
@@ -42,6 +43,7 @@ class HabitatClosedLoopOptionPlan:
     memory_verified: bool
     fallback_verified: bool
     stale_repair: bool = False
+    query_repeat_index: int = 0
 
 
 def run_habitat_closed_loop_dual_anchor_preflight(
@@ -58,6 +60,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     challenge: str = DEFAULT_CHALLENGE,
+    query_repeats: int = DEFAULT_QUERY_REPEATS,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -71,6 +74,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
+        query_repeats=query_repeats,
     )
     summary = _base_summary(
         task="habitat_closed_loop_dual_anchor_objectnav_preflight",
@@ -86,6 +90,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
+        query_repeats=query_repeats,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -105,6 +110,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     ambiguity_margin: float = DEFAULT_AMBIGUITY_MARGIN,
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     challenge: str = DEFAULT_CHALLENGE,
+    query_repeats: int = DEFAULT_QUERY_REPEATS,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -118,6 +124,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
+        query_repeats=query_repeats,
     )
 
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
@@ -271,36 +278,55 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     )[0],
                 )
                 for policy in policies:
-                    matching_reason = _matching_reason_for_challenge(challenge)
-                    rows.append(
-                        make_habitat_closed_loop_option_row(
-                            HabitatClosedLoopOptionPlan(
-                                group_id=group.group_id,
-                                category=group.category,
-                                policy=policy,
-                                memory_action_count=memory_route.action_count,
-                                memory_executed_distance_m=memory_route.executed_distance_m,
-                                fallback_action_count=fallback_route.action_count,
-                                fallback_executed_distance_m=fallback_route.executed_distance_m,
-                                fallback_from_memory_action_count=(
-                                    fallback_from_memory_route.action_count
-                                ),
-                                fallback_from_memory_executed_distance_m=(
-                                    fallback_from_memory_route.executed_distance_m
-                                ),
-                                matching_reason=matching_reason,
-                                memory_verified=(
-                                    policy != "frontier_only"
-                                    and matching_reason == "accepted"
-                                ),
-                                fallback_verified=True,
-                                stale_repair=(
-                                    policy != "frontier_only"
-                                    and challenge == "stale_proxy"
-                                ),
+                    for repeat_index in range(query_repeats):
+                        matching_reason = _matching_reason_for_repeat(
+                            challenge=challenge,
+                            policy=policy,
+                            repeat_index=repeat_index,
+                        )
+                        active_memory_route = (
+                            fallback_route
+                            if (
+                                challenge == "stale_proxy"
+                                and policy == "memory_guided"
+                                and repeat_index > 0
+                            )
+                            else memory_route
+                        )
+                        rows.append(
+                            make_habitat_closed_loop_option_row(
+                                HabitatClosedLoopOptionPlan(
+                                    group_id=group.group_id,
+                                    category=group.category,
+                                    policy=policy,
+                                    memory_action_count=active_memory_route.action_count,
+                                    memory_executed_distance_m=(
+                                        active_memory_route.executed_distance_m
+                                    ),
+                                    fallback_action_count=fallback_route.action_count,
+                                    fallback_executed_distance_m=(
+                                        fallback_route.executed_distance_m
+                                    ),
+                                    fallback_from_memory_action_count=(
+                                        fallback_from_memory_route.action_count
+                                    ),
+                                    fallback_from_memory_executed_distance_m=(
+                                        fallback_from_memory_route.executed_distance_m
+                                    ),
+                                    matching_reason=matching_reason,
+                                    memory_verified=(
+                                        policy != "frontier_only"
+                                        and matching_reason == "accepted"
+                                    ),
+                                    fallback_verified=True,
+                                    stale_repair=(
+                                        policy != "frontier_only"
+                                        and matching_reason == "no_current_observation"
+                                    ),
+                                    query_repeat_index=repeat_index,
+                                )
                             )
                         )
-                    )
         finally:
             sim.close()
 
@@ -318,6 +344,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         ambiguity_margin=ambiguity_margin,
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
+        query_repeats=query_repeats,
     )
     summary.update(
         {
@@ -389,6 +416,7 @@ def make_habitat_closed_loop_option_row(
         "group_id": plan.group_id,
         "category": plan.category,
         "policy": plan.policy,
+        "query_repeat_index": int(plan.query_repeat_index),
         "success": bool(success),
         "selected_candidate_types": selected,
         "matching_reason": plan.matching_reason,
@@ -429,6 +457,7 @@ def _base_summary(
     ambiguity_margin: float,
     frontier_proxy_waypoints: int,
     challenge: str,
+    query_repeats: int,
 ) -> dict[str, Any]:
     return {
         "task": task,
@@ -443,6 +472,7 @@ def _base_summary(
         "ambiguity_margin": float(ambiguity_margin),
         "frontier_proxy_waypoints": int(frontier_proxy_waypoints),
         "challenge": challenge,
+        "query_repeats": int(query_repeats),
         "session_restart": {
             "memory_frame_id": "map_session_1",
             "runtime_frame_id": "map_session_2",
@@ -468,6 +498,7 @@ def _validate_common(
     ambiguity_margin: float,
     frontier_proxy_waypoints: int,
     challenge: str,
+    query_repeats: int,
 ) -> None:
     unknown_policies = sorted(set(policies) - set(POLICIES))
     if unknown_policies:
@@ -489,6 +520,8 @@ def _validate_common(
         raise ValueError(
             "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
         )
+    if query_repeats <= 0:
+        raise ValueError("query_repeats must be positive")
 
 
 def _session_restart_transform() -> FrameTransform2D:
@@ -510,6 +543,25 @@ def _matching_reason_for_challenge(challenge: str) -> str:
     raise ValueError(
         "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
     )
+
+
+def _matching_reason_for_repeat(
+    *,
+    challenge: str,
+    policy: str,
+    repeat_index: int,
+) -> str:
+    if challenge == "stale_proxy" and policy == "memory_guided" and repeat_index > 0:
+        return "accepted"
+    return _matching_reason_for_challenge(challenge)
+
+
+def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    policy_summaries = _summarize_rows_by_policy(rows)
+    return {
+        "policy_summaries": policy_summaries,
+        "comparison": _compare_policy_summaries(policy_summaries),
+    }
 
 
 def _transform_payload(transform: FrameTransform2D) -> dict[str, Any]:
@@ -566,13 +618,34 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def _compare_policy_summaries(summaries: dict[str, Any]) -> dict[str, Any]:
     memory = summaries.get("memory_guided")
     frontier = summaries.get("frontier_only")
-    if not memory or not frontier:
-        return {}
-    frontier_actions = int(frontier["total_action_count"])
-    memory_actions = int(memory["total_action_count"])
-    frontier_distance = float(frontier["total_executed_distance_m"])
-    memory_distance = float(memory["total_executed_distance_m"])
-    return {
-        "memory_guided_action_delta": frontier_actions - memory_actions,
-        "memory_guided_distance_delta_m": round(frontier_distance - memory_distance, 6),
-    }
+    naive = summaries.get("naive_count")
+    comparison: dict[str, Any] = {}
+    if memory and frontier:
+        frontier_actions = int(frontier["total_action_count"])
+        memory_actions = int(memory["total_action_count"])
+        frontier_distance = float(frontier["total_executed_distance_m"])
+        memory_distance = float(memory["total_executed_distance_m"])
+        comparison.update(
+            {
+                "memory_guided_action_delta": frontier_actions - memory_actions,
+                "memory_guided_distance_delta_m": round(
+                    frontier_distance - memory_distance,
+                    6,
+                ),
+            }
+        )
+    if memory and naive:
+        comparison.update(
+            {
+                "memory_guided_vs_naive_count_action_delta": int(
+                    naive["total_action_count"]
+                )
+                - int(memory["total_action_count"]),
+                "memory_guided_vs_naive_count_distance_delta_m": round(
+                    float(naive["total_executed_distance_m"])
+                    - float(memory["total_executed_distance_m"]),
+                    6,
+                ),
+            }
+        )
+    return comparison
