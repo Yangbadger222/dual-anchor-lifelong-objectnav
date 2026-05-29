@@ -212,6 +212,10 @@ Local implementation status:
   valid memory simply because the post-memory fallback is expensive. This was
   calibrated from hindsight-regret rows and must be replaced or validated by a
   learned/evidence-derived calibration before paper claims.
+- Detector-backed reliability must use detector-visible pixels for current
+  evidence. Oracle semantic pixels may be recorded for auditing and gate
+  diagnostics, but they must not inflate memory reliability in
+  Grounding-DINO-backed policy decisions.
 
 Scope for this slice:
 

@@ -52,6 +52,10 @@ Implemented foundation:
   `--memory-reliability-mode evidence`; default remains `fixed`. Evidence mode
   records a row-level reliability trace and uses it as the expected-utility
   memory-valid probability.
+- Detector-backed reliability uses detector pixels for current evidence instead
+  of borrowing oracle semantic pixel counts. Oracle pixels remain in row payloads
+  for audit/gate diagnostics, but must not inflate Grounding-DINO-backed policy
+  reliability.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -87,6 +91,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
+- `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-stale-detector-pixels-smoke.md`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
@@ -132,6 +137,10 @@ ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source 
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_detector_reliability_uses_detector_pixels_not_oracle_pixels -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ```
 
 Linux commands run:
@@ -266,6 +275,22 @@ Passed locally before this handoff update:
   `naive_count=575`, and `frontier_only=946` actions. `memory_guided` again had
   `total_hindsight_action_regret=0`, selected memory for `sofa`, and selected
   frontier for `plant`.
+- Local detector-pixel reliability red test initially failed with
+  `assert 0.98 == 0.72`, showing oracle pixels were inflating detector-backed
+  current evidence. After the fix, the focused detector reliability test passed,
+  focused Habitat/CLI tests produced `37` passed, and full local core tests
+  produced `223` passed.
+- Linux focused Habitat/CLI tests after pulling detector-pixel reliability fix
+  `ffcfd41`: `37` passed.
+- Linux stable Grounding-DINO balanced6 navmesh detector-pixel v2 smoke
+  preserved the previous aggregate result: `memory_guided=564`,
+  `naive_count=575`, and `frontier_only=946`, with `memory_guided`
+  `total_hindsight_action_regret=0`.
+- Linux stale-proxy Grounding-DINO balanced6 navmesh detector-pixel v2 smoke
+  produced `memory_guided=1334`, `naive_count=1962`, and `frontier_only=2038`
+  actions. Repeat-0 stale memories had `current_evidence=0.15`,
+  `memory_valid_prior=0.225`, and reason `matching_no_current_observation`;
+  repaired detector-positive memories could return to prior `0.96` on repeat 1.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -347,6 +372,10 @@ Passed locally before this handoff update:
 - The Grounding-DINO candidate-view calibration smoke preserved the same bucket
   pattern with an 11-action gain over `naive_count`, but it still verifies only
   selected candidate views and does not replace per-action perception.
+- Detector-backed reliability no longer borrows oracle semantic pixel counts.
+  The current stable/stale detector smokes are unchanged in aggregate because
+  selected memory detector masks are strong, but weak positive detections still
+  need targeted coverage.
 - The strong-positive floor is a hand-designed guardrail from hindsight-regret
   diagnostics. It should be treated as a calibration baseline, not the final
   algorithm, until it is validated on held-out scenes and replaced or supported

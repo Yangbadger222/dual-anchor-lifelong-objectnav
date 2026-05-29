@@ -30,7 +30,7 @@ audit pattern:
 
 | Item | Value |
 |---|---|
-| Branch / commit | `codex/habitat-memory-lifecycle` / `daece42` |
+| Branch / commit | `codex/habitat-memory-lifecycle` / `ffcfd41` |
 | Machine | Linux `badger@100.88.131.52` |
 | Conda env | `habitat` |
 | Dataset / map | HM3D ObjectNav `val`, HM3D v0.2 scene root |
@@ -67,14 +67,14 @@ Grounding-DINO balanced6 calibration smoke:
 cd ~/Desktop/dual-anchor-lifelong-objectnav
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate habitat
-rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1
+rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_detector_pixels_v2
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 PYTHONPATH=src/objectnav_core \
 python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
   --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
   --scene-root datasets/habitat/scene_datasets/hm3d \
-  --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1 \
+  --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_detector_pixels_v2 \
   --target-categories bed,chair,plant,sofa,toilet,tv_monitor \
   --max-groups 6 \
   --sensor-width 1280 \
@@ -117,7 +117,7 @@ oracle calibration smoke.
 ## Metrics
 
 Run artifact:
-`runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_calibrated_v1`
+`runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_evidence_detector_pixels_v2`
 
 | Policy | Episodes | Success | Actions | Distance | Memory reuse | Frontier selections | Hindsight action regret |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -160,6 +160,11 @@ is bucketed as `memory_rescued_frontier_failure`.
 - The detector-backed candidate-view smoke preserved the targeted behavior:
   `sofa` reused memory and `plant` selected frontier.
 - `memory_guided` hindsight action regret stayed at `0`.
+- This v2 run happened after fixing the reliability helper so detector-backed
+  current evidence uses `detector_pixels`, not `max(detector_pixels,
+  oracle_target_pixels)`. All selected memory detections in this smoke were
+  themselves above the strong-evidence pixel threshold, so aggregate metrics did
+  not change from the earlier candidate-view run.
 - `memory_guided` used 564 actions, compared with 561 in the oracle calibration
   smoke. The 3-action difference comes from detector-backed navmesh candidate
   accounting in this option-level runner.
