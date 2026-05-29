@@ -682,6 +682,60 @@ def test_policy_summary_counts_detector_confirmation_outcomes() -> None:
     }
 
 
+def test_summary_counts_runtime_detector_confirmation_events() -> None:
+    rows = [
+        {
+            "policy": "memory_guided",
+            "success": True,
+            "action_count": 12,
+            "executed_distance_m": 3.0,
+            "memory_reused": True,
+            "selected_candidate_types": ["memory"],
+            "memory_decision_bucket": "memory_shorter_reused",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {},
+            "fallback_evidence": {},
+            "fallback_from_memory_evidence": {},
+            "detector_confirmation_events": [
+                {"context": "memory", "outcome": "suppressed"},
+                {"context": "memory", "outcome": "confirmed"},
+                {"context": "fallback", "outcome": "suppressed"},
+            ],
+        },
+        {
+            "policy": "memory_guided",
+            "success": False,
+            "action_count": 15,
+            "executed_distance_m": 4.0,
+            "memory_reused": False,
+            "selected_candidate_types": ["memory"],
+            "memory_decision_bucket": "memory_attempt_failed",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {},
+            "fallback_evidence": {},
+            "fallback_from_memory_evidence": {},
+            "detector_confirmation_events": [
+                {"context": "fallback_from_memory", "outcome": "suppressed"},
+            ],
+        },
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    policy_summary = summary["policy_summaries"]["memory_guided"]
+    assert policy_summary["detector_confirmation_event_counts"] == {
+        "confirmed": 1,
+        "suppressed": 3,
+    }
+    assert policy_summary["detector_confirmation_event_counts_by_context"] == {
+        "fallback": {"suppressed": 1},
+        "fallback_from_memory": {"suppressed": 1},
+        "memory": {"confirmed": 1, "suppressed": 1},
+    }
+
+
 def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
@@ -959,6 +1013,46 @@ def test_multiview_confirmation_suppresses_single_frame_detector_positive() -> N
     assert confirmed.detector_confirmation["candidate_reason"] == "detector_positive_mask"
     assert confirmed.detector_confirmation["pending_count"] == 1
     assert confirmed.detector_confirmation["confirmed"] is False
+
+
+def test_multiview_confirmation_records_suppressed_positive_event() -> None:
+    positive = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=3495,
+        detector_pixels=8150,
+    )
+    state = closed_loop.DetectorConfirmationState()
+    events: list[dict[str, object]] = []
+
+    confirmed = closed_loop._apply_detector_confirmation(
+        verification=positive,
+        state=state,
+        mode="multiview",
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=np.ones((4, 4), dtype=bool),
+        config=closed_loop.DetectorConfirmationConfig(frames=2),
+        events=events,
+        source="memory_candidate:0",
+        context="memory",
+    )
+
+    assert confirmed.shared_gate_success is False
+    assert events == [
+        {
+            "context": "memory",
+            "source": "memory_candidate:0",
+            "candidate_reason": "detector_positive_mask",
+            "outcome": "suppressed",
+            "pending_count": 1,
+            "translation_m": 0.0,
+            "rotation_deg": 0.0,
+            "mask_iou": 1.0,
+            "detector_pixels": 8150,
+            "overlap_pixels": 0,
+            "detector_precision": 0.0,
+            "oracle_recall": 0.0,
+        }
+    ]
 
 
 def test_multiview_confirmation_accepts_repeated_positive_after_view_change() -> None:

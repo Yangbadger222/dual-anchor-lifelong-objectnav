@@ -75,7 +75,9 @@ Implemented foundation:
   previous behavior. `multiview` suppresses raw single-frame detector positives
   to weak `UNKNOWN` evidence until repeated positives show sufficient view
   change and mask consistency. Row evidence payloads include confirmation
-  diagnostics, and policy summaries include `detector_confirmation_counts`.
+  diagnostics, rows include runtime `detector_confirmation_events`, and policy
+  summaries include selected-evidence `detector_confirmation_counts` plus
+  runtime event counts by outcome and context.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -418,6 +420,14 @@ Passed locally before this handoff update:
   (`memory_guided=354`, `naive_count=354`). Two invalid multiview command
   attempts failed before producing metrics and are documented as excluded in the
   experiment report.
+- Local detector-confirmation event tests initially failed because
+  `_apply_detector_confirmation` did not accept an event sink and policy
+  summaries had no runtime event counts. After the event wiring, the two new
+  focused tests passed, and the full closed-loop objectnav test file produced
+  `50` passed.
+- Focused Habitat route/CLI suite after runtime confirmation event wiring:
+  `60` passed. Full local core tests produced `243` passed. `py_compile`,
+  `git diff --check`, and the sensitive scan produced no issues.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -507,6 +517,10 @@ Passed locally before this handoff update:
   observed plant false confirmation, but it also made frontier-only much less
   reliable. This should motivate adaptive or learned detector reliability, not a
   fixed claim that stricter confirmation is always better.
+- Runtime `detector_confirmation_events` now expose suppressed positives that
+  do not become the selected row evidence. This is diagnostic-only and should
+  be treated as training/calibration signal for reliability, not as an oracle
+  policy gate.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -518,8 +532,8 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add a targeted weak-positive detector case so suppressed-positive summary
-   counts are exercised in runtime artifacts, not just unit tests.
+1. Run a targeted weak-positive detector smoke so the new runtime event counts
+   are observed in `summary.json`, not just unit tests.
 2. Design an adaptive or learned detector reliability model that can trade off
    multiview precision against frontier recall instead of using one global gate.
 3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the

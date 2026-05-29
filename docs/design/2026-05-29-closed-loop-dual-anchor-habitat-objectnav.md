@@ -281,6 +281,10 @@ Scope for this slice:
   unchanged for reproducibility;
 - record confirmation diagnostics in evidence payloads and summaries so future
   reports can separate raw detector positives from confirmed positives;
+- record runtime confirmation events for detector positives that are seen during
+  candidate, route, and navmesh-probe verification, including positives that are
+  suppressed before a later confirmed stop, so summary diagnostics do not depend
+  only on the final selected evidence in each row;
 - treat suppressed positives as `UNKNOWN`, not as negative evidence, because a
   single-view detector hit may still be useful but is not strong enough to
   refresh long-term memory.
@@ -290,7 +294,7 @@ Non-scope for this slice:
 - no oracle-overlap policy gate;
 - no category-specific threshold tuning from the one `plant` failure;
 - no learned reliability model yet. This creates the ablation-ready interface
-  and diagnostics that a learned confirmer can replace later.
+  and event diagnostics that a learned confirmer can replace later.
 
 Remaining non-scope for the current closed-loop smoke:
 

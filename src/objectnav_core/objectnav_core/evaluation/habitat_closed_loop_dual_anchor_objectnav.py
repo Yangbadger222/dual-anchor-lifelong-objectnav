@@ -113,6 +113,7 @@ class HabitatClosedLoopOptionPlan:
     memory_evidence: dict[str, Any] | None = None
     fallback_evidence: dict[str, Any] | None = None
     fallback_from_memory_evidence: dict[str, Any] | None = None
+    detector_confirmation_events: Sequence[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -589,6 +590,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     limit=4,
                 )
                 base_frame_index = len(rows) * 100
+                detector_confirmation_events: list[dict[str, Any]] = []
                 memory_verifications = _verify_candidate_views(
                     detector=detector,
                     verify_view=_verify_lifecycle_view,
@@ -608,6 +610,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     detector_confirmation_mode=detector_confirmation_mode,
                     detector_confirmation=detector_confirmation,
                     helpers=helper_bundle,
+                    detector_confirmation_events=detector_confirmation_events,
+                    detector_confirmation_context="memory",
                 )
                 fallback_verifications = _verify_candidate_views(
                     detector=detector,
@@ -628,6 +632,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     detector_confirmation_mode=detector_confirmation_mode,
                     detector_confirmation=detector_confirmation,
                     helpers=helper_bundle,
+                    detector_confirmation_events=detector_confirmation_events,
+                    detector_confirmation_context="fallback",
                 )
                 anchor_strategy = (
                     "detector_positive"
@@ -704,6 +710,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             detector_confirmation=detector_confirmation,
                             helpers=helper_bundle,
                             frame_index_base=base_frame_index + 500,
+                            detector_confirmation_events=(
+                                detector_confirmation_events
+                            ),
+                            detector_confirmation_context="memory",
                         ),
                     )
                     memory_route = memory_observation.route
@@ -769,6 +779,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                 detector_confirmation=detector_confirmation,
                                 helpers=helper_bundle,
                                 frame_index_base=base_frame_index + 600,
+                                detector_confirmation_events=(
+                                    detector_confirmation_events
+                                ),
+                                detector_confirmation_context="fallback",
                             ),
                         )
                         fallback_route = fallback_observation.route
@@ -804,6 +818,12 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     detector_confirmation=detector_confirmation,
                                     helpers=helper_bundle,
                                     frame_index_base=base_frame_index + 700,
+                                    detector_confirmation_events=(
+                                        detector_confirmation_events
+                                    ),
+                                    detector_confirmation_context=(
+                                        "fallback_from_memory"
+                                    ),
                                 ),
                             )
                         )
@@ -837,6 +857,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         detector_confirmation_mode=detector_confirmation_mode,
                         detector_confirmation=detector_confirmation,
                         helpers=helper_bundle,
+                        detector_confirmation_events=detector_confirmation_events,
+                        detector_confirmation_context="fallback",
                         start_position=group.query_episode.start_position,
                         start_rotation=group.query_episode.start_rotation,
                         seed=313 + len(rows),
@@ -876,6 +898,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         detector_confirmation_mode=detector_confirmation_mode,
                         detector_confirmation=detector_confirmation,
                         helpers=helper_bundle,
+                        detector_confirmation_events=detector_confirmation_events,
+                        detector_confirmation_context="fallback_from_memory",
                         start_position=memory_candidate.position,
                         start_rotation=memory_candidate.rotation,
                         seed=313 + len(rows) + 500000,
@@ -1099,6 +1123,9 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                             )
                                         )
                                     ),
+                                    detector_confirmation_events=tuple(
+                                        detector_confirmation_events
+                                    ),
                                 )
                             )
                         )
@@ -1265,6 +1292,9 @@ def make_habitat_closed_loop_option_row(
         "fallback_from_memory_evidence": _audit_evidence_payload(
             plan.fallback_from_memory_evidence
         ),
+        "detector_confirmation_events": [
+            dict(event) for event in (plan.detector_confirmation_events or ())
+        ],
         "memory_decision": plan.memory_decision,
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
         "memory_reliability_mode": plan.memory_reliability_mode,
@@ -1333,6 +1363,9 @@ def _apply_detector_confirmation(
     ],
     detector_mask: np.ndarray,
     config: DetectorConfirmationConfig,
+    events: list[dict[str, Any]] | None = None,
+    source: str = "",
+    context: str = "",
 ) -> Any:
     if mode not in SUPPORTED_DETECTOR_CONFIRMATION_MODES:
         raise ValueError(
@@ -1352,21 +1385,29 @@ def _apply_detector_confirmation(
         return verification
 
     if config.frames <= 1:
+        confirmation_payload = {
+            "mode": mode,
+            "candidate_reason": str(getattr(verification, "evidence_reason", "")),
+            "pending_count": 1,
+            "translation_m": 0.0,
+            "rotation_deg": 0.0,
+            "mask_iou": 1.0,
+            "confirmed": True,
+        }
+        _record_detector_confirmation_event(
+            events=events,
+            source=source,
+            context=context,
+            verification=verification,
+            confirmation=confirmation_payload,
+        )
         return DetectorConfirmedVerification(
             source=verification,
             evidence_type_value=_verification_evidence_type_value(verification),
             target_visible=bool(getattr(verification, "target_visible", False)),
             evidence_strength=float(getattr(verification, "evidence_strength", 1.0)),
             evidence_reason=str(getattr(verification, "evidence_reason", "")),
-            detector_confirmation={
-                "mode": mode,
-                "candidate_reason": str(getattr(verification, "evidence_reason", "")),
-                "pending_count": 1,
-                "translation_m": 0.0,
-                "rotation_deg": 0.0,
-                "mask_iou": 1.0,
-                "confirmed": True,
-            },
+            detector_confirmation=confirmation_payload,
         )
 
     pending_count, translation, rotation_deg, mask_iou = state.observe(
@@ -1391,6 +1432,13 @@ def _apply_detector_confirmation(
         ),
     }
     if confirmation_payload["confirmed"]:
+        _record_detector_confirmation_event(
+            events=events,
+            source=source,
+            context=context,
+            verification=verification,
+            confirmation=confirmation_payload,
+        )
         position, rotation = pose
         state.pending_count = 1
         state.origin_position = position
@@ -1414,6 +1462,13 @@ def _apply_detector_confirmation(
         reason = "waiting_for_multiview_detector_confirmation"
     else:
         reason = "waiting_for_detector_mask_consistency"
+    _record_detector_confirmation_event(
+        events=events,
+        source=source,
+        context=context,
+        verification=verification,
+        confirmation=confirmation_payload,
+    )
     return DetectorConfirmedVerification(
         source=verification,
         evidence_type_value="unknown",
@@ -1421,6 +1476,42 @@ def _apply_detector_confirmation(
         evidence_strength=0.35,
         evidence_reason=reason,
         detector_confirmation=confirmation_payload,
+    )
+
+
+def _record_detector_confirmation_event(
+    *,
+    events: list[dict[str, Any]] | None,
+    source: str,
+    context: str,
+    verification: Any,
+    confirmation: dict[str, Any],
+) -> None:
+    if events is None:
+        return
+    events.append(
+        {
+            "context": str(context),
+            "source": str(source),
+            "candidate_reason": str(confirmation.get("candidate_reason", "")),
+            "outcome": (
+                "confirmed" if bool(confirmation.get("confirmed", False)) else "suppressed"
+            ),
+            "pending_count": int(confirmation.get("pending_count", 0) or 0),
+            "translation_m": round(float(confirmation.get("translation_m", 0.0)), 6),
+            "rotation_deg": round(float(confirmation.get("rotation_deg", 0.0)), 6),
+            "mask_iou": round(float(confirmation.get("mask_iou", 0.0)), 6),
+            "detector_pixels": int(getattr(verification, "detector_pixels", 0) or 0),
+            "overlap_pixels": int(getattr(verification, "overlap_pixels", 0) or 0),
+            "detector_precision": round(
+                float(getattr(verification, "detector_precision", 0.0) or 0.0),
+                6,
+            ),
+            "oracle_recall": round(
+                float(getattr(verification, "oracle_recall", 0.0) or 0.0),
+                6,
+            ),
+        }
     )
 
 
@@ -2091,6 +2182,8 @@ def _verify_candidate_views(
     detector_confirmation_mode: str,
     detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
+    detector_confirmation_events: list[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "",
 ) -> dict[str, Any]:
     if detector == "oracle_semantic_visibility":
         return {
@@ -2134,6 +2227,9 @@ def _verify_candidate_views(
             if getattr(verification, "detector_mask", None) is not None
             else np.zeros((1, 1), dtype=bool),
             config=detector_confirmation,
+            events=detector_confirmation_events,
+            source=str(candidate.source),
+            context=detector_confirmation_context,
         )
     return verifications
 
@@ -2156,6 +2252,8 @@ def _route_observation_verifier(
     detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
     frame_index_base: int,
+    detector_confirmation_events: list[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "",
 ) -> Any:
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
         _verify_lifecycle_view,
@@ -2170,7 +2268,7 @@ def _route_observation_verifier(
         step_index: int | None,
         action: str,
     ) -> Any:
-        del source, action
+        del action
         if position is None or rotation is None:
             return _OracleVisible(target_visible=False)
         if detector == "oracle_semantic_visibility":
@@ -2208,6 +2306,9 @@ def _route_observation_verifier(
             if getattr(verification, "detector_mask", None) is not None
             else np.zeros((1, 1), dtype=bool),
             config=detector_confirmation,
+            events=detector_confirmation_events,
+            source=source,
+            context=detector_confirmation_context,
         )
 
     return verify_observation
@@ -2536,6 +2637,8 @@ def _navmesh_frontier_result(
     detector_confirmation_mode: str,
     detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
+    detector_confirmation_events: list[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "",
     start_position: Sequence[float],
     start_rotation: Sequence[float],
     seed: int,
@@ -2587,7 +2690,6 @@ def _navmesh_frontier_result(
         rotation: tuple[float, float, float, float],
         probe_index: int,
     ) -> Any:
-        del source
         if detector == "oracle_semantic_visibility":
             return _verify_oracle_pose(
                 sim=sim,
@@ -2623,6 +2725,9 @@ def _navmesh_frontier_result(
             if getattr(verification, "detector_mask", None) is not None
             else np.zeros((1, 1), dtype=bool),
             config=detector_confirmation,
+            events=detector_confirmation_events,
+            source=source,
+            context=detector_confirmation_context,
         )
 
     return _run_navmesh_frontier_probe_route(
@@ -2925,6 +3030,12 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "detector_confirmation_counts": (
                 _count_detector_confirmation_outcomes(policy_rows)
             ),
+            "detector_confirmation_event_counts": (
+                _count_detector_confirmation_events(policy_rows)
+            ),
+            "detector_confirmation_event_counts_by_context": (
+                _count_detector_confirmation_events_by_context(policy_rows)
+            ),
             "total_hindsight_action_regret": sum(
                 int(row.get("hindsight_action_regret", 0) or 0)
                 for row in policy_rows
@@ -3005,6 +3116,40 @@ def _count_detector_confirmation_outcomes(
             else:
                 counts["suppressed"] += 1
     return {key: value for key, value in counts.items() if value}
+
+
+def _count_detector_confirmation_events(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        for event in _row_detector_confirmation_events(row):
+            outcome = str(event.get("outcome", "unknown"))
+            counts[outcome] = counts.get(outcome, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _count_detector_confirmation_events_by_context(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        for event in _row_detector_confirmation_events(row):
+            context = str(event.get("context", "unknown"))
+            outcome = str(event.get("outcome", "unknown"))
+            context_counts = counts.setdefault(context, {})
+            context_counts[outcome] = context_counts.get(outcome, 0) + 1
+    return {
+        context: dict(sorted(context_counts.items()))
+        for context, context_counts in sorted(counts.items())
+    }
+
+
+def _row_detector_confirmation_events(
+    row: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    events = row.get("detector_confirmation_events") or ()
+    return tuple(event for event in events if isinstance(event, dict))
 
 
 def _safe_div(numerator: float, denominator: int | float) -> float:
