@@ -70,6 +70,12 @@ Implemented foundation:
   `detector_overlap_success` and `detector_false_confirmation` flags, and
   policy summaries count false confirmations across memory, fallback, and
   post-memory fallback evidence.
+- Detector confirmation mode via
+  `--detector-confirmation-mode single_frame|multiview`. `single_frame` keeps
+  previous behavior. `multiview` suppresses raw single-frame detector positives
+  to weak `UNKNOWN` evidence until repeated positives show sufficient view
+  change and mask consistency. Row evidence payloads include confirmation
+  diagnostics, and policy summaries include `detector_confirmation_counts`.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -116,6 +122,7 @@ Not implemented yet:
 - `src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_memory_lifecycle_objectnav.py`
 - `src/objectnav_core/objectnav_core/evaluation/dual_anchor_pressure.py`
 - `src/objectnav_core/objectnav_core/cli/run_dual_anchor_pressure.py`
 - `src/objectnav_core/objectnav_core/planning/memory_guided.py`
@@ -379,6 +386,17 @@ Passed locally before this handoff update:
   policies reported `detector_false_confirmation_counts={'memory': 1}` for the
   selected `plant` group; the row-level memory evidence had
   `detector_overlap_success=false` and `detector_false_confirmation=true`.
+- Local detector multiview confirmation tests added the API/CLI summary fields,
+  helper behavior, weak pending reliability, confirmed-detector audit, and
+  summary counts. Focused detector confirmation tests produced `5` passed;
+  the focused CLI confirmation test produced `1` passed.
+- Local focused Habitat route/CLI tests after multiview confirmation wiring
+  produced `58` passed.
+- Full local core tests after multiview confirmation wiring produced
+  `241` passed.
+- `py_compile` passed for the Habitat closed-loop runner, lifecycle verification
+  module, and Habitat CLI.
+- `git diff --check` passed after the multiview confirmation update.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -463,6 +481,10 @@ Passed locally before this handoff update:
   confirmation. This reinforces that aggregate action reductions must be
   reported alongside detector audit counts; do not treat detector-positive alone
   as proof of real target localization in simulation.
+- Multiview detector confirmation is now implemented locally, but it has not
+  yet been run on the Linux Habitat/GPU machine. Expect it to suppress some true
+  positives as well as false confirmations; paired `single_frame`/`multiview`
+  ablations are required before treating it as an improvement.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -474,21 +496,26 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Push the multiview detector confirmation update and run a small Linux
+   Grounding-DINO `multiview` smoke to confirm runtime fields and count
+   suppressed versus confirmed positives.
+2. Run paired `single_frame`/`multiview` balanced detector ablations before
+   claiming detector-backed memory improvements.
+3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-2. Continue calibrating the reliability estimator against bucket counts and
+4. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-3. Replace oracle/candidate-view reliability evidence with detector/per-action
+5. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-5. Move Grounding-DINO from selected candidate-view verification to larger
+7. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-6. Implement natural Habitat object relocation/removal or a clearly labeled
+8. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-7. Scale the balanced runs beyond six groups and report confidence intervals.
-8. Convert the smoke metrics into SPL-like metrics only after per-action
+9. Scale the balanced runs beyond six groups and report confidence intervals.
+10. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

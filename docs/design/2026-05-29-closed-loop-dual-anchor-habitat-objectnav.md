@@ -258,7 +258,41 @@ Scope for this slice:
 - keep `search_proxy` and `navmesh_frontier` behavior comparable when
   `option_end` is selected.
 
+## Detector Confirmation Slice
+
+The latest Grounding-DINO per-action smoke exposed a detector-positive `plant`
+memory with zero semantic overlap in simulation. The overlap metric is only an
+audit signal because a real robot will not have oracle semantic masks, so the
+next policy-facing step must not "fix" the result by requiring oracle overlap.
+Instead, detector positives should be optionally confirmed by repeated evidence
+across nearby but distinct views.
+
+Scope for this slice:
+
+- add a detector confirmation mode with `single_frame` as the default and
+  `multiview` as an explicit experiment setting;
+- reuse the existing val-mini temporal/multi-view/mask-consistency confirmation
+  pattern: a detector positive starts as pending, then becomes positive only
+  after enough positive frames, sufficient pose change, and mask consistency;
+- apply the confirmation gate to detector-backed memory, fallback, and
+  post-memory fallback evidence before reliability scoring and shared-gate
+  policy decisions;
+- keep oracle semantic visibility and default single-frame detector behavior
+  unchanged for reproducibility;
+- record confirmation diagnostics in evidence payloads and summaries so future
+  reports can separate raw detector positives from confirmed positives;
+- treat suppressed positives as `UNKNOWN`, not as negative evidence, because a
+  single-view detector hit may still be useful but is not strong enough to
+  refresh long-term memory.
+
 Non-scope for this slice:
+
+- no oracle-overlap policy gate;
+- no category-specific threshold tuning from the one `plant` failure;
+- no learned reliability model yet. This creates the ablation-ready interface
+  and diagnostics that a learned confirmer can replace later.
+
+Remaining non-scope for the current closed-loop smoke:
 
 - building occupancy directly from depth;
 - learned frontier scoring or occupancy-map frontier selection;

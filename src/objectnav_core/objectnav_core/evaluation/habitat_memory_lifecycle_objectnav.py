@@ -75,6 +75,7 @@ class LifecycleVerification:
     oracle_recall: float = 0.0
     detection_count: int = 0
     detection_filtered_count: int = 0
+    detector_mask: Any | None = None
 
     @property
     def shared_gate_success(self) -> bool:
@@ -1255,6 +1256,7 @@ def _verify_lifecycle_view(
         oracle_recall=float(metrics["oracle_recall"]),
         detection_count=len(detections),
         detection_filtered_count=int(detection_filtered_count),
+        detector_mask=detector_mask,
     )
 
 

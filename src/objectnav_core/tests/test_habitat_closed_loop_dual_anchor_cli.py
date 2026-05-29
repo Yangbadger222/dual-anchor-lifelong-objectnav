@@ -170,3 +170,40 @@ def test_habitat_closed_loop_cli_preflight_accepts_route_observation_mode(
 
     assert exit_code == 0
     assert summary["route_observation_mode"] == "per_action"
+
+
+def test_habitat_closed_loop_cli_preflight_accepts_detector_confirmation_config(
+    tmp_path,
+) -> None:
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--detector-confirmation-mode",
+            "multiview",
+            "--detector-confirmation-frames",
+            "2",
+            "--detector-confirmation-min-translation",
+            "0.05",
+            "--detector-confirmation-min-rotation-deg",
+            "5.0",
+            "--detector-confirmation-min-mask-iou",
+            "0.05",
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert summary["detector_confirmation_mode"] == "multiview"
+    assert summary["detector_confirmation"] == {
+        "frames": 2,
+        "min_translation_m": 0.05,
+        "min_rotation_deg": 5.0,
+        "min_mask_iou": 0.05,
+    }

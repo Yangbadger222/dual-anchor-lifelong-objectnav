@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+import numpy as np
+
 from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import (
     HabitatClosedLoopOptionPlan,
     make_habitat_closed_loop_option_row,
@@ -130,6 +132,31 @@ def test_habitat_closed_loop_preflight_records_route_observation_mode(
     )
 
     assert summary["route_observation_mode"] == "per_action"
+
+
+def test_habitat_closed_loop_preflight_records_detector_confirmation_config(
+    tmp_path,
+) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        detector_confirmation_mode="multiview",
+        detector_confirmation_frames=2,
+        detector_confirmation_min_translation=0.05,
+        detector_confirmation_min_rotation_deg=5.0,
+        detector_confirmation_min_mask_iou=0.05,
+    )
+
+    assert summary["detector_confirmation_mode"] == "multiview"
+    assert summary["detector_confirmation"] == {
+        "frames": 2,
+        "min_translation_m": 0.05,
+        "min_rotation_deg": 5.0,
+        "min_mask_iou": 0.05,
+    }
 
 
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
@@ -595,6 +622,66 @@ def test_policy_summary_counts_detector_false_confirmations() -> None:
     }
 
 
+def test_policy_summary_counts_detector_confirmation_outcomes() -> None:
+    rows = [
+        {
+            "policy": "memory_guided",
+            "success": True,
+            "action_count": 12,
+            "executed_distance_m": 3.0,
+            "memory_reused": True,
+            "selected_candidate_types": ["memory"],
+            "memory_decision_bucket": "memory_shorter_reused",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {
+                "detector_confirmation": {
+                    "mode": "multiview",
+                    "candidate_reason": "detector_positive_mask",
+                    "confirmed": False,
+                }
+            },
+            "fallback_evidence": {
+                "detector_confirmation": {
+                    "mode": "multiview",
+                    "candidate_reason": "detector_positive_mask",
+                    "confirmed": True,
+                }
+            },
+            "fallback_from_memory_evidence": {},
+        },
+        {
+            "policy": "memory_guided",
+            "success": True,
+            "action_count": 15,
+            "executed_distance_m": 4.0,
+            "memory_reused": False,
+            "selected_candidate_types": ["frontier"],
+            "memory_decision_bucket": "frontier_shorter_selected",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {},
+            "fallback_evidence": {},
+            "fallback_from_memory_evidence": {
+                "detector_confirmation": {
+                    "mode": "multiview",
+                    "candidate_reason": "detector_positive_mask",
+                    "confirmed": False,
+                }
+            },
+        },
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    assert summary["policy_summaries"]["memory_guided"][
+        "detector_confirmation_counts"
+    ] == {
+        "confirmed": 1,
+        "suppressed": 2,
+    }
+
+
 def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
@@ -841,6 +928,142 @@ def test_detector_reliability_uses_detector_pixels_not_oracle_pixels() -> None:
     assert estimate.components["current_evidence"] == 0.72
     assert estimate.reason == "evidence_weighted"
     assert estimate.value < 0.9
+
+
+def test_multiview_confirmation_suppresses_single_frame_detector_positive() -> None:
+    positive = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=3495,
+        detector_pixels=8150,
+    )
+    state = closed_loop.DetectorConfirmationState()
+    mask = np.ones((4, 4), dtype=bool)
+
+    confirmed = closed_loop._apply_detector_confirmation(
+        verification=positive,
+        state=state,
+        mode="multiview",
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=closed_loop.DetectorConfirmationConfig(
+            frames=2,
+            min_translation_m=0.05,
+            min_rotation_deg=5.0,
+            min_mask_iou=0.05,
+        ),
+    )
+
+    assert confirmed.shared_gate_success is False
+    assert confirmed.target_visible is False
+    assert confirmed.evidence_reason == "pending_detector_confirmation"
+    assert confirmed.detector_confirmation["candidate_reason"] == "detector_positive_mask"
+    assert confirmed.detector_confirmation["pending_count"] == 1
+    assert confirmed.detector_confirmation["confirmed"] is False
+
+
+def test_multiview_confirmation_accepts_repeated_positive_after_view_change() -> None:
+    state = closed_loop.DetectorConfirmationState()
+    config = closed_loop.DetectorConfirmationConfig(
+        frames=2,
+        min_translation_m=0.05,
+        min_rotation_deg=5.0,
+        min_mask_iou=0.05,
+    )
+    mask = np.zeros((4, 4), dtype=bool)
+    mask[1:3, 1:3] = True
+    positive = DetectorVerification(
+        target_visible=True,
+        oracle_target_pixels=3495,
+        detector_pixels=8150,
+    )
+
+    closed_loop._apply_detector_confirmation(
+        verification=positive,
+        state=state,
+        mode="multiview",
+        pose=((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+    confirmed = closed_loop._apply_detector_confirmation(
+        verification=positive,
+        state=state,
+        mode="multiview",
+        pose=((0.1, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        detector_mask=mask,
+        config=config,
+    )
+
+    assert confirmed.shared_gate_success is True
+    assert confirmed.evidence_reason == "confirmed_detector_positive_mask"
+    assert confirmed.detector_confirmation["pending_count"] == 2
+    assert confirmed.detector_confirmation["translation_m"] == 0.1
+    assert confirmed.detector_confirmation["confirmed"] is True
+
+
+def test_pending_detector_confirmation_is_weak_current_evidence() -> None:
+    pending = closed_loop.DetectorConfirmedVerification(
+        source=DetectorVerification(
+            target_visible=True,
+            oracle_target_pixels=3495,
+            detector_pixels=8150,
+        ),
+        evidence_type_value="unknown",
+        target_visible=False,
+        evidence_strength=0.35,
+        evidence_reason="pending_detector_confirmation",
+        detector_confirmation={
+            "mode": "multiview",
+            "confirmed": False,
+            "candidate_reason": "detector_positive_mask",
+            "pending_count": 1,
+        },
+    )
+
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=pending,
+        category="plant",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert estimate.components["current_evidence"] < 0.5
+    assert estimate.reason == "weak_current_evidence"
+    assert estimate.value < 0.34
+
+
+def test_confirmed_detector_reason_still_uses_detector_pixels_and_audit() -> None:
+    confirmed = closed_loop.DetectorConfirmedVerification(
+        source=DetectorVerification(
+            target_visible=True,
+            oracle_target_pixels=500_000,
+            detector_pixels=30,
+        ),
+        evidence_type_value="positive",
+        target_visible=True,
+        evidence_strength=1.2,
+        evidence_reason="confirmed_detector_positive_mask",
+        detector_confirmation={"mode": "multiview", "confirmed": True},
+    )
+
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=confirmed,
+        category="chair",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+    payload = closed_loop._audit_evidence_payload(
+        closed_loop._verification_payload(confirmed)
+    )
+
+    assert estimate.components["current_evidence"] == 0.72
+    assert payload["detector_false_confirmation"] is True
 
 
 def test_shared_detector_gate_controls_memory_verification_for_all_memory_policies() -> None:

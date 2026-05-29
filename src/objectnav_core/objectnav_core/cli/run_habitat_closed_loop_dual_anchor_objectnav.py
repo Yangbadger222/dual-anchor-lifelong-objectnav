@@ -7,6 +7,11 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_AMBIGUITY_MARGIN,
     DEFAULT_DEPTH_NOISE_PROFILE,
     DEFAULT_DETECTOR,
+    DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
+    DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU,
+    DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG,
+    DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M,
+    DEFAULT_DETECTOR_CONFIRMATION_MODE,
     DEFAULT_DETECTOR_CONF,
     DEFAULT_DETECTOR_PROMPT_MODE,
     DEFAULT_DETECTOR_WEIGHTS,
@@ -33,6 +38,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     POLICIES,
     SUPPORTED_CHALLENGES,
     SUPPORTED_DETECTORS,
+    SUPPORTED_DETECTOR_CONFIRMATION_MODES,
     SUPPORTED_DETECTOR_PROMPT_MODES,
     SUPPORTED_FRONTIER_MODES,
     SUPPORTED_MEMORY_RELIABILITY_MODES,
@@ -107,6 +113,31 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ROUTE_OBSERVATION_MODE,
         choices=SUPPORTED_ROUTE_OBSERVATION_MODES,
     )
+    parser.add_argument(
+        "--detector-confirmation-mode",
+        default=DEFAULT_DETECTOR_CONFIRMATION_MODE,
+        choices=SUPPORTED_DETECTOR_CONFIRMATION_MODES,
+    )
+    parser.add_argument(
+        "--detector-confirmation-frames",
+        type=int,
+        default=DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
+    )
+    parser.add_argument(
+        "--detector-confirmation-min-translation",
+        type=float,
+        default=DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M,
+    )
+    parser.add_argument(
+        "--detector-confirmation-min-rotation-deg",
+        type=float,
+        default=DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG,
+    )
+    parser.add_argument(
+        "--detector-confirmation-min-mask-iou",
+        type=float,
+        default=DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU,
+    )
     parser.add_argument("--challenge", default=DEFAULT_CHALLENGE, choices=SUPPORTED_CHALLENGES)
     parser.add_argument("--detector", default=DEFAULT_DETECTOR, choices=SUPPORTED_DETECTORS)
     parser.add_argument("--detector-weights", default=DEFAULT_DETECTOR_WEIGHTS)
@@ -179,6 +210,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         memory_valid_prior=args.memory_valid_prior,
         memory_reliability_mode=args.memory_reliability_mode,
         route_observation_mode=args.route_observation_mode,
+        detector_confirmation_mode=args.detector_confirmation_mode,
+        detector_confirmation_frames=args.detector_confirmation_frames,
+        detector_confirmation_min_translation=(
+            args.detector_confirmation_min_translation
+        ),
+        detector_confirmation_min_rotation_deg=(
+            args.detector_confirmation_min_rotation_deg
+        ),
+        detector_confirmation_min_mask_iou=args.detector_confirmation_min_mask_iou,
         detector=args.detector,
         detector_weights=args.detector_weights,
         detector_conf=args.detector_conf,

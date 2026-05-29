@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -38,6 +39,15 @@ SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = ("fixed", "evidence")
 DEFAULT_MEMORY_RELIABILITY_MODE = "fixed"
 SUPPORTED_ROUTE_OBSERVATION_MODES: tuple[str, ...] = ("option_end", "per_action")
 DEFAULT_ROUTE_OBSERVATION_MODE = "option_end"
+SUPPORTED_DETECTOR_CONFIRMATION_MODES: tuple[str, ...] = (
+    "single_frame",
+    "multiview",
+)
+DEFAULT_DETECTOR_CONFIRMATION_MODE = "single_frame"
+DEFAULT_DETECTOR_CONFIRMATION_FRAMES = 2
+DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M = 0.05
+DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG = 5.0
+DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU = 0.05
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
 SUPPORTED_DETECTORS: tuple[str, ...] = (
@@ -115,6 +125,101 @@ class NavmeshFrontierRouteResult:
 
 
 @dataclass(frozen=True)
+class DetectorConfirmationConfig:
+    frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES
+    min_translation_m: float = DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M
+    min_rotation_deg: float = DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG
+    min_mask_iou: float = DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU
+
+
+@dataclass
+class DetectorConfirmationState:
+    pending_count: int = 0
+    origin_position: tuple[float, float, float] | None = None
+    origin_rotation: tuple[float, float, float, float] | None = None
+    origin_mask: np.ndarray | None = None
+
+    def reset(self) -> None:
+        self.pending_count = 0
+        self.origin_position = None
+        self.origin_rotation = None
+        self.origin_mask = None
+
+    def observe(
+        self,
+        pose: tuple[
+            tuple[float, float, float],
+            tuple[float, float, float, float],
+        ],
+        mask: np.ndarray,
+    ) -> tuple[int, float, float, float]:
+        position, rotation = pose
+        candidate_mask = np.asarray(mask, dtype=bool)
+        if (
+            self.pending_count == 0
+            or self.origin_position is None
+            or self.origin_rotation is None
+            or self.origin_mask is None
+        ):
+            self.pending_count = 1
+            self.origin_position = position
+            self.origin_rotation = rotation
+            self.origin_mask = candidate_mask.copy()
+        else:
+            self.pending_count += 1
+        translation = _distance3(self.origin_position, position)
+        rotation_deg = _quaternion_angle_degrees(self.origin_rotation, rotation)
+        mask_iou = _mask_iou(self.origin_mask, candidate_mask)
+        return self.pending_count, translation, rotation_deg, mask_iou
+
+
+@dataclass(frozen=True)
+class DetectorConfirmedVerification:
+    source: Any
+    evidence_type_value: str
+    target_visible: bool
+    evidence_strength: float
+    evidence_reason: str
+    detector_confirmation: dict[str, Any]
+
+    @property
+    def shared_gate_success(self) -> bool:
+        return self.evidence_type_value == "positive" and bool(self.target_visible)
+
+    @property
+    def evidence_type(self) -> str:
+        return self.evidence_type_value
+
+    @property
+    def oracle_target_pixels(self) -> int:
+        return int(getattr(self.source, "oracle_target_pixels", 0) or 0)
+
+    @property
+    def detector_pixels(self) -> int:
+        return int(getattr(self.source, "detector_pixels", 0) or 0)
+
+    @property
+    def overlap_pixels(self) -> int:
+        return int(getattr(self.source, "overlap_pixels", 0) or 0)
+
+    @property
+    def detector_precision(self) -> float:
+        return float(getattr(self.source, "detector_precision", 0.0) or 0.0)
+
+    @property
+    def oracle_recall(self) -> float:
+        return float(getattr(self.source, "oracle_recall", 0.0) or 0.0)
+
+    @property
+    def detection_count(self) -> int:
+        return int(getattr(self.source, "detection_count", 0) or 0)
+
+    @property
+    def detection_filtered_count(self) -> int:
+        return int(getattr(self.source, "detection_filtered_count", 0) or 0)
+
+
+@dataclass(frozen=True)
 class MemoryReliabilityEstimate:
     mode: str
     value: float
@@ -152,6 +257,17 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
     route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
+    detector_confirmation_mode: str = DEFAULT_DETECTOR_CONFIRMATION_MODE,
+    detector_confirmation_frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
+    detector_confirmation_min_translation: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M
+    ),
+    detector_confirmation_min_rotation_deg: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG
+    ),
+    detector_confirmation_min_mask_iou: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU
+    ),
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -184,6 +300,13 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
         route_observation_mode=route_observation_mode,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation_frames=detector_confirmation_frames,
+        detector_confirmation_min_translation=detector_confirmation_min_translation,
+        detector_confirmation_min_rotation_deg=(
+            detector_confirmation_min_rotation_deg
+        ),
+        detector_confirmation_min_mask_iou=detector_confirmation_min_mask_iou,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -215,6 +338,13 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
         route_observation_mode=route_observation_mode,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation_frames=detector_confirmation_frames,
+        detector_confirmation_min_translation=detector_confirmation_min_translation,
+        detector_confirmation_min_rotation_deg=(
+            detector_confirmation_min_rotation_deg
+        ),
+        detector_confirmation_min_mask_iou=detector_confirmation_min_mask_iou,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -253,6 +383,17 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
     route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
+    detector_confirmation_mode: str = DEFAULT_DETECTOR_CONFIRMATION_MODE,
+    detector_confirmation_frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
+    detector_confirmation_min_translation: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M
+    ),
+    detector_confirmation_min_rotation_deg: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG
+    ),
+    detector_confirmation_min_mask_iou: float = (
+        DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU
+    ),
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -285,6 +426,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
         route_observation_mode=route_observation_mode,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation_frames=detector_confirmation_frames,
+        detector_confirmation_min_translation=detector_confirmation_min_translation,
+        detector_confirmation_min_rotation_deg=(
+            detector_confirmation_min_rotation_deg
+        ),
+        detector_confirmation_min_mask_iou=detector_confirmation_min_mask_iou,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -363,6 +511,12 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     depth_noise = DepthNoisePipelineD435(
         DepthNoiseProfile.from_yaml(depth_noise_profile),
         seed=313,
+    )
+    detector_confirmation = DetectorConfirmationConfig(
+        frames=detector_confirmation_frames,
+        min_translation_m=detector_confirmation_min_translation,
+        min_rotation_deg=detector_confirmation_min_rotation_deg,
+        min_mask_iou=detector_confirmation_min_mask_iou,
     )
     helper_bundle = {
         "detector_mask": _detector_mask,
@@ -451,6 +605,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     min_target_pixels=min_target_pixels,
                     min_detector_pixels=min_detector_pixels,
                     max_detection_area_ratio=max_detection_area_ratio,
+                    detector_confirmation_mode=detector_confirmation_mode,
+                    detector_confirmation=detector_confirmation,
                     helpers=helper_bundle,
                 )
                 fallback_verifications = _verify_candidate_views(
@@ -469,6 +625,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     min_target_pixels=min_target_pixels,
                     min_detector_pixels=min_detector_pixels,
                     max_detection_area_ratio=max_detection_area_ratio,
+                    detector_confirmation_mode=detector_confirmation_mode,
+                    detector_confirmation=detector_confirmation,
                     helpers=helper_bundle,
                 )
                 anchor_strategy = (
@@ -542,6 +700,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             min_target_pixels=min_target_pixels,
                             min_detector_pixels=min_detector_pixels,
                             max_detection_area_ratio=max_detection_area_ratio,
+                            detector_confirmation_mode=detector_confirmation_mode,
+                            detector_confirmation=detector_confirmation,
                             helpers=helper_bundle,
                             frame_index_base=base_frame_index + 500,
                         ),
@@ -605,6 +765,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                 min_target_pixels=min_target_pixels,
                                 min_detector_pixels=min_detector_pixels,
                                 max_detection_area_ratio=max_detection_area_ratio,
+                                detector_confirmation_mode=detector_confirmation_mode,
+                                detector_confirmation=detector_confirmation,
                                 helpers=helper_bundle,
                                 frame_index_base=base_frame_index + 600,
                             ),
@@ -638,6 +800,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     min_target_pixels=min_target_pixels,
                                     min_detector_pixels=min_detector_pixels,
                                     max_detection_area_ratio=max_detection_area_ratio,
+                                    detector_confirmation_mode=detector_confirmation_mode,
+                                    detector_confirmation=detector_confirmation,
                                     helpers=helper_bundle,
                                     frame_index_base=base_frame_index + 700,
                                 ),
@@ -670,6 +834,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         min_target_pixels=min_target_pixels,
                         min_detector_pixels=min_detector_pixels,
                         max_detection_area_ratio=max_detection_area_ratio,
+                        detector_confirmation_mode=detector_confirmation_mode,
+                        detector_confirmation=detector_confirmation,
                         helpers=helper_bundle,
                         start_position=group.query_episode.start_position,
                         start_rotation=group.query_episode.start_rotation,
@@ -707,6 +873,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         min_target_pixels=min_target_pixels,
                         min_detector_pixels=min_detector_pixels,
                         max_detection_area_ratio=max_detection_area_ratio,
+                        detector_confirmation_mode=detector_confirmation_mode,
+                        detector_confirmation=detector_confirmation,
                         helpers=helper_bundle,
                         start_position=memory_candidate.position,
                         start_rotation=memory_candidate.rotation,
@@ -958,6 +1126,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
         route_observation_mode=route_observation_mode,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation_frames=detector_confirmation_frames,
+        detector_confirmation_min_translation=detector_confirmation_min_translation,
+        detector_confirmation_min_rotation_deg=detector_confirmation_min_rotation_deg,
+        detector_confirmation_min_mask_iou=detector_confirmation_min_mask_iou,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -1138,6 +1311,126 @@ def _route_observation_payload(
     }
 
 
+def _detector_confirmation_config_payload(
+    config: DetectorConfirmationConfig,
+) -> dict[str, Any]:
+    return {
+        "frames": int(config.frames),
+        "min_translation_m": round(float(config.min_translation_m), 6),
+        "min_rotation_deg": round(float(config.min_rotation_deg), 6),
+        "min_mask_iou": round(float(config.min_mask_iou), 6),
+    }
+
+
+def _apply_detector_confirmation(
+    *,
+    verification: Any,
+    state: DetectorConfirmationState,
+    mode: str,
+    pose: tuple[
+        tuple[float, float, float],
+        tuple[float, float, float, float],
+    ],
+    detector_mask: np.ndarray,
+    config: DetectorConfirmationConfig,
+) -> Any:
+    if mode not in SUPPORTED_DETECTOR_CONFIRMATION_MODES:
+        raise ValueError(
+            "mode must be one of: "
+            + ", ".join(SUPPORTED_DETECTOR_CONFIRMATION_MODES)
+        )
+    if config.frames <= 0:
+        raise ValueError("config.frames must be positive")
+    if mode == "single_frame":
+        return verification
+    if not _is_detector_evidence_reason(str(getattr(verification, "evidence_reason", ""))):
+        if not bool(getattr(verification, "shared_gate_success", False)):
+            state.reset()
+        return verification
+    if not bool(getattr(verification, "shared_gate_success", False)):
+        state.reset()
+        return verification
+
+    if config.frames <= 1:
+        return DetectorConfirmedVerification(
+            source=verification,
+            evidence_type_value=_verification_evidence_type_value(verification),
+            target_visible=bool(getattr(verification, "target_visible", False)),
+            evidence_strength=float(getattr(verification, "evidence_strength", 1.0)),
+            evidence_reason=str(getattr(verification, "evidence_reason", "")),
+            detector_confirmation={
+                "mode": mode,
+                "candidate_reason": str(getattr(verification, "evidence_reason", "")),
+                "pending_count": 1,
+                "translation_m": 0.0,
+                "rotation_deg": 0.0,
+                "mask_iou": 1.0,
+                "confirmed": True,
+            },
+        )
+
+    pending_count, translation, rotation_deg, mask_iou = state.observe(
+        pose,
+        detector_mask,
+    )
+    temporal_confirmed = pending_count >= config.frames
+    view_confirmed = (
+        translation >= config.min_translation_m
+        or rotation_deg >= config.min_rotation_deg
+    )
+    mask_confirmed = mask_iou >= config.min_mask_iou
+    confirmation_payload = {
+        "mode": mode,
+        "candidate_reason": str(getattr(verification, "evidence_reason", "")),
+        "pending_count": int(pending_count),
+        "translation_m": round(float(translation), 6),
+        "rotation_deg": round(float(rotation_deg), 6),
+        "mask_iou": round(float(mask_iou), 6),
+        "confirmed": bool(
+            temporal_confirmed and view_confirmed and mask_confirmed
+        ),
+    }
+    if confirmation_payload["confirmed"]:
+        position, rotation = pose
+        state.pending_count = 1
+        state.origin_position = position
+        state.origin_rotation = rotation
+        state.origin_mask = np.asarray(detector_mask, dtype=bool).copy()
+        return DetectorConfirmedVerification(
+            source=verification,
+            evidence_type_value="positive",
+            target_visible=bool(getattr(verification, "target_visible", False)),
+            evidence_strength=float(getattr(verification, "evidence_strength", 1.0)),
+            evidence_reason=(
+                "confirmed_"
+                + str(getattr(verification, "evidence_reason", "detector_positive"))
+            ),
+            detector_confirmation=confirmation_payload,
+        )
+
+    if not temporal_confirmed:
+        reason = "pending_detector_confirmation"
+    elif not view_confirmed:
+        reason = "waiting_for_multiview_detector_confirmation"
+    else:
+        reason = "waiting_for_detector_mask_consistency"
+    return DetectorConfirmedVerification(
+        source=verification,
+        evidence_type_value="unknown",
+        target_visible=False,
+        evidence_strength=0.35,
+        evidence_reason=reason,
+        detector_confirmation=confirmation_payload,
+    )
+
+
+def _verification_evidence_type_value(verification: Any) -> str:
+    evidence_type = getattr(verification, "evidence_type", None)
+    if evidence_type is None:
+        return "positive" if bool(verification.shared_gate_success) else "unknown"
+    return str(getattr(evidence_type, "value", evidence_type))
+
+
 def _route_observation_result_payload(result: RouteObservationResult) -> dict[str, Any]:
     return _route_observation_payload(
         source=result.selected_source,
@@ -1192,6 +1485,11 @@ def _base_summary(
     memory_valid_prior: float,
     memory_reliability_mode: str,
     route_observation_mode: str,
+    detector_confirmation_mode: str,
+    detector_confirmation_frames: int,
+    detector_confirmation_min_translation: float,
+    detector_confirmation_min_rotation_deg: float,
+    detector_confirmation_min_mask_iou: float,
     detector: str,
     detector_weights: str,
     detector_conf: float,
@@ -1225,6 +1523,15 @@ def _base_summary(
         "memory_valid_prior": round(float(memory_valid_prior), 6),
         "memory_reliability_mode": memory_reliability_mode,
         "route_observation_mode": route_observation_mode,
+        "detector_confirmation_mode": detector_confirmation_mode,
+        "detector_confirmation": _detector_confirmation_config_payload(
+            DetectorConfirmationConfig(
+                frames=detector_confirmation_frames,
+                min_translation_m=detector_confirmation_min_translation,
+                min_rotation_deg=detector_confirmation_min_rotation_deg,
+                min_mask_iou=detector_confirmation_min_mask_iou,
+            )
+        ),
         "detector": detector,
         "detector_weights": detector_weights,
         "detector_conf": round(float(detector_conf), 6),
@@ -1281,6 +1588,11 @@ def _validate_common(
     memory_valid_prior: float,
     memory_reliability_mode: str,
     route_observation_mode: str,
+    detector_confirmation_mode: str,
+    detector_confirmation_frames: int,
+    detector_confirmation_min_translation: float,
+    detector_confirmation_min_rotation_deg: float,
+    detector_confirmation_min_mask_iou: float,
     detector: str,
     detector_conf: float,
     grounding_dino_text_threshold: float,
@@ -1333,6 +1645,23 @@ def _validate_common(
             "route_observation_mode must be one of: "
             + ", ".join(SUPPORTED_ROUTE_OBSERVATION_MODES)
         )
+    if detector_confirmation_mode not in SUPPORTED_DETECTOR_CONFIRMATION_MODES:
+        raise ValueError(
+            "detector_confirmation_mode must be one of: "
+            + ", ".join(SUPPORTED_DETECTOR_CONFIRMATION_MODES)
+        )
+    if detector_confirmation_frames <= 0:
+        raise ValueError("detector_confirmation_frames must be positive")
+    if detector_confirmation_min_translation < 0.0:
+        raise ValueError(
+            "detector_confirmation_min_translation must be non-negative"
+        )
+    if detector_confirmation_min_rotation_deg < 0.0:
+        raise ValueError(
+            "detector_confirmation_min_rotation_deg must be non-negative"
+        )
+    if not 0.0 <= detector_confirmation_min_mask_iou <= 1.0:
+        raise ValueError("detector_confirmation_min_mask_iou must be in [0, 1]")
     if detector not in SUPPORTED_DETECTORS:
         raise ValueError(
             "detector must be one of: " + ", ".join(SUPPORTED_DETECTORS)
@@ -1592,7 +1921,7 @@ def _current_evidence_reliability_component(verification: Any) -> float:
     oracle_pixels = int(getattr(verification, "oracle_target_pixels", 0) or 0)
     detector_pixels = int(getattr(verification, "detector_pixels", 0) or 0)
     evidence_reason = str(getattr(verification, "evidence_reason", ""))
-    if evidence_reason.startswith("detector_"):
+    if _is_detector_evidence_reason(evidence_reason):
         visible_pixels = detector_pixels
     else:
         visible_pixels = max(oracle_pixels, detector_pixels)
@@ -1759,6 +2088,8 @@ def _verify_candidate_views(
     min_target_pixels: int,
     min_detector_pixels: int,
     max_detection_area_ratio: float | None,
+    detector_confirmation_mode: str,
+    detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
 ) -> dict[str, Any]:
     if detector == "oracle_semantic_visibility":
@@ -1770,8 +2101,10 @@ def _verify_candidate_views(
             )
             for candidate in candidates
         }
-    return {
-        candidate.source: verify_view(
+    state = DetectorConfirmationState()
+    verifications: dict[str, Any] = {}
+    for candidate_index, candidate in enumerate(candidates):
+        verification = verify_view(
             sim=sim,
             position=candidate.position,
             rotation=candidate.rotation,
@@ -1789,8 +2122,20 @@ def _verify_candidate_views(
             max_detection_area_ratio=max_detection_area_ratio,
             helpers=helpers,
         )
-        for candidate_index, candidate in enumerate(candidates)
-    }
+        verifications[candidate.source] = _apply_detector_confirmation(
+            verification=verification,
+            state=state,
+            mode=detector_confirmation_mode,
+            pose=(
+                _tuple3(candidate.position) or (0.0, 0.0, 0.0),
+                _tuple4(candidate.rotation) or (0.0, 0.0, 0.0, 1.0),
+            ),
+            detector_mask=getattr(verification, "detector_mask", None)
+            if getattr(verification, "detector_mask", None) is not None
+            else np.zeros((1, 1), dtype=bool),
+            config=detector_confirmation,
+        )
+    return verifications
 
 
 def _route_observation_verifier(
@@ -1807,12 +2152,15 @@ def _route_observation_verifier(
     min_target_pixels: int,
     min_detector_pixels: int,
     max_detection_area_ratio: float | None,
+    detector_confirmation_mode: str,
+    detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
     frame_index_base: int,
 ) -> Any:
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
         _verify_lifecycle_view,
     )
+    confirmation_state = DetectorConfirmationState()
 
     def verify_observation(
         *,
@@ -1833,7 +2181,7 @@ def _route_observation_verifier(
                 target_semantic_ids=target_semantic_ids,
                 min_target_pixels=min_target_pixels,
             )
-        return _verify_lifecycle_view(
+        verification = _verify_lifecycle_view(
             sim=sim,
             position=position,
             rotation=rotation,
@@ -1850,6 +2198,16 @@ def _route_observation_verifier(
             min_detector_pixels=min_detector_pixels,
             max_detection_area_ratio=max_detection_area_ratio,
             helpers=helpers,
+        )
+        return _apply_detector_confirmation(
+            verification=verification,
+            state=confirmation_state,
+            mode=detector_confirmation_mode,
+            pose=(position, rotation),
+            detector_mask=getattr(verification, "detector_mask", None)
+            if getattr(verification, "detector_mask", None) is not None
+            else np.zeros((1, 1), dtype=bool),
+            config=detector_confirmation,
         )
 
     return verify_observation
@@ -2175,6 +2533,8 @@ def _navmesh_frontier_result(
     min_target_pixels: int,
     min_detector_pixels: int,
     max_detection_area_ratio: float | None,
+    detector_confirmation_mode: str,
+    detector_confirmation: DetectorConfirmationConfig,
     helpers: dict[str, Any],
     start_position: Sequence[float],
     start_rotation: Sequence[float],
@@ -2202,6 +2562,7 @@ def _navmesh_frontier_result(
         seed=seed,
         probe_count=probe_count,
     )
+    confirmation_state = DetectorConfirmationState()
 
     def route_segment(
         *,
@@ -2235,7 +2596,7 @@ def _navmesh_frontier_result(
                 target_semantic_ids=target_semantic_ids,
                 min_target_pixels=min_target_pixels,
             )
-        return _verify_lifecycle_view(
+        verification = _verify_lifecycle_view(
             sim=sim,
             position=position,
             rotation=rotation,
@@ -2252,6 +2613,16 @@ def _navmesh_frontier_result(
             min_detector_pixels=min_detector_pixels,
             max_detection_area_ratio=max_detection_area_ratio,
             helpers=helpers,
+        )
+        return _apply_detector_confirmation(
+            verification=verification,
+            state=confirmation_state,
+            mode=detector_confirmation_mode,
+            pose=(position, rotation),
+            detector_mask=getattr(verification, "detector_mask", None)
+            if getattr(verification, "detector_mask", None) is not None
+            else np.zeros((1, 1), dtype=bool),
+            config=detector_confirmation,
         )
 
     return _run_navmesh_frontier_probe_route(
@@ -2355,7 +2726,7 @@ def _verification_payload(verification: Any) -> dict[str, Any]:
         evidence_type_value = "positive" if verification.shared_gate_success else "unknown"
     else:
         evidence_type_value = str(getattr(evidence_type, "value", evidence_type))
-    return {
+    payload = {
         "shared_gate_success": bool(verification.shared_gate_success),
         "evidence_type": evidence_type_value,
         "target_visible": bool(getattr(verification, "target_visible", False)),
@@ -2378,6 +2749,10 @@ def _verification_payload(verification: Any) -> dict[str, Any]:
             getattr(verification, "detection_filtered_count", 0) or 0
         ),
     }
+    detector_confirmation = getattr(verification, "detector_confirmation", None)
+    if detector_confirmation is not None:
+        payload["detector_confirmation"] = dict(detector_confirmation)
+    return payload
 
 
 def _audit_evidence_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -2386,7 +2761,7 @@ def _audit_evidence_payload(payload: dict[str, Any] | None) -> dict[str, Any] | 
     enriched = dict(payload)
     is_detector_positive = (
         bool(enriched.get("shared_gate_success", False))
-        and str(enriched.get("evidence_reason", "")).startswith("detector_")
+        and _is_detector_evidence_reason(str(enriched.get("evidence_reason", "")))
     )
     overlap_pixels = int(enriched.get("overlap_pixels", 0) or 0)
     detector_precision = float(enriched.get("detector_precision", 0.0) or 0.0)
@@ -2398,6 +2773,10 @@ def _audit_evidence_payload(payload: dict[str, Any] | None) -> dict[str, Any] | 
         is_detector_positive and not detector_overlap_success
     )
     return enriched
+
+
+def _is_detector_evidence_reason(reason: str) -> bool:
+    return reason.startswith("detector_") or reason.startswith("confirmed_detector_")
 
 
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
@@ -2445,6 +2824,26 @@ def _distance3(
     second: Sequence[float],
 ) -> float:
     return float(np.linalg.norm(np.asarray(first, dtype=float) - np.asarray(second, dtype=float)))
+
+
+def _quaternion_angle_degrees(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> float:
+    first_norm = _normalize_quaternion_xyzw(first)
+    second_norm = _normalize_quaternion_xyzw(second)
+    dot = abs(sum(left * right for left, right in zip(first_norm, second_norm)))
+    dot = min(1.0, max(-1.0, dot))
+    return math.degrees(2.0 * math.acos(dot))
+
+
+def _mask_iou(first: np.ndarray, second: np.ndarray) -> float:
+    lhs = np.asarray(first, dtype=bool)
+    rhs = np.asarray(second, dtype=bool)
+    union = int((lhs | rhs).sum())
+    if union == 0:
+        return 0.0
+    return float((lhs & rhs).sum() / union)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -2523,6 +2922,9 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "detector_false_confirmation_counts": (
                 _count_detector_false_confirmations(policy_rows)
             ),
+            "detector_confirmation_counts": (
+                _count_detector_confirmation_outcomes(policy_rows)
+            ),
             "total_hindsight_action_regret": sum(
                 int(row.get("hindsight_action_regret", 0) or 0)
                 for row in policy_rows
@@ -2582,6 +2984,27 @@ def _count_detector_false_confirmations(
         if count:
             counts[label] = count
     return dict(sorted(counts.items()))
+
+
+def _count_detector_confirmation_outcomes(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    fields = (
+        "memory_evidence",
+        "fallback_evidence",
+        "fallback_from_memory_evidence",
+    )
+    counts = {"confirmed": 0, "suppressed": 0}
+    for row in rows:
+        for field in fields:
+            confirmation = (row.get(field) or {}).get("detector_confirmation")
+            if not isinstance(confirmation, dict):
+                continue
+            if bool(confirmation.get("confirmed", False)):
+                counts["confirmed"] += 1
+            else:
+                counts["suppressed"] += 1
+    return {key: value for key, value in counts.items() if value}
 
 
 def _safe_div(numerator: float, denominator: int | float) -> float:
