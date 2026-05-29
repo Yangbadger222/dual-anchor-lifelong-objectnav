@@ -94,6 +94,43 @@ def test_miner_uses_evidence_reliability_when_event_count_is_zero(
     assert candidate["event_posterior_decision"] == "memory_first"
 
 
+def test_miner_marks_reliability_sensitive_decision_boundaries(
+    tmp_path: Path,
+) -> None:
+    summary_path = _write_summary(
+        tmp_path / "run" / "summary.json",
+        rows=[
+            _close_mixed_event_row(category="chair"),
+            _reliability_sensitive_row(category="sofa"),
+        ],
+    )
+
+    report = mine_habitat_decision_sensitivity(
+        [summary_path],
+        max_margin_actions=5.0,
+    )
+
+    sensitive, non_sensitive = report["candidates"][:2]
+    assert sensitive["category"] == "sofa"
+    assert sensitive["decision_boundary_reliability"] == 0.5
+    assert sensitive["decision_boundary_reliability_raw"] == 0.5
+    assert sensitive["decision_boundary_region"] == "reliability_sensitive"
+    assert "reliability_sensitive_boundary" in sensitive["sensitivity_reasons"]
+    assert sensitive["counterfactual_decision_flip"] is False
+
+    assert non_sensitive["category"] == "chair"
+    assert non_sensitive["decision_boundary_reliability"] == 0.0
+    assert non_sensitive["decision_boundary_reliability_raw"] == 0.0
+    assert non_sensitive["decision_boundary_region"] == "memory_always_no_worse"
+    assert "reliability_sensitive_boundary" not in non_sensitive[
+        "sensitivity_reasons"
+    ]
+    assert report["aggregate"]["by_boundary_region"] == {
+        "memory_always_no_worse": 1,
+        "reliability_sensitive": 1,
+    }
+
+
 def test_decision_sensitivity_cli_writes_json_and_csv(tmp_path: Path) -> None:
     from objectnav_core.cli.mine_habitat_decision_sensitivity import main
 
@@ -206,6 +243,39 @@ def _counterfactual_flip_row(*, category: str = "toilet") -> dict[str, object]:
                     "detector_event_count": 4.0,
                     "detector_event_posterior": 0.05,
                     "detector_event_suppressed_weight": 8.0,
+                    "matching": 1.0,
+                    "recency": 1.0,
+                    "transform_covariance": 0.909091,
+                },
+            },
+        }
+    )
+    return row
+
+
+def _reliability_sensitive_row(*, category: str = "sofa") -> dict[str, object]:
+    row = _close_mixed_event_row(category=category)
+    row.update(
+        {
+            "memory_valid_prior": 0.55,
+            "memory_action_count": 10,
+            "fallback_action_count": 20,
+            "fallback_from_memory_action_count": 20,
+            "expected_memory_first_action_count": 19.0,
+            "expected_frontier_first_action_count": 20.0,
+            "hindsight_best_candidate_type": "memory",
+            "memory_reliability": {
+                "mode": "event_posterior",
+                "value": 0.55,
+                "reason": "event_posterior_weighted",
+                "components": {
+                    "base_prior": 0.5,
+                    "category_prior": 0.82,
+                    "current_evidence": 0.98,
+                    "detector_event_confirmed_weight": 0.6,
+                    "detector_event_count": 4.0,
+                    "detector_event_posterior": 0.214545,
+                    "detector_event_suppressed_weight": 4.0,
                     "matching": 1.0,
                     "recency": 1.0,
                     "transform_covariance": 0.909091,

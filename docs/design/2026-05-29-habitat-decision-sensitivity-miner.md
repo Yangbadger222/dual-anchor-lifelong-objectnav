@@ -77,6 +77,9 @@ Each candidate row should include:
 - actual reliability, actual decision, expected-memory and frontier costs;
 - evidence-mode and event-posterior counterfactual reliability and decisions;
 - decision margin to the expected-utility boundary;
+- unclamped decision-boundary reliability and boundary region
+  (`reliability_sensitive`, `memory_always_no_worse`,
+  `frontier_requires_perfect_memory`, or `no_post_memory_fallback`);
 - detector event counts, event posterior, confirmed/suppressed weights;
 - hindsight regret fields;
 - a ranking score and short sensitivity reasons.
@@ -92,9 +95,13 @@ Each candidate row should include:
    - event-posterior reliability from saved event posterior components;
    - fixed-prior reliability from the saved base prior;
    - memory-first versus frontier-first decisions for each reliability.
-5. Score rows using close expected costs, reliability deltas, mixed detector
-   events, counterfactual decision flips, and hindsight regret.
-6. Write a sorted JSON report and optional CSV table.
+5. Compute the raw reliability decision boundary. Rows with boundaries inside
+   `(0, 1)` are genuinely reliability-sensitive; boundaries at or outside the
+   interval mean one side dominates for all valid reliability estimates.
+6. Score rows using reliability-sensitive boundaries, close expected costs,
+   reliability deltas, mixed detector events, counterfactual decision flips, and
+   hindsight regret.
+7. Write a sorted JSON report and optional CSV table.
 
 ## Failure Modes
 

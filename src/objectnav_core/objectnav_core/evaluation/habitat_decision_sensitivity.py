@@ -32,6 +32,8 @@ _CSV_FIELDS: tuple[str, ...] = (
     "evidence_reliability",
     "event_posterior_reliability",
     "decision_boundary_reliability",
+    "decision_boundary_reliability_raw",
+    "decision_boundary_region",
     "reliability_delta",
     "expected_memory_first_action_count",
     "expected_frontier_first_action_count",
@@ -262,9 +264,16 @@ def _candidate_from_row(
     )
     counterfactual_flip = evidence_decision != event_decision
     hindsight_regret = _int(row.get("hindsight_action_regret"), default=0)
+    boundary_raw = _decision_boundary_reliability_raw(
+        memory_actions,
+        fallback_from_memory_actions,
+        frontier_actions,
+    )
+    boundary_region = _decision_boundary_region(boundary_raw)
     reasons = _sensitivity_reasons(
         decision_margin=decision_margin,
         max_margin_actions=max_margin_actions,
+        decision_boundary_region=boundary_region,
         detector_event_count=detector_event_count,
         min_detector_event_count=min_detector_event_count,
         confirmed_weight=confirmed_weight,
@@ -296,11 +305,13 @@ def _candidate_from_row(
         "fixed_reliability": fixed_reliability,
         "evidence_reliability": evidence_reliability,
         "event_posterior_reliability": event_posterior_reliability,
-        "decision_boundary_reliability": _decision_boundary_reliability(
-            memory_actions,
-            fallback_from_memory_actions,
-            frontier_actions,
+        "decision_boundary_reliability": (
+            None if boundary_raw is None else round(_clamp01(boundary_raw), 6)
         ),
+        "decision_boundary_reliability_raw": (
+            None if boundary_raw is None else round(float(boundary_raw), 6)
+        ),
+        "decision_boundary_region": boundary_region,
         "reliability_delta": reliability_delta,
         "expected_memory_first_action_count": round(actual_expected_memory, 6),
         "expected_frontier_first_action_count": round(expected_frontier, 6),
@@ -434,23 +445,33 @@ def _memory_first_decision(
     return "frontier_first"
 
 
-def _decision_boundary_reliability(
+def _decision_boundary_reliability_raw(
     memory_action_count: int,
     fallback_from_memory_action_count: int,
     fallback_action_count: int,
 ) -> float | None:
     if fallback_from_memory_action_count <= 0:
         return None
-    boundary = 1.0 - (
+    return 1.0 - (
         float(fallback_action_count) - float(memory_action_count)
     ) / float(fallback_from_memory_action_count)
-    return round(_clamp01(boundary), 6)
+
+
+def _decision_boundary_region(boundary: float | None) -> str:
+    if boundary is None:
+        return "no_post_memory_fallback"
+    if boundary <= 0.0:
+        return "memory_always_no_worse"
+    if boundary >= 1.0:
+        return "frontier_requires_perfect_memory"
+    return "reliability_sensitive"
 
 
 def _sensitivity_reasons(
     *,
     decision_margin: float,
     max_margin_actions: float,
+    decision_boundary_region: str,
     detector_event_count: float,
     min_detector_event_count: int,
     confirmed_weight: float,
@@ -465,6 +486,8 @@ def _sensitivity_reasons(
         reasons.append("counterfactual_flip")
     if decision_margin <= float(max_margin_actions):
         reasons.append("close_expected_costs")
+    if decision_boundary_region == "reliability_sensitive":
+        reasons.append("reliability_sensitive_boundary")
     if hindsight_regret > 0:
         reasons.append("hindsight_regret")
     if (
@@ -496,6 +519,8 @@ def _sensitivity_score(candidate: dict[str, Any]) -> float:
     score += 3.0 * mixed_balance
     if bool(candidate["counterfactual_decision_flip"]):
         score += 100.0
+    if candidate["decision_boundary_region"] == "reliability_sensitive":
+        score += 50.0
     score += 2.0 * float(candidate["hindsight_action_regret"])
     return round(score, 6)
 
@@ -503,11 +528,14 @@ def _sensitivity_score(candidate: dict[str, Any]) -> float:
 def _aggregate_candidates(candidates: Sequence[dict[str, Any]]) -> dict[str, Any]:
     by_reason: dict[str, int] = {}
     by_category: dict[str, int] = {}
+    by_boundary_region: dict[str, int] = {}
     flip_count = 0
     for candidate in candidates:
         by_category[candidate["category"]] = (
             by_category.get(candidate["category"], 0) + 1
         )
+        region = str(candidate.get("decision_boundary_region", "unknown"))
+        by_boundary_region[region] = by_boundary_region.get(region, 0) + 1
         if bool(candidate["counterfactual_decision_flip"]):
             flip_count += 1
         for reason in candidate["sensitivity_reasons"]:
@@ -516,6 +544,7 @@ def _aggregate_candidates(candidates: Sequence[dict[str, Any]]) -> dict[str, Any
         "counterfactual_flip_count": flip_count,
         "by_reason": dict(sorted(by_reason.items())),
         "by_category": dict(sorted(by_category.items())),
+        "by_boundary_region": dict(sorted(by_boundary_region.items())),
     }
 
 

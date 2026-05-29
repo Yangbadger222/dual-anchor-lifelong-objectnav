@@ -80,6 +80,13 @@
   signal and reliability delta. Score flips highest, then close rows with large
   reliability deltas and mixed confirmed/suppressed evidence.
 
+- [x] **Step 4a: Add boundary-region diagnostics**
+
+  After broad mining showed that cost-close rows may still be impossible to
+  flip, add unclamped decision-boundary reliability and boundary-region fields
+  so reports distinguish genuinely reliability-sensitive rows from rows where
+  memory or frontier dominates for every valid reliability estimate.
+
 - [x] **Step 5: Run analyzer tests to green**
 
   Run:
