@@ -41,6 +41,11 @@ New full-val sanity results:
   `tv_monitor` detector miss.
 - Global `target_aliases` prompt control worsened to `6/12`, so do not use it
   as a blanket fix.
+- Detector-qualified full-val matrix v1:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_detector_anchor_matrix_v1`
+  produced `memory_guided=68/72`, `naive_count=68/72`, `no_memory=62/72`;
+  memory reduced path by `61.7469%` vs no-memory but tied fair `naive_count`.
+  Remaining memory failures are all `tv_monitor` under `mild/heavy` noise.
 
 ## Files Touched
 
@@ -145,20 +150,20 @@ Passed on Linux:
 - Grounding-DINO full-val clean smoke exposed `chair` gate calibration and
   `tv_monitor` viewpoint/prompt failures. The next run should use the new
   `detector_positive` anchor strategy, then export PNGs for remaining failures.
+- Debug PNGs for `tv_monitor` noise failures have been exported under the matrix
+  run's `debug_tv_monitor_failures/` directory and synced to the local Mac run
+  directory.
 
 ## Next Recommended Step
 
-1. Pull the latest branch on Linux and run the full-val six-category clean
-   Grounding-DINO smoke with `--anchor-strategy detector_positive`, default
-   `--detector-prompt-mode target`, and default `--anchor-candidate-limit 4`.
-2. Inspect `summary.json["episode_selection"]` and trace rows for remaining
-   failures, especially `chair` and `tv_monitor`.
-3. Export PNGs for failed detector-qualified anchors before tuning thresholds.
-4. Add explicit object removal/relocation lifecycle scenarios instead of only
+1. Add explicit object removal/relocation lifecycle scenarios instead of only
    relying on detector misses at stale anchors.
-5. Replace teleport-to-viewpoint with an action-level Habitat follower and
+2. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
+   claims; current Grounding-DINO tiny returns zero boxes under `mild/heavy` for
+   one high-GT-pixel view.
+3. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
-6. Only after those pass, compare against stronger semantic-map and frontier
+4. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor

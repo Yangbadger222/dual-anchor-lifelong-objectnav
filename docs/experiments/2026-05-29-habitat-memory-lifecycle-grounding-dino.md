@@ -321,3 +321,48 @@ discovery viewpoints by Habitat target pixels and verifies only the top
 Metric note: `detector_miss_count` now counts misses only on the route a mode
 actually attempted. A missed fallback view is not charged to `memory_guided`
 when memory already succeeded and fallback was never used.
+
+### Detector-Qualified Val Matrix V1
+
+Run:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_detector_anchor_matrix_v1`
+
+Parameters: full HM3D `val`, six categories, two groups per category,
+`clean,mild,heavy`, `query_repeats=2`, Grounding-DINO tiny,
+`--anchor-strategy detector_positive`, `--anchor-candidate-limit 4`, detector
+prompt mode `target`.
+
+Result:
+
+- `memory_guided`: `68/72`, `974.499584 m`
+- `naive_count`: `68/72`, `974.499584 m`
+- `no_memory`: `62/72`, `2547.505218 m`
+- memory vs no-memory path reduction: `61.7469%`
+- memory vs no-memory success delta: `+6`
+- memory vs naive: tie.
+
+Interpretation:
+
+- Detector-qualified memory gives a strong advantage over no-memory search in
+  this geodesic proxy because remembered detector-confirmed viewpoints avoid
+  fallback views where DINO misses `chair` and `tv_monitor`.
+- The tie with `naive_count` is expected for a non-stale protocol: both modes
+  are allowed to travel to the same detector-confirmed memory anchor and both
+  stop when the shared current-view gate succeeds.
+- This matrix supports the value of confirmed memory for repeated search, but
+  it does not yet isolate the proposed stale-repair contribution over a fair
+  positive-count baseline. The next experiment must add explicit stale or
+  relocation lifecycle events.
+
+Failure attribution:
+
+- The four memory/naive failures all occur on `tv_monitor` under `mild` and
+  `heavy` noise. The trace shows `missed_visible_oracle_target`: Habitat GT has
+  hundreds of thousands of target pixels, but Grounding-DINO returns zero
+  accepted boxes.
+- Debug PNGs were exported to
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_detector_anchor_matrix_v1/debug_tv_monitor_failures/`.
+  Clean `goal_viewpoint:3` is positive, but all top-4 memory candidates become
+  non-confirmations under `mild` and `heavy`. This points to detector/noise
+  robustness rather than missing Habitat GT.
