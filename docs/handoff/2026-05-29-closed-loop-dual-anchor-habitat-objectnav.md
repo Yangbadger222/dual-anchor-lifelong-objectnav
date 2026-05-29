@@ -182,12 +182,32 @@ memory-reliability components, memory-context detector-event components, and
 relocation distance. It intentionally excludes fallback evidence and final row
 success from features.
 
+The first learned validity baseline is now local/offline:
+
+- Design: `docs/design/2026-05-30-memory-validity-logistic-baseline.md`
+- Plan:
+  `docs/superpowers/plans/2026-05-30-memory-validity-logistic-baseline.md`
+- API: `objectnav_core.evaluation.habitat_memory_validity_model`
+- CLI:
+  `python -m objectnav_core.cli.train_habitat_memory_validity_model <dataset.json> --output <model.json>`
+
+The model is deterministic logistic regression over the exporter feature schema.
+It stores feature names, imputation means, scales, weights, bias, training
+hyperparameters, and train-set metrics in JSON. It is not yet connected to the
+online Habitat runner. Next research step remains real-artifact export/training
+on Linux and checking whether learned validity crosses ranked relocation
+decision boundaries such as `toilet goal_object:260->goal_object:714`.
+Local verification after adding the baseline: focused model/exporter tests
+produced `5` passed, `py_compile` passed for the trainer and CLI, the full
+local core suite produced `270` passed, and `git diff --check` was clean.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/design/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/design/2026-05-30-habitat-goal-object-relocation-challenge.md`
 - `docs/design/2026-05-30-memory-validity-learning-dataset.md`
+- `docs/design/2026-05-30-memory-validity-logistic-baseline.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
@@ -209,11 +229,14 @@ success from features.
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
+- `docs/superpowers/plans/2026-05-30-memory-validity-logistic-baseline.md`
 - `src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py`
+- `src/objectnav_core/objectnav_core/cli/train_habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/cli/run_closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_decision_sensitivity.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
@@ -226,6 +249,7 @@ success from features.
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py`
 - `src/objectnav_core/tests/test_habitat_decision_sensitivity.py`
+- `src/objectnav_core/tests/test_habitat_memory_validity_model.py`
 - `src/objectnav_core/tests/test_habitat_action_follower.py`
 - `src/objectnav_core/tests/test_dual_anchor_geometry.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure.py`
