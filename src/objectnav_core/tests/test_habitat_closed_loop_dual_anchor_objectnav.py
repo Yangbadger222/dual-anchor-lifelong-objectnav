@@ -473,6 +473,43 @@ def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
     assert result.route.executed_distance_m == 3.0
 
 
+def test_navmesh_frontier_route_skips_unreachable_probe_segment() -> None:
+    from types import SimpleNamespace
+
+    visited_sources: list[str] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        if goal_position == (1.0, 0.0, 0.0):
+            raise RuntimeError("unreachable probe")
+        return SimpleNamespace(
+            actions=(f"move_to_{goal_position[0]}",),
+            action_count=1,
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 0.0, 0.0, 1.0),
+            executed_distance_m=float(goal_position[0]),
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position, rotation, probe_index
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(target_visible=True)
+
+    result = closed_loop._run_navmesh_frontier_probe_route(
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        probe_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        route_error_types=(RuntimeError,),
+    )
+
+    assert visited_sources == ["navmesh_frontier_probe:1"]
+    assert result.selected_probe_source == "navmesh_frontier_probe:1"
+    assert result.route.action_count == 1
+
+
 def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:
     initial_route = object()
     repaired_route = object()

@@ -104,6 +104,8 @@ PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_lo
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_grounding_dino_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.2 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level mild --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --preflight-only
 PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --frontier-mode navmesh_frontier --frontier-probe-count 5'
 ```
 
 Linux commands run:
@@ -149,6 +151,13 @@ Passed locally before this handoff update:
 - Full local core tests after stale-proxy evidence correction: `201` passed.
 - Local closed-loop Habitat/CLI tests after navmesh frontier interface and
   helper wiring: `19` passed.
+- Linux focused Habitat tests after pulling navmesh frontier commit: `19`
+  passed.
+- First Linux `navmesh_frontier` oracle smoke failed in
+  `GreedyGeodesicFollower.next_action_along(...)` with
+  `habitat_sim.errors.GreedyFollowerError` during post-memory probe routing.
+  Local follow-up regression now covers skipping skippable route errors; rerun
+  the Linux smoke after pushing that fix.
 - Linux focused Habitat tests after the expected-utility CLI update: `9` passed.
 - Linux focused Habitat tests after Grounding-DINO candidate-gate support:
   `14` passed.
@@ -181,7 +190,9 @@ Passed locally before this handoff update:
 - `navmesh_frontier` is target-agnostic with respect to sampled route goals, but
   it is still a navmesh probe approximation, not an occupancy frontier built
   from depth observations. It has only been verified locally with unit tests and
-  still needs a Linux Habitat smoke.
+  still needs a passing Linux Habitat smoke. The first smoke exposed reachable
+  probe/follower brittleness; skipped route errors should be audited so a weak
+  frontier does not silently become an empty search.
 - Early Linux smokes exposed invalid frontier accounting, partial challenge
   semantics, repaired-memory route mischarging, and stale-risk overprobing.
   These are fixed in the current branch and documented in the experiment

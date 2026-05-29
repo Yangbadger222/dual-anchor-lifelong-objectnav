@@ -1283,6 +1283,7 @@ def _run_navmesh_frontier_probe_route(
     probe_goals: Sequence[Sequence[float]],
     route_segment: Any,
     verify_probe: Any,
+    route_error_types: tuple[type[BaseException], ...] = (),
 ) -> NavmeshFrontierRouteResult:
     current_position = _tuple3(start_position)
     current_rotation = _tuple4(start_rotation)
@@ -1301,11 +1302,14 @@ def _run_navmesh_frontier_probe_route(
         goal = _tuple3(raw_goal)
         if goal is None:
             raise ValueError("probe_goals must contain valid 3D positions")
-        segment = route_segment(
-            start_position=current_position,
-            start_rotation=current_rotation,
-            goal_position=goal,
-        )
+        try:
+            segment = route_segment(
+                start_position=current_position,
+                start_rotation=current_rotation,
+                goal_position=goal,
+            )
+        except route_error_types:
+            continue
         actions.extend(str(action) for action in getattr(segment, "actions", ()))
         executed_distance_m += float(getattr(segment, "executed_distance_m", 0.0) or 0.0)
         reached_stop = reached_stop and bool(getattr(segment, "reached_stop", False))
@@ -1371,6 +1375,10 @@ def _navmesh_frontier_result(
         DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
         _verify_lifecycle_view,
     )
+    try:
+        from habitat_sim.errors import GreedyFollowerError
+    except ModuleNotFoundError:
+        GreedyFollowerError = RuntimeError
 
     probe_goals = _navmesh_frontier_probe_goals(
         sim=sim,
@@ -1436,6 +1444,7 @@ def _navmesh_frontier_result(
         probe_goals=probe_goals,
         route_segment=route_segment,
         verify_probe=verify_probe,
+        route_error_types=(GreedyFollowerError,),
     )
 
 
