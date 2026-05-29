@@ -66,6 +66,10 @@ Implemented foundation:
   `fallback_route_observation`, and
   `fallback_from_memory_route_observation` payloads so per-action route evidence
   can be audited without parsing anchor strings.
+- Detector evidence payloads now include audit-only
+  `detector_overlap_success` and `detector_false_confirmation` flags, and
+  policy summaries count false confirmations across memory, fallback, and
+  post-memory fallback evidence.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -356,6 +360,16 @@ Passed locally before this handoff update:
   `goal_viewpoint:10:route:step:117` with `observation_count=118`, frontier
   fallback selected `navmesh_frontier_probe:1:heading:3`, and post-memory
   fallback selected `navmesh_frontier_probe:0:step:0`.
+- Linux balanced3 Grounding-DINO navmesh smoke with
+  `--route-observation-mode per_action` completed successfully on chair, plant,
+  and toilet. It produced `memory_guided=347`, `naive_count=347`, and
+  `frontier_only=357` actions. The run is diagnostic, not a benchmark claim:
+  the `plant` memory row was detector-positive with `overlap_pixels=0` and
+  `detector_precision=0.0`, exposing a detector false confirmation.
+- Local detector false-confirmation audit tests added
+  `detector_false_confirmation` row fields and summary counts. Focused Habitat
+  route/CLI tests produced `51` passed; full local core tests produced `234`
+  passed.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -437,6 +451,10 @@ Passed locally before this handoff update:
   pattern with an 11-action gain over `naive_count`. Per-action route
   observation mode now has Linux oracle and 1-group Grounding-DINO smokes, but
   still needs larger detector-backed runs.
+- The balanced3 Grounding-DINO per-action smoke exposed a `plant` detector false
+  confirmation. This reinforces that aggregate action reductions must be
+  reported alongside detector audit counts; do not treat detector-positive alone
+  as proof of real target localization in simulation.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -448,21 +466,23 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Push the detector false-confirmation audit fields and rerun a small Linux
+   detector smoke to confirm summary counts in runtime artifacts.
+2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-2. Continue calibrating the reliability estimator against bucket counts and
+3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-3. Replace oracle/candidate-view reliability evidence with detector/per-action
+4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-5. Move Grounding-DINO from selected candidate-view verification to larger
+6. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-6. Implement natural Habitat object relocation/removal or a clearly labeled
+7. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-7. Scale the balanced runs beyond six groups and report confidence intervals.
-8. Convert the smoke metrics into SPL-like metrics only after per-action
+8. Scale the balanced runs beyond six groups and report confidence intervals.
+9. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

@@ -512,6 +512,89 @@ def test_option_row_records_route_observation_trace() -> None:
     }
 
 
+def test_option_row_flags_detector_false_confirmation_audit() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=12,
+            memory_executed_distance_m=3.0,
+            fallback_action_count=30,
+            fallback_executed_distance_m=9.0,
+            fallback_from_memory_action_count=5,
+            fallback_from_memory_executed_distance_m=1.2,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            memory_evidence={
+                "shared_gate_success": True,
+                "evidence_reason": "detector_positive_mask",
+                "detector_pixels": 8150,
+                "overlap_pixels": 0,
+                "detector_precision": 0.0,
+                "oracle_recall": 0.0,
+            },
+            fallback_evidence={
+                "shared_gate_success": True,
+                "evidence_reason": "detector_positive_mask",
+                "detector_pixels": 2067,
+                "overlap_pixels": 1400,
+                "detector_precision": 0.67731,
+                "oracle_recall": 0.725013,
+            },
+        )
+    )
+
+    assert row["memory_evidence"]["detector_false_confirmation"] is True
+    assert row["memory_evidence"]["detector_overlap_success"] is False
+    assert row["fallback_evidence"]["detector_false_confirmation"] is False
+    assert row["fallback_evidence"]["detector_overlap_success"] is True
+
+
+def test_policy_summary_counts_detector_false_confirmations() -> None:
+    rows = [
+        {
+            "policy": "memory_guided",
+            "success": True,
+            "action_count": 12,
+            "executed_distance_m": 3.0,
+            "memory_reused": True,
+            "selected_candidate_types": ["memory"],
+            "memory_decision_bucket": "memory_shorter_reused",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {"detector_false_confirmation": True},
+            "fallback_evidence": {"detector_false_confirmation": False},
+            "fallback_from_memory_evidence": {"detector_false_confirmation": False},
+        },
+        {
+            "policy": "memory_guided",
+            "success": True,
+            "action_count": 15,
+            "executed_distance_m": 4.0,
+            "memory_reused": True,
+            "selected_candidate_types": ["memory"],
+            "memory_decision_bucket": "memory_shorter_reused",
+            "hindsight_action_regret": 0,
+            "hindsight_distance_regret_m": 0.0,
+            "memory_evidence": {"detector_false_confirmation": False},
+            "fallback_evidence": {"detector_false_confirmation": True},
+            "fallback_from_memory_evidence": {"detector_false_confirmation": True},
+        },
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    assert summary["policy_summaries"]["memory_guided"][
+        "detector_false_confirmation_counts"
+    ] == {
+        "fallback": 1,
+        "fallback_from_memory": 1,
+        "memory": 1,
+    }
+
+
 def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(

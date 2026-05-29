@@ -916,14 +916,20 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     fallback_from_memory_anchor_source=(
                                         fallback_from_memory_anchor_source
                                     ),
-                                    memory_evidence=_verification_payload(
-                                        active_memory_verification
+                                    memory_evidence=_audit_evidence_payload(
+                                        _verification_payload(
+                                            active_memory_verification
+                                        )
                                     ),
-                                    fallback_evidence=_verification_payload(
-                                        fallback_verification
+                                    fallback_evidence=_audit_evidence_payload(
+                                        _verification_payload(fallback_verification)
                                     ),
-                                    fallback_from_memory_evidence=_verification_payload(
-                                        fallback_from_memory_evidence_source
+                                    fallback_from_memory_evidence=(
+                                        _audit_evidence_payload(
+                                            _verification_payload(
+                                                fallback_from_memory_evidence_source
+                                            )
+                                        )
                                     ),
                                 )
                             )
@@ -1081,9 +1087,11 @@ def make_habitat_closed_loop_option_row(
         "memory_anchor_source": plan.memory_anchor_source,
         "fallback_anchor_source": plan.fallback_anchor_source,
         "fallback_from_memory_anchor_source": plan.fallback_from_memory_anchor_source,
-        "memory_evidence": plan.memory_evidence,
-        "fallback_evidence": plan.fallback_evidence,
-        "fallback_from_memory_evidence": plan.fallback_from_memory_evidence,
+        "memory_evidence": _audit_evidence_payload(plan.memory_evidence),
+        "fallback_evidence": _audit_evidence_payload(plan.fallback_evidence),
+        "fallback_from_memory_evidence": _audit_evidence_payload(
+            plan.fallback_from_memory_evidence
+        ),
         "memory_decision": plan.memory_decision,
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
         "memory_reliability_mode": plan.memory_reliability_mode,
@@ -2372,6 +2380,26 @@ def _verification_payload(verification: Any) -> dict[str, Any]:
     }
 
 
+def _audit_evidence_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    enriched = dict(payload)
+    is_detector_positive = (
+        bool(enriched.get("shared_gate_success", False))
+        and str(enriched.get("evidence_reason", "")).startswith("detector_")
+    )
+    overlap_pixels = int(enriched.get("overlap_pixels", 0) or 0)
+    detector_precision = float(enriched.get("detector_precision", 0.0) or 0.0)
+    detector_overlap_success = is_detector_positive and (
+        overlap_pixels > 0 or detector_precision > 0.0
+    )
+    enriched["detector_overlap_success"] = detector_overlap_success
+    enriched["detector_false_confirmation"] = (
+        is_detector_positive and not detector_overlap_success
+    )
+    return enriched
+
+
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     policy_summaries = _summarize_rows_by_policy(rows)
     return {
@@ -2492,6 +2520,9 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 for row in policy_rows
             ),
             "memory_decision_buckets": _count_memory_decision_buckets(policy_rows),
+            "detector_false_confirmation_counts": (
+                _count_detector_false_confirmations(policy_rows)
+            ),
             "total_hindsight_action_regret": sum(
                 int(row.get("hindsight_action_regret", 0) or 0)
                 for row in policy_rows
@@ -2524,6 +2555,32 @@ def _count_memory_decision_buckets(rows: Sequence[dict[str, Any]]) -> dict[str, 
     for row in rows:
         bucket = str(row.get("memory_decision_bucket", "unknown"))
         counts[bucket] = counts.get(bucket, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _count_detector_false_confirmations(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    fields = {
+        "memory": "memory_evidence",
+        "fallback": "fallback_evidence",
+        "fallback_from_memory": "fallback_from_memory_evidence",
+    }
+    counts: dict[str, int] = {}
+    for label, field in fields.items():
+        count = sum(
+            int(
+                bool(
+                    (row.get(field) or {}).get(
+                        "detector_false_confirmation",
+                        False,
+                    )
+                )
+            )
+            for row in rows
+        )
+        if count:
+            counts[label] = count
     return dict(sorted(counts.items()))
 
 
