@@ -33,7 +33,8 @@ Implemented foundation:
 - Habitat closed-loop smoke entry:
   `python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output <dir>`
   has preflight and an oracle/action-level HM3D smoke path. It reuses existing
-  Habitat episode/group selection and GreedyGeodesic route execution.
+  Habitat episode/group selection and GreedyGeodesic route execution. It now
+  supports `--challenge stable|ambiguous|stale_proxy`.
 
 Not implemented yet:
 
@@ -113,6 +114,8 @@ Passed locally before this handoff update:
   `naive_count=67.210933 m`.
 - Habitat closed-loop preflight/CLI focused tests: `3` passed locally.
 - Full local core tests after adding the Habitat smoke entry: `189` passed.
+- Habitat challenge-mode focused tests: `4` passed locally.
+- Full local core tests after challenge modes: `190` passed.
 
 Pending:
 
@@ -143,8 +146,9 @@ Pending:
 1. Push the closed-loop grid harness.
 2. Verify it on Linux in the `habitat` conda environment.
 3. Rerun the Habitat oracle/action smoke with `--max-groups 1`.
-4. Replace oracle visibility with Grounding-DINO observations and add object
-   relocation/removal pressure.
+4. Run `ambiguous` and `stale_proxy` challenge smokes, then replace oracle
+   visibility with Grounding-DINO observations and add object relocation/removal
+   pressure.
 
 ## Context for Next Contributor
 

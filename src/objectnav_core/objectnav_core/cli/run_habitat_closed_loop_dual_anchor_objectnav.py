@@ -10,7 +10,9 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_MAX_GROUPS,
     DEFAULT_SENSOR_HEIGHT,
     DEFAULT_SENSOR_WIDTH,
+    DEFAULT_CHALLENGE,
     POLICIES,
+    SUPPORTED_CHALLENGES,
     TARGET_CATEGORIES,
     run_habitat_closed_loop_dual_anchor_objectnav,
     run_habitat_closed_loop_dual_anchor_preflight,
@@ -45,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     )
+    parser.add_argument("--challenge", default=DEFAULT_CHALLENGE, choices=SUPPORTED_CHALLENGES)
     parser.add_argument("--preflight-only", action="store_true")
     return parser
 
@@ -68,6 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         gate_threshold=args.gate_threshold,
         ambiguity_margin=args.ambiguity_margin,
         frontier_proxy_waypoints=args.frontier_proxy_waypoints,
+        challenge=args.challenge,
     )
     return 0
 
