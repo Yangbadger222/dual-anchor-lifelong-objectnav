@@ -24,6 +24,7 @@ DEFAULT_GATE_THRESHOLD = 5.991
 DEFAULT_AMBIGUITY_MARGIN = 0.5
 DEFAULT_FRONTIER_PROXY_WAYPOINTS = 2
 DEFAULT_QUERY_REPEATS = 1
+DEFAULT_MEMORY_VALID_PRIOR = 0.5
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
 
@@ -44,6 +45,10 @@ class HabitatClosedLoopOptionPlan:
     fallback_verified: bool
     stale_repair: bool = False
     query_repeat_index: int = 0
+    memory_decision: str = "memory_first"
+    memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR
+    expected_memory_first_action_count: float | None = None
+    expected_frontier_first_action_count: float | None = None
 
 
 def run_habitat_closed_loop_dual_anchor_preflight(
@@ -61,6 +66,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
+    memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -75,6 +81,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
         query_repeats=query_repeats,
+        memory_valid_prior=memory_valid_prior,
     )
     summary = _base_summary(
         task="habitat_closed_loop_dual_anchor_objectnav_preflight",
@@ -91,6 +98,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
         query_repeats=query_repeats,
+        memory_valid_prior=memory_valid_prior,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -111,6 +119,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     frontier_proxy_waypoints: int = DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
+    memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -125,6 +134,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
         query_repeats=query_repeats,
+        memory_valid_prior=memory_valid_prior,
     )
 
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
@@ -300,6 +310,28 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             repaired_memory_route=repaired_memory_route,
                             fallback_route=fallback_route,
                         )
+                        expected_memory_first = _expected_memory_first_action_count(
+                            memory_action_count=active_memory_route.action_count,
+                            fallback_from_memory_action_count=(
+                                fallback_from_memory_route.action_count
+                            ),
+                            memory_valid_prior=memory_valid_prior,
+                        )
+                        expected_frontier_first = float(fallback_route.action_count)
+                        memory_decision = _memory_first_decision(
+                            memory_action_count=active_memory_route.action_count,
+                            fallback_from_memory_action_count=(
+                                fallback_from_memory_route.action_count
+                            ),
+                            fallback_action_count=fallback_route.action_count,
+                            memory_valid_prior=memory_valid_prior,
+                        )
+                        if (
+                            policy == "memory_guided"
+                            and matching_reason == "no_current_observation"
+                            and memory_decision == "frontier_first"
+                        ):
+                            matching_reason = "expected_utility_frontier"
                         rows.append(
                             make_habitat_closed_loop_option_row(
                                 HabitatClosedLoopOptionPlan(
@@ -331,6 +363,18 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         and matching_reason == "no_current_observation"
                                     ),
                                     query_repeat_index=repeat_index,
+                                    memory_decision=(
+                                        memory_decision
+                                        if policy == "memory_guided"
+                                        else "memory_first"
+                                    ),
+                                    memory_valid_prior=memory_valid_prior,
+                                    expected_memory_first_action_count=(
+                                        expected_memory_first
+                                    ),
+                                    expected_frontier_first_action_count=(
+                                        expected_frontier_first
+                                    ),
                                 )
                             )
                         )
@@ -352,6 +396,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_proxy_waypoints=frontier_proxy_waypoints,
         challenge=challenge,
         query_repeats=query_repeats,
+        memory_valid_prior=memory_valid_prior,
     )
     summary.update(
         {
@@ -392,7 +437,7 @@ def make_habitat_closed_loop_option_row(
         distance = plan.fallback_executed_distance_m
         success = plan.fallback_verified
         memory_reused = False
-    elif plan.matching_reason == "ambiguous":
+    elif plan.matching_reason in {"ambiguous", "expected_utility_frontier"}:
         selected = ["frontier"]
         action_count = plan.fallback_action_count
         distance = plan.fallback_executed_distance_m
@@ -446,6 +491,18 @@ def make_habitat_closed_loop_option_row(
             float(plan.fallback_from_memory_executed_distance_m),
             6,
         ),
+        "memory_decision": plan.memory_decision,
+        "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
+        "expected_memory_first_action_count": (
+            None
+            if plan.expected_memory_first_action_count is None
+            else round(float(plan.expected_memory_first_action_count), 6)
+        ),
+        "expected_frontier_first_action_count": (
+            None
+            if plan.expected_frontier_first_action_count is None
+            else round(float(plan.expected_frontier_first_action_count), 6)
+        ),
     }
 
 
@@ -465,6 +522,7 @@ def _base_summary(
     frontier_proxy_waypoints: int,
     challenge: str,
     query_repeats: int,
+    memory_valid_prior: float,
 ) -> dict[str, Any]:
     return {
         "task": task,
@@ -480,6 +538,7 @@ def _base_summary(
         "frontier_proxy_waypoints": int(frontier_proxy_waypoints),
         "challenge": challenge,
         "query_repeats": int(query_repeats),
+        "memory_valid_prior": round(float(memory_valid_prior), 6),
         "session_restart": {
             "memory_frame_id": "map_session_1",
             "runtime_frame_id": "map_session_2",
@@ -506,6 +565,7 @@ def _validate_common(
     frontier_proxy_waypoints: int,
     challenge: str,
     query_repeats: int,
+    memory_valid_prior: float,
 ) -> None:
     unknown_policies = sorted(set(policies) - set(POLICIES))
     if unknown_policies:
@@ -529,6 +589,8 @@ def _validate_common(
         )
     if query_repeats <= 0:
         raise ValueError("query_repeats must be positive")
+    if not 0.0 <= memory_valid_prior <= 1.0:
+        raise ValueError("memory_valid_prior must be in [0, 1]")
 
 
 def _session_restart_transform() -> FrameTransform2D:
@@ -575,6 +637,38 @@ def _active_memory_route_for_repeat(
     if challenge == "stale_proxy" and policy == "memory_guided" and repeat_index > 0:
         return repaired_memory_route
     return initial_memory_route
+
+
+def _expected_memory_first_action_count(
+    *,
+    memory_action_count: int,
+    fallback_from_memory_action_count: int,
+    memory_valid_prior: float,
+) -> float:
+    if not 0.0 <= memory_valid_prior <= 1.0:
+        raise ValueError("memory_valid_prior must be in [0, 1]")
+    return round(
+        float(memory_action_count)
+        + (1.0 - float(memory_valid_prior)) * float(fallback_from_memory_action_count),
+        6,
+    )
+
+
+def _memory_first_decision(
+    *,
+    memory_action_count: int,
+    fallback_from_memory_action_count: int,
+    fallback_action_count: int,
+    memory_valid_prior: float,
+) -> str:
+    expected_memory = _expected_memory_first_action_count(
+        memory_action_count=memory_action_count,
+        fallback_from_memory_action_count=fallback_from_memory_action_count,
+        memory_valid_prior=memory_valid_prior,
+    )
+    if expected_memory <= float(fallback_action_count):
+        return "memory_first"
+    return "frontier_first"
 
 
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:

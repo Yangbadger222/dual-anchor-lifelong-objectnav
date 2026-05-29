@@ -22,6 +22,8 @@ def test_habitat_closed_loop_dual_anchor_cli_preflight(tmp_path) -> None:
             "ambiguous",
             "--query-repeats",
             "2",
+            "--memory-valid-prior",
+            "0.25",
             "--preflight-only",
         ]
     )
@@ -33,3 +35,4 @@ def test_habitat_closed_loop_dual_anchor_cli_preflight(tmp_path) -> None:
     assert summary["target_categories"] == ["plant", "toilet"]
     assert summary["challenge"] == "ambiguous"
     assert summary["query_repeats"] == 2
+    assert summary["memory_valid_prior"] == 0.25

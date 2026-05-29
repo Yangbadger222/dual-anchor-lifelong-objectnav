@@ -8,6 +8,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_GATE_THRESHOLD,
     DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     DEFAULT_MAX_GROUPS,
+    DEFAULT_MEMORY_VALID_PRIOR,
     DEFAULT_QUERY_REPEATS,
     DEFAULT_SENSOR_HEIGHT,
     DEFAULT_SENSOR_WIDTH,
@@ -49,6 +50,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     )
     parser.add_argument("--query-repeats", type=int, default=DEFAULT_QUERY_REPEATS)
+    parser.add_argument(
+        "--memory-valid-prior",
+        type=float,
+        default=DEFAULT_MEMORY_VALID_PRIOR,
+        help=(
+            "Prior probability that an unconfirmed memory anchor is still valid "
+            "for expected-utility memory-vs-frontier decisions."
+        ),
+    )
     parser.add_argument("--challenge", default=DEFAULT_CHALLENGE, choices=SUPPORTED_CHALLENGES)
     parser.add_argument("--preflight-only", action="store_true")
     return parser
@@ -75,6 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         frontier_proxy_waypoints=args.frontier_proxy_waypoints,
         challenge=args.challenge,
         query_repeats=args.query_repeats,
+        memory_valid_prior=args.memory_valid_prior,
     )
     return 0
 

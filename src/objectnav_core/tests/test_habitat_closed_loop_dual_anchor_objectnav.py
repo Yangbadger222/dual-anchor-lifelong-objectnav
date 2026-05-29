@@ -30,6 +30,7 @@ def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> N
     assert summary["frontier_proxy_waypoints"] == 2
     assert summary["challenge"] == "stable"
     assert summary["query_repeats"] == 1
+    assert summary["memory_valid_prior"] == 0.5
     assert summary["artifact_files"]["summary"] == "summary.json"
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 
@@ -85,6 +86,37 @@ def test_habitat_option_row_defers_memory_under_ambiguous_match() -> None:
     assert row["selected_candidate_types"] == ["frontier"]
     assert row["memory_reused"] is False
     assert row["action_count"] == 30
+
+
+def test_habitat_option_row_defers_memory_when_expected_utility_prefers_frontier() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="scene|plant|1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=12,
+            memory_executed_distance_m=3.5,
+            fallback_action_count=30,
+            fallback_executed_distance_m=9.0,
+            fallback_from_memory_action_count=18,
+            fallback_from_memory_executed_distance_m=5.0,
+            matching_reason="expected_utility_frontier",
+            memory_verified=False,
+            fallback_verified=True,
+            memory_decision="frontier_first",
+            memory_valid_prior=0.5,
+            expected_memory_first_action_count=21.0,
+            expected_frontier_first_action_count=30.0,
+        )
+    )
+
+    assert row["success"] is True
+    assert row["selected_candidate_types"] == ["frontier"]
+    assert row["memory_reused"] is False
+    assert row["action_count"] == 30
+    assert row["memory_decision"] == "frontier_first"
+    assert row["memory_valid_prior"] == 0.5
+    assert row["expected_memory_first_action_count"] == 21.0
 
 
 def test_habitat_option_row_charges_post_memory_fallback_for_stale_repair() -> None:
@@ -193,6 +225,32 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
     assert summary["policy_summaries"]["memory_guided"]["total_action_count"] == 38
     assert summary["policy_summaries"]["naive_count"]["total_action_count"] == 60
     assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22
+
+
+def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> None:
+    assert closed_loop._expected_memory_first_action_count(
+        memory_action_count=139,
+        fallback_from_memory_action_count=408,
+        memory_valid_prior=0.5,
+    ) == 343.0
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=139,
+            fallback_from_memory_action_count=408,
+            fallback_action_count=202,
+            memory_valid_prior=0.5,
+        )
+        == "frontier_first"
+    )
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=69,
+            fallback_from_memory_action_count=371,
+            fallback_action_count=355,
+            memory_valid_prior=0.5,
+        )
+        == "memory_first"
+    )
 
 
 def test_repeated_stale_uses_direct_repaired_memory_route_not_frontier_proxy() -> None:
