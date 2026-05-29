@@ -470,3 +470,76 @@ legacy first goal viewpoint.
 
 Replacement Linux stale-relocation runs should use new output directories and
 be recorded here before any paper-facing claims are made from the stale matrix.
+
+### Corrected Synthetic Stale Relocation Results
+
+Oracle corrected smoke:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_oracle_stale_smoke_post_memory_fallback_v1`
+
+Parameters: full HM3D `val`, six categories, one group per category, clean,
+`query_repeats=2`, `oracle_bbox`, detector-qualified anchors,
+`synthetic_stale_relocation`, post-memory fallback accounting.
+
+Result:
+
+- `memory_guided`: `12/12`, `396.995258 m`
+- `naive_count`: `12/12`, `622.497562 m`
+- `no_memory`: `12/12`, `440.623520 m`
+- memory vs naive path reduction: `36.2254%`
+- memory vs no-memory path reduction: `9.9015%`
+
+This corrected oracle smoke is a useful sanity check: after the first stale
+visit, `memory_guided` repairs and reuses the fallback anchor on repeat queries,
+while `naive_count` keeps paying memory plus fallback. Unlike the pre-fix smoke,
+`memory_guided` is also better than `no_memory` here because fallback cost is now
+charged from the failed memory pose instead of being restarted from the query
+pose.
+
+Grounding-DINO corrected matrix:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_matrix_post_memory_fallback_v1`
+
+Parameters: full HM3D `val`, `12` groups, two per category,
+`clean,mild,heavy`, `query_repeats=2`, Grounding-DINO tiny,
+`--grounding-dino-max-image-side 384`, detector-qualified anchors,
+`synthetic_stale_relocation`, post-memory fallback accounting.
+
+Result:
+
+- `memory_guided`: `62/72`, `2465.427272 m`
+- `naive_count`: `62/72`, `3733.091684 m`
+- `no_memory`: `62/72`, `2655.876078 m`
+- memory vs naive path reduction: `33.9575%`
+- memory vs no-memory path reduction: `7.1708%`
+- memory vs naive success delta: `0`
+
+Mechanism check:
+
+- `memory_guided` routes: `41` memory-then-fallback attempts, `31` repaired
+  memory-only repeats.
+- `naive_count` routes: `72` memory-then-fallback attempts; it never receives
+  repaired-anchor state.
+- `no_memory` routes: `72` fallback-only attempts.
+- post-memory route audit passed: every `memory|fallback` row satisfies
+  `path_length_m = memory_path_cost_m + fallback_from_memory_path_cost_m`.
+
+Failure attribution is unchanged after the accounting fix:
+
+- `chair`: `2` clean failures from `fragmented_detector_mask` and `2` heavy
+  failures from `missed_visible_oracle_target`.
+- `tv_monitor`: `6` failures from `missed_visible_oracle_target` across clean,
+  mild, and heavy.
+- `bed`, `plant`, `sofa`, and `toilet` are `12/12` successful in this matrix.
+
+Critical interpretation:
+
+- The robust claim from this run is not higher success; all three modes have
+  the same `62/72` success because detector failures dominate the failed cells.
+- The meaningful algorithmic win is repeated-query efficiency under stale
+  memory: repaired memory cuts `33.96%` path cost versus a fair positive-only
+  `naive_count` baseline.
+- The memory-vs-no-memory advantage is smaller (`7.17%`) and depends on this
+  synthetic stale protocol plus the search proxy. It should be treated as a
+  supporting signal, not the headline.
+- This is still not official SPL or a closed-loop learned policy result.

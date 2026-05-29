@@ -2,7 +2,7 @@
 
 Date: 2026-05-29  
 Owner: Codex  
-Status: In Progress - Post-Memory Fallback Cost Fix Pending Linux Rerun
+Status: In Progress - Corrected Stale Matrix Complete, Action-Level Follow-up Needed
 
 ## Current State
 
@@ -14,7 +14,7 @@ Full HM3D `val` scene assets have now been unpacked on the Linux machine under
 coverage is available: `88` strict same-instance groups across all six target
 categories.
 
-The strongest pre-fix completed run is:
+An older val-mini run remains useful as early smoke evidence:
 
 `runs/habitat_usability/habitat_memory_lifecycle_grounding_dino_repeated_v2_allcat`
 
@@ -53,6 +53,12 @@ New full-val sanity results:
   `no_memory`. This is useful historical evidence for repair-aware memory over
   positive-only counting, but it was run before the post-memory fallback cost
   fix and must be rerun before it becomes a main result.
+- Corrected synthetic stale-relocation matrix:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_matrix_post_memory_fallback_v1`
+  produced `memory_guided=62/72`, `naive_count=62/72`, `no_memory=62/72`;
+  memory reduced path by `33.9575%` vs `naive_count` and `7.1708%` vs
+  `no_memory`. This is the current main stale-repair result, with the important
+  caveat that it is still geodesic/search-proxy and synthetic relocation.
 
 Critical accounting fix in progress:
 
@@ -64,6 +70,9 @@ Critical accounting fix in progress:
   detector-qualified memory anchor that failed verification.
 - New trace fields: `fallback_from_memory_path_cost_m` and
   `fallback_from_memory_waypoint_count`.
+Linux reruns with this fix passed route-cost audit: every `memory|fallback`
+trace row satisfies `path_length_m = memory_path_cost_m +
+fallback_from_memory_path_cost_m`.
 
 ## Files Touched
 
@@ -149,19 +158,25 @@ Passed locally:
 
 Passed on Linux:
 
-- Focused lifecycle/CLI tests: `12` passed.
+- Focused lifecycle/CLI tests after the post-memory fallback fix: `19` passed.
 - Oracle lifecycle smoke.
 - Grounding-DINO clean smoke.
 - Grounding-DINO shared-evidence single-query matrix.
 - Grounding-DINO repeated-query matrix.
+- Corrected oracle stale smoke:
+  `memory_guided=12/12`, `naive_count=12/12`, `no_memory=12/12`;
+  memory vs naive path reduction `36.2254%`.
+- Corrected Grounding-DINO stale matrix:
+  `memory_guided=62/72`, `naive_count=62/72`, `no_memory=62/72`;
+  memory vs naive path reduction `33.9575%`.
 
 ## Known Risks
 
 - Current evaluation is geodesic and teleport-to-viewpoint based, not an
   action-level ObjectNav benchmark.
 - Stale-relocation path numbers from `*_stale_*` runs before the
-  post-memory fallback fix should be treated as pre-fix debugging results until
-  the Linux rerun finishes.
+  post-memory fallback fix should be treated as pre-fix debugging results. Use
+  the `*_post_memory_fallback_v1` directories for current stale metrics.
 - `search_proxy` is a deterministic proxy for no-memory search cost, not a
   learned or frontier closed-loop policy.
 - `val_mini` only forms three strict same-instance lifecycle groups:
@@ -180,17 +195,14 @@ Passed on Linux:
 
 ## Next Recommended Step
 
-1. Pull the post-memory fallback cost fix on Linux and rerun at least the
-   oracle stale smoke plus Grounding-DINO stale matrix with new output
-   directories.
-2. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
+1. Improve or qualify `tv_monitor` robustness under RGB noise before scaling
    claims; current Grounding-DINO tiny returns zero boxes under `mild/heavy` for
    one high-GT-pixel view.
-3. Replace teleport-to-viewpoint with an action-level Habitat follower and
+2. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
-4. Scale the stale-relocation matrix beyond 12 groups after detector robustness
+3. Scale the stale-relocation matrix beyond 12 groups after detector robustness
    is better understood.
-5. Only after those pass, compare against stronger semantic-map and frontier
+4. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor
