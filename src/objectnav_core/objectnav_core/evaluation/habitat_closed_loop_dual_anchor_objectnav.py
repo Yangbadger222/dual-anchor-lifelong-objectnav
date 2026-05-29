@@ -363,10 +363,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         and matching_reason == "no_current_observation"
                                     ),
                                     query_repeat_index=repeat_index,
-                                    memory_decision=(
-                                        memory_decision
-                                        if policy == "memory_guided"
-                                        else "memory_first"
+                                    memory_decision=_memory_decision_for_row(
+                                        policy=policy,
+                                        matching_reason=matching_reason,
+                                        raw_memory_decision=memory_decision,
                                     ),
                                     memory_valid_prior=memory_valid_prior,
                                     expected_memory_first_action_count=(
@@ -669,6 +669,19 @@ def _memory_first_decision(
     if expected_memory <= float(fallback_action_count):
         return "memory_first"
     return "frontier_first"
+
+
+def _memory_decision_for_row(
+    *,
+    policy: str,
+    matching_reason: str,
+    raw_memory_decision: str,
+) -> str:
+    if policy != "memory_guided":
+        return "memory_first"
+    if matching_reason == "accepted":
+        return "memory_first"
+    return raw_memory_decision
 
 
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:

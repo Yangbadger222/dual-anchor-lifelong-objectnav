@@ -227,6 +227,25 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
     assert summary["comparison"]["memory_guided_vs_naive_count_action_delta"] == 22
 
 
+def test_accepted_repaired_memory_records_memory_first_decision() -> None:
+    assert (
+        closed_loop._memory_decision_for_row(
+            policy="memory_guided",
+            matching_reason="accepted",
+            raw_memory_decision="frontier_first",
+        )
+        == "memory_first"
+    )
+    assert (
+        closed_loop._memory_decision_for_row(
+            policy="memory_guided",
+            matching_reason="expected_utility_frontier",
+            raw_memory_decision="frontier_first",
+        )
+        == "frontier_first"
+    )
+
+
 def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> None:
     assert closed_loop._expected_memory_first_action_count(
         memory_action_count=139,
