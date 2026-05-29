@@ -169,11 +169,25 @@ Next recommended action: design a pre-decision memory-validity evidence step
 or learned validity model for near-boundary relocation rows, rather than
 continuing blind category sweeps.
 
+The first step toward learned validity calibration is now a local exporter:
+
+- Design: `docs/design/2026-05-30-memory-validity-learning-dataset.md`
+- API: `objectnav_core.evaluation.habitat_memory_validity_dataset`
+- CLI:
+  `python -m objectnav_core.cli.export_habitat_memory_validity_dataset <inputs...> --output <report.json> --csv-output <examples.csv>`
+
+The exporter labels rows from `memory_evidence.shared_gate_success` and keeps
+features pre-decision only: planned route costs, memory evidence,
+memory-reliability components, memory-context detector-event components, and
+relocation distance. It intentionally excludes fallback evidence and final row
+success from features.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/design/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/design/2026-05-30-habitat-goal-object-relocation-challenge.md`
+- `docs/design/2026-05-30-memory-validity-learning-dataset.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
