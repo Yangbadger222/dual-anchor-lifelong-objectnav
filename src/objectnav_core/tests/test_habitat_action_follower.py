@@ -6,6 +6,7 @@ import numpy as np
 
 from objectnav_core.evaluation.habitat_action_follower import (
     HabitatActionRoute,
+    _agent_rotation,
     follow_greedy_geodesic_route,
     follow_greedy_geodesic_route_sequence,
 )
@@ -23,6 +24,11 @@ class _FakeAgent:
 
     def set_state(self, state: SimpleNamespace) -> None:
         self.state = state
+
+
+class _FakeQuaternion:
+    def __init__(self, components: tuple[float, float, float, float]) -> None:
+        self.components = components
 
 
 class _FakeFollower:
@@ -101,3 +107,10 @@ def test_follow_greedy_geodesic_route_sequence_preserves_waypoint_costs() -> Non
     assert route.actions == ("move_forward", "turn_left", "move_forward", "turn_left")
     assert route.action_count == 4
     assert route.executed_distance_m == 1.0
+
+
+def test_agent_rotation_converts_numpy_quaternion_components_to_xyzw() -> None:
+    agent = _FakeAgent()
+    agent.state.rotation = _FakeQuaternion((0.9, 0.1, 0.2, 0.3))
+
+    assert _agent_rotation(agent) == (0.1, 0.2, 0.3, 0.9)

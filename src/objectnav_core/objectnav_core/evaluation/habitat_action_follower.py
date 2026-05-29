@@ -141,6 +141,10 @@ def _agent_rotation(agent: Any) -> tuple[float, float, float, float]:
     try:
         return tuple(float(value) for value in rotation)
     except TypeError:
+        components = getattr(rotation, "components", None)
+        if components is not None and len(components) == 4:
+            w, x, y, z = components
+            return (float(x), float(y), float(z), float(w))
         vector = getattr(rotation, "vector", None)
         scalar = getattr(rotation, "scalar", None)
         if vector is not None and scalar is not None:
