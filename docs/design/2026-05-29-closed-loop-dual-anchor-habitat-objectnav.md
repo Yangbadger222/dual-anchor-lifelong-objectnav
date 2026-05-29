@@ -88,6 +88,40 @@ Grounding-DINO, Habitat-Sim, and HM3D assets.
   - `memory.sqlite`
   - `report.html`
 
+## Current Implementation Slice
+
+As of 2026-05-29, the repository contains an oracle/action-level Habitat smoke
+runner:
+
+```bash
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav ...
+```
+
+The current slice is deliberately labeled as a smoke, not the final benchmark.
+It executes GreedyGeodesic Habitat action routes and records dual-anchor session
+restart metadata, but still uses oracle semantic visibility and a deterministic
+search-proxy frontier.
+
+Implemented in this slice:
+
+- stable, ambiguous, and stale-proxy challenge modes;
+- repeated stale queries where `memory_guided` can reuse a repaired anchor and
+  `naive_count` remains positive-only;
+- direct repaired-memory route accounting;
+- expected-utility memory-vs-frontier selection through `memory_valid_prior`;
+- balanced group selection that covers categories before taking duplicates.
+
+Latest balanced oracle/action smoke:
+
+| Scenario | `memory_guided` | `frontier_only` | `naive_count` | Notes |
+|---|---:|---:|---:|---|
+| stable balanced6 | 575 actions | 1311 actions | 575 actions | Memory and naive tie when memory is correct |
+| stale balanced6, 2 repeats | 2020 actions | 3074 actions | 4148 actions | Memory-guided repairs and later reuses anchors |
+
+This is useful evidence for the direction, but it is not a paper-ready result
+until Grounding-DINO, true frontier exploration, natural staleness, and larger
+run statistics are added.
+
 ## Data Flow
 
 1. Session 1 starts in Habitat with an empty local map.

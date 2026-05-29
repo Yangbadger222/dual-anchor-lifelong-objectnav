@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Habitat Closed-Loop Dual-Anchor Oracle Action Smoke 报告</title>
+  <style>
+    :root {
+      --ink: #17202b;
+      --muted: #5f6a76;
+      --line: #d8dee7;
+      --paper: #fbfcfd;
+      --band: #eef5f3;
+      --accent: #16675f;
+      --good: #14643b;
+      --warn: #8a5700;
+      --bad: #8a2634;
+      --code: #111827;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
+      line-height: 1.62;
+    }
+    header {
+      padding: 42px 7vw 28px;
+      border-bottom: 1px solid var(--line);
+      background: #f5faf8;
+    }
+    main {
+      max-width: 1180px;
+      padding: 28px 7vw 70px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      line-height: 1.24;
+      letter-spacing: 0;
+    }
+    h1 {
+      max-width: 980px;
+      font-size: clamp(28px, 4vw, 42px);
+    }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+    p { margin: 10px 0; }
+    ul { padding-left: 22px; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: #ffffff;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #edf3f1; }
+    code {
+      background: #eef3f7;
+      border: 1px solid #dbe3ec;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #eef2f7;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .meta { color: var(--muted); }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 2px 8px;
+      margin: 4px 6px 0 0;
+    }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--band);
+      padding: 13px 16px;
+      margin: 16px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .box h3 { margin-top: 0; }
+    .good { color: var(--good); font-weight: 650; }
+    .warn { color: var(--warn); font-weight: 650; }
+    .bad { color: var(--bad); font-weight: 650; }
+    .wide { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Dual-Anchor Lifelong ObjectNav · 2026-05-29 · Linux Habitat oracle/action smoke</p>
+    <h1>Habitat Closed-Loop Dual-Anchor Oracle Action Smoke 报告</h1>
+    <p>
+      这份报告总结我把 sim 重定向到更接近论文核心之后做了什么、
+      Linux 上跑出了什么结果、这些结果能说明什么、还不能说明什么。
+    </p>
+    <p>
+      <span class="tag">branch: codex/habitat-memory-lifecycle</span>
+      <span class="tag">commit: 7c1acf2</span>
+      <span class="tag">host: badger@100.88.131.52</span>
+      <span class="tag">conda: habitat</span>
+      <span class="tag">sensor: 1280x720</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>一句话结论</h2>
+      <div class="callout">
+        <p>
+          当前最强结果是六类别均衡的 Habitat oracle/action stale repeat：
+          <code>memory_guided</code> 用 <code>2020</code> actions 完成 12/12，
+          明显优于 <code>frontier_only</code> 的 <code>3074</code> 和
+          <code>naive_count</code> 的 <code>4148</code>。这说明方向对了，
+          但它仍然只是 oracle/action smoke，不是 Grounding-DINO 闭环、
+          不是真 frontier、也不是 official SPL。
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>这轮具体做了什么</h2>
+      <ul>
+        <li>把 Habitat runner 从单次 stable smoke 扩展到 <code>stable</code>、<code>ambiguous</code>、<code>stale_proxy</code>。</li>
+        <li>修复 repaired memory：修复后的 anchor 现在走 direct memory route，不再错误按 frontier proxy 计费。</li>
+        <li>加入 expected-utility 决策：agent 可以选择先去 memory pose，或先去 frontier/search proxy。</li>
+        <li>保留公平 baseline：<code>naive_count</code> 仍然是最朴素 positive-only，不吃 non-confirmation、unknown、delayed birth 或 repaired anchor。</li>
+        <li>加入类别均衡 selection：<code>--max-groups 6</code> 优先覆盖 bed/chair/plant/sofa/toilet/tv_monitor 六类。</li>
+        <li>把负结果写进报告，避免把 debugging artifact 包装成漂亮结论。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>主命令</h2>
+      <pre><code>cd ~/Desktop/dual-anchor-lifelong-objectnav
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate habitat
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core \
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_closed_loop_dual_anchor/oracle_action_stale_proxy_repeats2_balanced6_eu_p05_v1 \
+  --target-categories bed,chair,plant,sofa,toilet,tv_monitor \
+  --max-groups 6 \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --challenge stale_proxy \
+  --query-repeats 2 \
+  --memory-valid-prior 0.5</code></pre>
+    </section>
+
+    <section>
+      <h2>Episode Selection</h2>
+      <p>候选 episode 数为 <code>652</code>，最终选择 6 个 group，六个类别各一个。</p>
+      <div class="wide">
+        <table>
+          <tr><th>类别</th><th>Group</th></tr>
+          <tr><td><code>chair</code></td><td><code>hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb|chair|goal_object:445</code></td></tr>
+          <tr><td><code>plant</code></td><td><code>hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb|plant|goal_object:183</code></td></tr>
+          <tr><td><code>sofa</code></td><td><code>hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb|sofa|goal_object:275</code></td></tr>
+          <tr><td><code>toilet</code></td><td><code>hm3d/val/00800-TEEsavR23oF/TEEsavR23oF.basis.glb|toilet|goal_object:51</code></td></tr>
+          <tr><td><code>bed</code></td><td><code>hm3d/val/00802-wcojb4TFT35/wcojb4TFT35.basis.glb|bed|goal_object:17</code></td></tr>
+          <tr><td><code>tv_monitor</code></td><td><code>hm3d/val/00813-svBbv1Pavdk/svBbv1Pavdk.basis.glb|tv_monitor|goal_object:287</code></td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>核心结果</h2>
+      <h3>Stable balanced6 sanity check</h3>
+      <div class="wide">
+        <table>
+          <tr><th>Policy</th><th>Episodes</th><th>Success</th><th>Actions</th><th>Distance</th></tr>
+          <tr><td><code>memory_guided</code></td><td>6</td><td>6/6</td><td>575</td><td>86.391889 m</td></tr>
+          <tr><td><code>naive_count</code></td><td>6</td><td>6/6</td><td>575</td><td>86.391889 m</td></tr>
+          <tr><td><code>frontier_only</code></td><td>6</td><td>6/6</td><td>1311</td><td>183.893982 m</td></tr>
+        </table>
+      </div>
+      <p>
+        stable 下 memory 和 naive 打平是正常的：没有 stale/ambiguity 时，
+        朴素 positive-count 也能复用正确 memory。这里主要验证 action-route accounting 正常。
+      </p>
+
+      <h3>Repeated stale balanced6 with expected utility</h3>
+      <div class="wide">
+        <table>
+          <tr><th>Policy</th><th>Episodes</th><th>Success</th><th>Actions</th><th>Distance</th><th>Memory reuse</th><th>Frontier selected</th></tr>
+          <tr><td><code>memory_guided</code></td><td>12</td><td>12/12</td><td>2020</td><td>280.893940 m</td><td>6</td><td>6</td></tr>
+          <tr><td><code>frontier_only</code></td><td>12</td><td>12/12</td><td>3074</td><td>424.852192 m</td><td>0</td><td>12</td></tr>
+          <tr><td><code>naive_count</code></td><td>12</td><td>12/12</td><td>4148</td><td>581.317722 m</td><td>0</td><td>12</td></tr>
+        </table>
+      </div>
+      <div class="grid">
+        <div class="box">
+          <h3 class="good">vs frontier_only</h3>
+          <p><code>+1054</code> actions saved</p>
+          <p><code>+143.958252 m</code> executed distance saved</p>
+        </div>
+        <div class="box">
+          <h3 class="good">vs naive_count</h3>
+          <p><code>+2128</code> actions saved</p>
+          <p><code>+300.423782 m</code> executed distance saved</p>
+        </div>
+        <div class="box">
+          <h3>Memory decisions</h3>
+          <p><code>accepted=6</code></p>
+          <p><code>expected_utility_frontier=3</code></p>
+          <p><code>no_current_observation=3</code></p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Group-Level 结果</h2>
+      <div class="wide">
+        <table>
+          <tr><th>类别</th><th>memory_guided</th><th>frontier_only</th><th>naive_count</th><th>解读</th></tr>
+          <tr><td><code>chair</code></td><td>509</td><td>710</td><td>880</td><td>memory 明显赢</td></tr>
+          <tr><td><code>plant</code></td><td>341</td><td>404</td><td>1094</td><td>expected utility 避免高风险 stale probe</td></tr>
+          <tr><td><code>sofa</code></td><td>365</td><td>936</td><td>534</td><td>repaired memory 价值最大</td></tr>
+          <tr><td><code>toilet</code></td><td>488</td><td>618</td><td>1086</td><td>p=0.5 比 p=0.8 稳</td></tr>
+          <tr><td><code>bed</code></td><td>88</td><td>88</td><td>188</td><td>memory 与 frontier 打平，但显著优于 naive</td></tr>
+          <tr><td><code>tv_monitor</code></td><td>229</td><td>318</td><td>366</td><td>现在 selection 覆盖到了该类别</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>负结果和修复历史</h2>
+      <ul>
+        <li>第一版 stable smoke 三个 policy 动作数相同，因为 frontier baseline 实际走到了同一个 target viewpoint，不是探索 baseline。</li>
+        <li>第一版 challenge smoke 中 ambiguous label 和 stale fallback 语义不完整，已经用 regression tests 修掉。</li>
+        <li>repaired memory 一开始被错误按 frontier proxy route 计费，导致 memory 在 stale repeat 里输给 frontier；修复 direct route 后单组 plant 从 <code>545</code> 降到 <code>446</code> actions。</li>
+        <li>没有 expected utility 的 unbalanced max6 会在部分 group 盲目探旧 memory，说明 stale-risk 决策是必要算法点，不是可有可无的指标修饰。</li>
+        <li><code>memory_valid_prior=0.8</code> 比 <code>0.5</code> 更差，说明 prior 不能靠手调写死，后面要从证据、类别、协方差、session age 中估计。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>目前还不能声称什么</h2>
+      <div class="callout">
+        <p>
+          这还不是顶会主结果。当前仍然是 oracle semantic visibility + action-route smoke。
+          不能把它写成 Grounding-DINO 闭环、真实 frontier、自然物体搬移、或者 Habitat official SPL。
+        </p>
+      </div>
+      <ul>
+        <li>还没有 Grounding-DINO per-step perception。</li>
+        <li>frontier 还是 deterministic search proxy，不是真 occupancy frontier。</li>
+        <li><code>stale_proxy</code> 仍是 protocol-level stale，不是 Habitat 中真的搬动物体。</li>
+        <li>六个 group 只是小规模 smoke，需要扩到更多 scene/group 并给出方差。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>下一步</h2>
+      <ol>
+        <li>把 oracle visibility 换成 Grounding-DINO observations，保持同一套 gate 和 policy accounting。</li>
+        <li>实现真 frontier mapping/exploration，替换 search proxy。</li>
+        <li>做自然 staleness：优先尝试 Habitat object hide/replace 或可审计的 semantic-object relocation。</li>
+        <li>把 balanced runs 扩到更多 group，输出 confidence interval。</li>
+        <li>把 <code>memory_valid_prior</code> 从手设值变成证据驱动或可学习估计。</li>
+        <li>等 per-action perception 和真 frontier 稳定后，再做 SPL-like 或 official benchmark 对比。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

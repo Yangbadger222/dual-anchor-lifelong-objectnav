@@ -35,6 +35,12 @@ Implemented foundation:
   has preflight and an oracle/action-level HM3D smoke path. It reuses existing
   Habitat episode/group selection and GreedyGeodesic route execution. It now
   supports `--challenge stable|ambiguous|stale_proxy`.
+- Repaired-memory direct route accounting for repeated stale queries.
+- Expected-utility memory-vs-frontier decisions using `--memory-valid-prior`.
+- Category-balanced group selection before duplicate categories when
+  `--max-groups` is set.
+- A Markdown and Chinese HTML experiment report for the latest Habitat
+  oracle/action smoke.
 
 Not implemented yet:
 
@@ -49,6 +55,8 @@ Not implemented yet:
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
+- `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
+- `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
@@ -83,21 +91,19 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest 
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_closed_loop_dual_anchor_benchmark --output /tmp/closed_loop_dual_anchor_grid_smoke
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_dual_anchor_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --preflight-only
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 ```
 
-Linux command to run after push:
+Linux commands run:
 
 ```bash
 cd ~/Desktop/dual-anchor-lifelong-objectnav
 git pull --ff-only origin codex/habitat-memory-lifecycle
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate habitat
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_dual_anchor_pressure.py src/objectnav_core/tests/test_dual_anchor_pressure_cli.py -q
-PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_dual_anchor_pressure --output runs/dual_anchor_pressure/pressure_cli_smoke_v1
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_closed_loop_dual_anchor_benchmark.py src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py -q
-PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_closed_loop_dual_anchor_benchmark --output runs/dual_anchor_grid/closed_loop_smoke_v1
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
-PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_smoke_v1 --target-categories plant,toilet --max-groups 1
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_stale_proxy_repeats2_balanced6_eu_p05_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stale_proxy --query-repeats 2 --memory-valid-prior 0.5
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_stable_balanced6_eu_p05_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5
 ```
 
 ## Verification
@@ -120,10 +126,18 @@ Passed locally before this handoff update:
 - Full local core tests after challenge semantics fix: `191` passed.
 - Habitat repeated stale focused tests: `6` passed locally.
 - Full local core tests after repeated stale smoke: `192` passed.
-
-Pending:
-
-- Linux pull and Habitat oracle/action smoke after commit/push.
+- Full local core tests after repaired direct-memory route: `193` passed.
+- Full local core tests after expected-utility decisions: `195` passed.
+- Full local core tests after decision-trace cleanup: `196` passed.
+- Full local core tests after balanced group selection: `197` passed.
+- Linux focused Habitat tests after the expected-utility CLI update: `9` passed.
+- Linux stable balanced6 oracle/action smoke:
+  `memory_guided=575` actions, `naive_count=575`,
+  `frontier_only=1311`.
+- Linux stale balanced6 oracle/action smoke with
+  `--query-repeats 2 --memory-valid-prior 0.5`:
+  `memory_guided=2020` actions, `frontier_only=3074`,
+  `naive_count=4148`.
 
 ## Known Risks
 
@@ -132,13 +146,10 @@ Pending:
 - The Habitat closed-loop runner is currently oracle/action-level. It executes
   real Habitat GreedyGeodesic routes, but it does not yet run Grounding-DINO
   per-step perception or true frontier mapping.
-- The first Linux Habitat smoke selected a plant group where direct memory and
-  direct fallback routes were identical. `frontier_only` has since been changed
-  to use deterministic `frontier_proxy_waypoints` before the fallback goal;
-  rerun the smoke before interpreting policy deltas.
-- The first Linux challenge smoke exposed partial challenge semantics
-  (`ambiguous` rows labeled accepted and stale fallback charged as zero from
-  memory). This has been fixed locally and should be rerun on Linux.
+- Early Linux smokes exposed invalid frontier accounting, partial challenge
+  semantics, repaired-memory route mischarging, and stale-risk overprobing.
+  These are fixed in the current branch and documented in the experiment
+  report as negative/debug history.
 - The current grid smoke does not beat `naive_count`; after the shared gate,
   memory-guided and naive-count tie. Treat this as plumbing/pressure validation,
   not a headline result.
@@ -147,17 +158,23 @@ Pending:
   the same perception, action budget, and gate semantics as memory-guided.
 - Natural staleness may require a careful Habitat object hide/move protocol if
   HM3D mesh-level object relocation is not clean.
+- `memory_valid_prior=0.5` is a hand-set expected-utility prior. The sensitivity
+  run with `0.8` was worse (`memory_guided=2151` actions on unbalanced max6
+  versus `1917` at `0.5`), so this should become learned or evidence-derived.
 
 ## Next Recommended Step
 
-1. Push the closed-loop grid harness.
-2. Verify it on Linux in the `habitat` conda environment.
-3. Rerun the Habitat oracle/action smoke with `--max-groups 1`.
-4. Run `ambiguous` and `stale_proxy` challenge smokes, then replace oracle
-   visibility with Grounding-DINO observations and add object relocation/removal
-   pressure.
-5. Run `stale_proxy --query-repeats 2` to check repaired-memory reuse against
-   naive positive counting.
+1. Replace oracle visibility in the closed-loop runner with Grounding-DINO
+   observations and keep the same shared gate.
+2. Add a true occupancy/frontier exploration policy; the current frontier is a
+   deterministic search proxy.
+3. Implement natural Habitat object relocation/removal or a clearly labeled
+   semantic-object hide/replace protocol.
+4. Scale the balanced runs beyond six groups and report confidence intervals.
+5. Estimate `memory_valid_prior` from evidence, covariance, object class, and
+   session age instead of fixing it by hand.
+6. Convert the smoke metrics into SPL-like metrics only after per-action
+   perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
 
