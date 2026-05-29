@@ -58,6 +58,7 @@ The core dual-anchor geometry and planner utilities remain Habitat-independent.
 | Input | Semantic scope | Goal-object id for relocation | Falls back to category scope for existing challenges |
 | Input | Selected group ids | CSV of relocated group ids | Optional explicit replay |
 | Output | Relocated group ids | `scene|category|relocated:<old>-><new>` | Stable and auditable |
+| Output | Relocation distance | `relocation_pair_distance_m` | Euclidean old-memory to new-query pose distance for ranking and audit |
 | Output | Summary rows | Existing row schema | Include challenge and selected group ids |
 | Output | Decision-sensitivity reports | Existing miner outputs | Should expose interior-boundary rows |
 
@@ -68,6 +69,8 @@ The core dual-anchor geometry and planner utilities remain Habitat-independent.
   - existing `--selected-group-ids` for explicit relocated pair replay
 - Runner helpers:
   - build relocated lifecycle groups from base groups;
+  - rank automatic relocated pairs by old-memory to new-query separation before
+    balanced category selection;
   - resolve discovery target semantic ids separately from query target semantic
     ids;
   - use discovery ids only when selecting the memory anchor;
@@ -80,6 +83,9 @@ The core dual-anchor geometry and planner utilities remain Habitat-independent.
    category, and `goal_object:<id>`.
 2. If `challenge == goal_object_relocation`, pair groups within each
    `(scene, category)` bucket where old and new goal-object ids differ.
+   Automatic selection ranks pairs by old-memory to new-query spatial
+   separation, then by stable group id, so `--max-groups` sees harder stale
+   memory cases before near-duplicate pairs.
 3. Each relocated group uses the old group's discovery episode for memory and
    the new group's query episode for current task/fallback.
 4. Memory anchor candidate generation uses the old goal-object semantic id.
@@ -96,12 +102,15 @@ The core dual-anchor geometry and planner utilities remain Habitat-independent.
 | Episode lacks instance id | Relocation builder skips non-`goal_object` ids | Keep category-scope behavior for other challenges |
 | Semantic id not present in simulator category map | Helper falls back to category ids and records tests for valid ids | Start with groups whose ids resolve cleanly |
 | Old and new instances are visually adjacent | Low post-memory fallback cost / boundary edge | Miner reports boundary region and post-memory fallback horizon |
+| Automatic sampling picks easy near pairs | `relocation_pair_distance_m` is low in row payloads | Rank generated pairs by separation before balanced selection |
 | Instance-scoped task is confused with official category ObjectNav | Report challenge name and caveat in docs | Keep official/category benchmark claims separate |
 | Detector misses new target | Summary shows detector miss and failure bucket | Treat as detector-limited, not memory improvement |
 
 ## Verification Plan
 
 - Unit tests for relocated group pairing and group-id format.
+- Unit tests that automatic relocated groups are ranked by old/new spatial
+  separation and record the distance metadata.
 - Unit tests for goal-object semantic id resolution and category fallback.
 - Unit tests that relocation uses old semantic ids for memory anchor generation
   and new semantic ids for query verification.

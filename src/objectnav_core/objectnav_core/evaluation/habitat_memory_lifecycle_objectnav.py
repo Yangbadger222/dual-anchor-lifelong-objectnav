@@ -110,6 +110,7 @@ class LifecycleGroup:
     fallback_rotation: tuple[float, float, float, float]
     memory_instance_id: str | None = None
     target_instance_id: str | None = None
+    relocation_pair_distance_m: float | None = None
 
 
 def plan_lifecycle_query(

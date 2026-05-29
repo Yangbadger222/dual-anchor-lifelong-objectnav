@@ -17,6 +17,7 @@ _CSV_FIELDS: tuple[str, ...] = (
     "run_id",
     "group_id",
     "category",
+    "relocation_pair_distance_m",
     "policy",
     "query_repeat_index",
     "challenge",
@@ -316,6 +317,9 @@ def _candidate_from_row(
         "run_id": summary_path.parent.name,
         "group_id": str(row.get("group_id", "")),
         "category": str(row.get("category", "")),
+        "relocation_pair_distance_m": _optional_rounded_float(
+            row.get("relocation_pair_distance_m")
+        ),
         "policy": str(row.get("policy", "")),
         "query_repeat_index": _int(row.get("query_repeat_index"), default=0),
         "challenge": str(summary.get("challenge", "")),
@@ -378,6 +382,12 @@ def _candidate_from_row(
     }
     candidate["sensitivity_score"] = _sensitivity_score(candidate)
     return candidate
+
+
+def _optional_rounded_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return round(_float(value, default=0.0), 6)
 
 
 def _reliability_components(payload: object) -> dict[str, float]:

@@ -35,6 +35,8 @@ def _lifecycle_group(
     scene_key: str,
     category: str,
     instance_id: str,
+    memory_position: tuple[float, float, float] = (1.0, 0.0, 0.0),
+    fallback_position: tuple[float, float, float] = (2.0, 0.0, 0.0),
 ) -> LifecycleGroup:
     return LifecycleGroup(
         group_id=f"{scene_key}|{category}|{instance_id}",
@@ -43,9 +45,9 @@ def _lifecycle_group(
         instance_id=instance_id,
         discovery_episode=SimpleNamespace(name=f"discover:{instance_id}"),
         query_episode=SimpleNamespace(name=f"query:{instance_id}"),
-        memory_position=(1.0, 0.0, 0.0),
+        memory_position=memory_position,
         memory_rotation=(0.0, 0.0, 0.0, 1.0),
-        fallback_position=(2.0, 0.0, 0.0),
+        fallback_position=fallback_position,
         fallback_rotation=(0.0, 0.0, 0.0, 1.0),
     )
 
@@ -261,6 +263,43 @@ def test_build_goal_object_relocation_groups_pairs_same_scene_category_instances
     assert relocated[0].target_instance_id == "goal_object:2"
 
 
+def test_build_goal_object_relocation_groups_ranks_pairs_by_spatial_separation() -> None:
+    near_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:1",
+        memory_position=(0.0, 0.0, 0.0),
+        fallback_position=(0.0, 0.0, 0.0),
+    )
+    middle_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:2",
+        memory_position=(1.0, 0.0, 0.0),
+        fallback_position=(1.0, 0.0, 0.0),
+    )
+    far_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:3",
+        memory_position=(8.0, 0.0, 0.0),
+        fallback_position=(8.0, 0.0, 0.0),
+    )
+
+    relocated = closed_loop._build_goal_object_relocation_groups(
+        [near_group, middle_group, far_group]
+    )
+
+    assert relocated[0].group_id == (
+        "scene-a.glb|chair|relocated:goal_object:1->goal_object:3"
+    )
+    assert relocated[0].relocation_pair_distance_m == 8.0
+    assert relocated[1].group_id == (
+        "scene-a.glb|chair|relocated:goal_object:3->goal_object:1"
+    )
+    assert relocated[1].relocation_pair_distance_m == 8.0
+
+
 def test_goal_object_relocation_uses_old_memory_and_new_query_semantic_ids() -> None:
     old_group = _lifecycle_group(
         scene_key="scene-a.glb",
@@ -364,11 +403,13 @@ def test_habitat_option_row_records_goal_object_scope_metadata() -> None:
             fallback_verified=True,
             memory_instance_id="goal_object:1",
             target_instance_id="goal_object:2",
+            relocation_pair_distance_m=8.25,
         )
     )
 
     assert row["memory_instance_id"] == "goal_object:1"
     assert row["target_instance_id"] == "goal_object:2"
+    assert row["relocation_pair_distance_m"] == 8.25
 
 
 def test_habitat_option_row_defers_memory_under_ambiguous_match() -> None:

@@ -154,6 +154,25 @@ def test_miner_records_boundary_reliability_interval_gap(
     assert report["aggregate"]["by_reason"]["near_reliability_interval_boundary"] == 1
 
 
+def test_miner_records_relocation_pair_distance(
+    tmp_path: Path,
+) -> None:
+    row = _reliability_sensitive_row(category="chair")
+    row["relocation_pair_distance_m"] = 8.25
+    summary_path = _write_summary(
+        tmp_path / "run" / "summary.json",
+        rows=[row],
+    )
+
+    report = mine_habitat_decision_sensitivity(
+        [summary_path],
+        max_margin_actions=5.0,
+    )
+
+    candidate = report["candidates"][0]
+    assert candidate["relocation_pair_distance_m"] == 8.25
+
+
 def test_decision_sensitivity_cli_writes_json_and_csv(tmp_path: Path) -> None:
     from objectnav_core.cli.mine_habitat_decision_sensitivity import main
 

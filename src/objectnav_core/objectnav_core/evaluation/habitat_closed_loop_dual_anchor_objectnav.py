@@ -157,6 +157,7 @@ class HabitatClosedLoopOptionPlan:
     fallback_from_memory_anchor_source: str = ""
     memory_instance_id: str | None = None
     target_instance_id: str | None = None
+    relocation_pair_distance_m: float | None = None
     memory_evidence: dict[str, Any] | None = None
     fallback_evidence: dict[str, Any] | None = None
     fallback_from_memory_evidence: dict[str, Any] | None = None
@@ -1151,6 +1152,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         getattr(group, "target_instance_id", None)
                                         or getattr(group, "instance_id", None)
                                     ),
+                                    relocation_pair_distance_m=getattr(
+                                        group,
+                                        "relocation_pair_distance_m",
+                                        None,
+                                    ),
                                     memory_action_count=active_memory_route.action_count,
                                     memory_executed_distance_m=(
                                         active_memory_route.executed_distance_m
@@ -1412,6 +1418,11 @@ def make_habitat_closed_loop_option_row(
         "policy": plan.policy,
         "memory_instance_id": plan.memory_instance_id,
         "target_instance_id": plan.target_instance_id,
+        "relocation_pair_distance_m": (
+            None
+            if plan.relocation_pair_distance_m is None
+            else round(float(plan.relocation_pair_distance_m), 6)
+        ),
         "query_repeat_index": int(plan.query_repeat_index),
         "success": bool(success),
         "selected_candidate_types": selected,
@@ -2055,6 +2066,10 @@ def _build_goal_object_relocation_groups(groups: Sequence[Any]) -> list[Any]:
                 new_instance_id = str(getattr(new_group, "instance_id"))
                 if old_instance_id == new_instance_id:
                     continue
+                relocation_pair_distance_m = _relocation_pair_distance_m(
+                    old_group=old_group,
+                    new_group=new_group,
+                )
                 relocated.append(
                     replace(
                         old_group,
@@ -2068,9 +2083,26 @@ def _build_goal_object_relocation_groups(groups: Sequence[Any]) -> list[Any]:
                         fallback_rotation=getattr(new_group, "fallback_rotation"),
                         memory_instance_id=old_instance_id,
                         target_instance_id=new_instance_id,
+                        relocation_pair_distance_m=relocation_pair_distance_m,
                     )
                 )
-    return relocated
+    return sorted(
+        relocated,
+        key=lambda group: (
+            -float(getattr(group, "relocation_pair_distance_m", 0.0) or 0.0),
+            str(getattr(group, "group_id", "")),
+        ),
+    )
+
+
+def _relocation_pair_distance_m(*, old_group: Any, new_group: Any) -> float:
+    return round(
+        math.dist(
+            tuple(float(value) for value in getattr(old_group, "memory_position")),
+            tuple(float(value) for value in getattr(new_group, "fallback_position")),
+        ),
+        6,
+    )
 
 
 def _semantic_ids_for_closed_loop_group(

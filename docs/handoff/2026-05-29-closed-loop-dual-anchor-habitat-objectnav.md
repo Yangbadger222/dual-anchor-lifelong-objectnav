@@ -108,7 +108,10 @@ Implemented foundation:
   `--challenge goal_object_relocation` pairs same-scene, same-category
   `goal_object:<id>` lifecycle groups so discovery memory comes from an old
   instance and query/fallback verification targets a different instance. Rows
-  now record `memory_instance_id` and `target_instance_id` for auditability.
+  now record `memory_instance_id`, `target_instance_id`, and
+  `relocation_pair_distance_m` for auditability. Automatic relocation pair
+  selection ranks by old-memory to new-query pose separation before balanced
+  category selection.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
   oracle/action smoke.
 - A Markdown experiment report for the Grounding-DINO candidate-gate smoke:
@@ -140,14 +143,16 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest 
 git diff --check
 ```
 
-Initial Linux oracle and Grounding-DINO relocation smokes completed and are
-summarized in
+Initial Linux oracle and Grounding-DINO relocation smokes completed before the
+spatial-separation selector and are summarized in
 `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`.
 They selected `bed goal_object:194->goal_object:698` and
 `chair goal_object:13->goal_object:483`, showed stale-memory reuse avoided by
 `memory_guided`, and mined reliability-sensitive rows with `0` counterfactual
 flips. Do not claim detector-event reliability improvement until a broader
-relocation sweep produces a true mined flip.
+relocation sweep produces a true mined flip. Next sweep should use the
+separation-ranked selector and inspect `relocation_pair_distance_m` in rows and
+mined candidates.
 
 ## Files Touched
 
