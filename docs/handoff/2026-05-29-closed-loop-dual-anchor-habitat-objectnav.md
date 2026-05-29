@@ -58,6 +58,12 @@ Implemented foundation:
   confirmed and suppressed detector confirmation events. It is oracle-free and
   intended as an interpretable calibration baseline, not the final learned
   model.
+- Offline Habitat decision-sensitivity mining via
+  `python -m objectnav_core.cli.mine_habitat_decision_sensitivity`. The miner
+  reads existing closed-loop `summary.json` artifacts, recomputes fixed,
+  evidence, and event-posterior expected-utility counterfactuals from saved row
+  components, and ranks rows by close costs, detector-event mixture,
+  reliability delta, decision flips, and hindsight regret.
 - Detector-backed reliability uses detector pixels for current evidence instead
   of borrowing oracle semantic pixel counts. Oracle pixels remain in row payloads
   for audit/gate diagnostics, but must not inflate Grounding-DINO-backed policy
@@ -112,6 +118,7 @@ Not implemented yet:
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
+- `docs/design/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
@@ -128,10 +135,13 @@ Not implemented yet:
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-adaptive-detector-event-reliability.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
+- `docs/superpowers/plans/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
+- `src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py`
 - `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/cli/run_closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_decision_sensitivity.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
@@ -143,6 +153,7 @@ Not implemented yet:
 - `src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py`
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py`
+- `src/objectnav_core/tests/test_habitat_decision_sensitivity.py`
 - `src/objectnav_core/tests/test_habitat_action_follower.py`
 - `src/objectnav_core/tests/test_dual_anchor_geometry.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure.py`
@@ -193,6 +204,14 @@ ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pul
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_trace_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_trace_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_audit_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_audit_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py::test_miner_ranks_close_mixed_event_rows -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py::test_miner_marks_evidence_to_event_posterior_decision_flips -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py::test_decision_sensitivity_cli_writes_json_and_csv -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_decision_sensitivity.py src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py
+git diff --check
 ```
 
 Linux commands run:
@@ -501,6 +520,23 @@ Passed locally before this handoff update:
   `naive_count=4144`. Old stale memory evidence is
   `non_confirmation/shared_gate_success=false`; fallback/repaired anchors are
   detector-positive for all six selected categories.
+- Local decision-sensitivity miner TDD verified the red states first:
+  analyzer tests failed while
+  `objectnav_core.evaluation.habitat_decision_sensitivity` was missing, and
+  the CLI test failed while
+  `objectnav_core.cli.mine_habitat_decision_sensitivity` was missing.
+- Local decision-sensitivity miner focused tests produced `4` passed.
+- Local integration-adjacent suite with the new miner plus Habitat closed-loop
+  objectnav/CLI tests produced `65` passed.
+- Full local core suite after the decision-sensitivity miner update produced
+  `252` passed.
+- `py_compile` passed for
+  `habitat_decision_sensitivity.py` and
+  `mine_habitat_decision_sensitivity.py`.
+- `git diff --check` passed after the decision-sensitivity miner update.
+- Narrow sensitive-pattern scan for the provided Linux password produced no
+  matches in `docs` or `src`. The exact command is omitted so the secret is not
+  recorded in docs.
 
 ## Known Risks
 
@@ -581,26 +617,34 @@ Passed locally before this handoff update:
   quality weights. It is a stronger adaptive baseline because it consumes
   runtime detector-event traces, but it still needs Linux Habitat smokes,
   held-out categories/scenes, and learned calibration before paper claims.
+- The decision-sensitivity miner reproduces only summary-level
+  expected-utility arithmetic. It is useful for selecting targeted follow-up
+  rows, but mined rows are not policy results until rerun in Habitat with the
+  chosen detector/frontier configuration.
 
 ## Next Recommended Step
 
-1. Build or select a weak-evidence, cost-close Grounding-DINO row where
+1. Run
+   `python -m objectnav_core.cli.mine_habitat_decision_sensitivity` on the
+   Linux balanced3/stale balanced3 Grounding-DINO summaries and inspect the
+   highest-ranked weak-evidence, cost-close candidates.
+2. Build or select a weak-evidence, cost-close Grounding-DINO row where
    `event_posterior` can plausibly flip memory-vs-frontier selection.
-2. Continue calibrating the reliability estimator against bucket counts and
+3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-3. Use the decision-sensitive rows as supervision targets for a learned
+4. Use the decision-sensitive rows as supervision targets for a learned
    reliability model before running larger paired comparisons.
-4. Replace oracle/candidate-view reliability evidence with detector/per-action
+5. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-6. Move Grounding-DINO from selected candidate-view verification to larger
+7. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-7. Implement natural Habitat object relocation/removal or a clearly labeled
+8. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-8. Scale the balanced runs beyond six groups and report confidence intervals.
-9. Convert the smoke metrics into SPL-like metrics only after per-action
+9. Scale the balanced runs beyond six groups and report confidence intervals.
+10. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
