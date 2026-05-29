@@ -133,6 +133,54 @@ def predict_memory_validity(
     return _sigmoid(_dot(weights[: len(feature_names)], row) + bias)
 
 
+def split_memory_validity_dataset(
+    dataset: Mapping[str, Any],
+    *,
+    holdout_field: str,
+    holdout_values: Sequence[str],
+) -> dict[str, Any]:
+    examples = _examples(dataset)
+    holdout_value_set = {str(value) for value in holdout_values}
+    train_examples: list[Mapping[str, Any]] = []
+    holdout_examples: list[Mapping[str, Any]] = []
+    for example in examples:
+        value = str(example.get(holdout_field, ""))
+        if value in holdout_value_set:
+            holdout_examples.append(example)
+        else:
+            train_examples.append(example)
+    if not train_examples:
+        raise ValueError("holdout split leaves no training examples")
+    if not holdout_examples:
+        raise ValueError("holdout split has no examples")
+    return {
+        "split": {
+            "holdout_field": str(holdout_field),
+            "holdout_values": sorted(holdout_value_set),
+            "train_example_count": len(train_examples),
+            "holdout_example_count": len(holdout_examples),
+        },
+        "train": _dataset_with_examples(dataset, train_examples),
+        "holdout": _dataset_with_examples(dataset, holdout_examples),
+    }
+
+
+def evaluate_memory_validity_model(
+    dataset: Mapping[str, Any],
+    model: Mapping[str, Any],
+) -> dict[str, Any]:
+    examples = _examples(dataset)
+    labels: list[float] = []
+    predictions: list[float] = []
+    for example in examples:
+        features = example.get("features", {})
+        if not isinstance(features, Mapping):
+            features = {}
+        labels.append(1.0 if bool(example.get("label_memory_valid")) else 0.0)
+        predictions.append(predict_memory_validity(model, features))
+    return _metrics(labels=labels, predictions=predictions)
+
+
 def score_memory_validity_decisions(
     dataset: Mapping[str, Any],
     model: Mapping[str, Any],
@@ -245,6 +293,16 @@ def _examples(dataset: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if not parsed:
         raise ValueError("dataset has no examples")
     return parsed
+
+
+def _dataset_with_examples(
+    dataset: Mapping[str, Any],
+    examples: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    payload = dict(dataset)
+    payload["examples"] = [dict(example) for example in examples]
+    payload["example_count"] = len(examples)
+    return payload
 
 
 def _decision_action_counts(

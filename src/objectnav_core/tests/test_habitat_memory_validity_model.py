@@ -6,8 +6,10 @@ import math
 from pathlib import Path
 
 from objectnav_core.evaluation.habitat_memory_validity_model import (
+    evaluate_memory_validity_model,
     predict_memory_validity,
     score_memory_validity_decisions,
+    split_memory_validity_dataset,
     train_memory_validity_logistic_model,
     write_memory_validity_decision_scores_csv,
 )
@@ -140,6 +142,86 @@ def test_memory_validity_training_cli_writes_model_report(tmp_path: Path) -> Non
     ]
     assert len(report["weights"]) == 2
     assert report["metrics"]["example_count"] == 2
+
+
+def test_memory_validity_dataset_split_holds_out_metadata_values() -> None:
+    split = split_memory_validity_dataset(
+        _heldout_dataset(),
+        holdout_field="category",
+        holdout_values=("toilet",),
+    )
+
+    assert split["split"] == {
+        "holdout_field": "category",
+        "holdout_values": ["toilet"],
+        "train_example_count": 2,
+        "holdout_example_count": 2,
+    }
+    assert {
+        example["category"]
+        for example in split["train"]["examples"]
+    } == {"chair"}
+    assert {
+        example["category"]
+        for example in split["holdout"]["examples"]
+    } == {"toilet"}
+
+
+def test_memory_validity_evaluator_reports_holdout_metrics() -> None:
+    metrics = evaluate_memory_validity_model(
+        _heldout_dataset(),
+        _deterministic_precision_model(),
+    )
+
+    assert metrics["example_count"] == 4
+    assert metrics["positive_count"] == 2
+    assert metrics["negative_count"] == 2
+    assert metrics["accuracy"] == 1.0
+    assert metrics["log_loss"] < 0.1
+    assert metrics["brier_score"] < 0.01
+
+
+def test_memory_validity_training_cli_writes_holdout_evaluation(
+    tmp_path: Path,
+) -> None:
+    from objectnav_core.cli.train_habitat_memory_validity_model import main
+
+    dataset_path = tmp_path / "dataset.json"
+    output_path = tmp_path / "model.json"
+    dataset_path.write_text(json.dumps(_heldout_dataset()), encoding="utf-8")
+
+    assert (
+        main(
+            [
+                str(dataset_path),
+                "--output",
+                str(output_path),
+                "--features",
+                "memory_evidence_detector_precision",
+                "--epochs",
+                "200",
+                "--learning-rate",
+                "0.2",
+                "--l2",
+                "0",
+                "--holdout-field",
+                "category",
+                "--holdout-values",
+                "toilet",
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["split"]["holdout_field"] == "category"
+    assert report["split"]["holdout_values"] == ["toilet"]
+    assert report["split"]["train_example_count"] == 2
+    assert report["split"]["holdout_example_count"] == 2
+    assert report["dataset"]["example_count"] == 2
+    assert report["evaluation"]["train"]["example_count"] == 2
+    assert report["evaluation"]["holdout"]["example_count"] == 2
+    assert report["evaluation"]["holdout"]["accuracy"] == 1.0
 
 
 def test_memory_validity_scorer_reports_learned_decision_flips() -> None:
@@ -276,6 +358,36 @@ def _decision_dataset() -> dict[str, object]:
                     "fallback_action_count": 30,
                     "fallback_from_memory_action_count": 50,
                 },
+            },
+        ],
+    }
+
+
+def _heldout_dataset() -> dict[str, object]:
+    return {
+        "task": "habitat_memory_validity_dataset",
+        "feature_schema": ["memory_evidence_detector_precision"],
+        "example_count": 4,
+        "examples": [
+            {
+                "category": "chair",
+                "label_memory_valid": False,
+                "features": {"memory_evidence_detector_precision": 0.0},
+            },
+            {
+                "category": "chair",
+                "label_memory_valid": True,
+                "features": {"memory_evidence_detector_precision": 1.0},
+            },
+            {
+                "category": "toilet",
+                "label_memory_valid": False,
+                "features": {"memory_evidence_detector_precision": 0.0},
+            },
+            {
+                "category": "toilet",
+                "label_memory_valid": True,
+                "features": {"memory_evidence_detector_precision": 1.0},
             },
         ],
     }

@@ -222,6 +222,25 @@ adding the scorer: focused model/exporter tests produced `8` passed,
 `py_compile` passed for trainer and scorer modules, the full local core suite
 produced `273` passed, and `git diff --check` was clean.
 
+Held-out evaluation support is now local/offline:
+
+- Design: `docs/design/2026-05-30-memory-validity-heldout-evaluation.md`
+- Plan:
+  `docs/superpowers/plans/2026-05-30-memory-validity-heldout-evaluation.md`
+- API:
+  `split_memory_validity_dataset(dataset, holdout_field=..., holdout_values=...)`
+  and `evaluate_memory_validity_model(dataset, model)`
+- CLI extension:
+  `python -m objectnav_core.cli.train_habitat_memory_validity_model <dataset.json> --output <model.json> --holdout-field category --holdout-values toilet`
+
+When holdout flags are used, the trainer fits only on non-holdout examples and
+writes `split`, `evaluation.train`, and `evaluation.holdout` sections. This is
+still offline evidence plumbing; it needs real ranked relocation exports before
+supporting any paper claim. Local verification after adding holdout evaluation:
+focused model/exporter tests produced `11` passed, `py_compile` passed for the
+trainer/model modules, the full local core suite produced `276` passed, and
+`git diff --check` was clean.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -230,6 +249,7 @@ produced `273` passed, and `git diff --check` was clean.
 - `docs/design/2026-05-30-memory-validity-learning-dataset.md`
 - `docs/design/2026-05-30-memory-validity-logistic-baseline.md`
 - `docs/design/2026-05-30-memory-validity-learned-decision-scorer.md`
+- `docs/design/2026-05-30-memory-validity-heldout-evaluation.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
@@ -253,6 +273,7 @@ produced `273` passed, and `git diff --check` was clean.
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
 - `docs/superpowers/plans/2026-05-30-memory-validity-logistic-baseline.md`
 - `docs/superpowers/plans/2026-05-30-memory-validity-learned-decision-scorer.md`
+- `docs/superpowers/plans/2026-05-30-memory-validity-heldout-evaluation.md`
 - `src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py`
 - `src/objectnav_core/objectnav_core/cli/score_habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/cli/train_habitat_memory_validity_model.py`
