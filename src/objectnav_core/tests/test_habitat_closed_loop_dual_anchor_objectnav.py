@@ -319,10 +319,10 @@ def test_habitat_repeated_stale_summary_rewards_repaired_memory_over_naive_count
 
 def test_summary_counts_memory_decision_buckets() -> None:
     rows = [
-        {"policy": "memory_guided", "success": True, "action_count": 69, "executed_distance_m": 8.0, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_shorter_reused"},
-        {"policy": "memory_guided", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_shorter_selected"},
-        {"policy": "memory_guided", "success": True, "action_count": 179, "executed_distance_m": 26.9, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_rescued_frontier_failure"},
-        {"policy": "frontier_only", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_only"},
+        {"policy": "memory_guided", "success": True, "action_count": 69, "executed_distance_m": 8.0, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_shorter_reused", "hindsight_action_regret": 0, "hindsight_distance_regret_m": 0.0},
+        {"policy": "memory_guided", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_shorter_selected", "hindsight_action_regret": 0, "hindsight_distance_regret_m": 0.0},
+        {"policy": "memory_guided", "success": True, "action_count": 179, "executed_distance_m": 26.9, "memory_reused": True, "selected_candidate_types": ["memory"], "memory_decision_bucket": "memory_rescued_frontier_failure", "hindsight_action_regret": 0, "hindsight_distance_regret_m": 0.0},
+        {"policy": "frontier_only", "success": True, "action_count": 125, "executed_distance_m": 19.8, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_only", "hindsight_action_regret": 3, "hindsight_distance_regret_m": 1.5},
     ]
 
     summary = summarize_habitat_closed_loop_rows(rows)
@@ -332,6 +332,20 @@ def test_summary_counts_memory_decision_buckets() -> None:
         "memory_rescued_frontier_failure": 1,
         "memory_shorter_reused": 1,
     }
+
+
+def test_summary_records_hindsight_regret_totals() -> None:
+    rows = [
+        {"policy": "memory_guided", "success": True, "action_count": 115, "executed_distance_m": 16.5, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "valid_memory_wrongly_deferred", "hindsight_action_regret": 46, "hindsight_distance_regret_m": 8.5},
+        {"policy": "memory_guided", "success": True, "action_count": 125, "executed_distance_m": 19.84, "memory_reused": False, "selected_candidate_types": ["frontier"], "memory_decision_bucket": "frontier_shorter_selected", "hindsight_action_regret": 0, "hindsight_distance_regret_m": 0.0},
+    ]
+
+    summary = summarize_habitat_closed_loop_rows(rows)
+
+    metrics = summary["policy_summaries"]["memory_guided"]
+    assert metrics["total_hindsight_action_regret"] == 46
+    assert metrics["mean_hindsight_action_regret"] == 23.0
+    assert metrics["total_hindsight_distance_regret_m"] == 8.5
 
 
 def test_memory_guided_accepted_memory_keeps_expected_utility_frontier_decision() -> None:
@@ -498,6 +512,35 @@ def test_memory_guided_bucket_records_valid_memory_wrongly_deferred() -> None:
 
     assert row["selected_candidate_types"] == ["frontier"]
     assert row["memory_decision_bucket"] == "valid_memory_wrongly_deferred"
+    assert row["hindsight_best_candidate_type"] == "memory"
+    assert row["hindsight_action_regret"] == 46
+    assert row["hindsight_distance_regret_m"] == 8.5
+
+
+def test_memory_guided_hindsight_best_is_frontier_when_frontier_is_shorter() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=139,
+            memory_executed_distance_m=22.45,
+            fallback_action_count=125,
+            fallback_executed_distance_m=19.84,
+            fallback_from_memory_action_count=200,
+            fallback_from_memory_executed_distance_m=30.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            fallback_from_memory_verified=True,
+            memory_decision="memory_first",
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["memory"]
+    assert row["hindsight_best_candidate_type"] == "frontier"
+    assert row["hindsight_action_regret"] == 14
+    assert row["hindsight_distance_regret_m"] == 2.61
 
 
 def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> None:

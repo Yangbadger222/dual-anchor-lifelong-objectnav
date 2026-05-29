@@ -855,6 +855,12 @@ def make_habitat_closed_loop_option_row(
         selected=selected,
         success=bool(success),
     )
+    hindsight = _hindsight_decision_metrics(
+        plan=plan,
+        selected=selected,
+        action_count=int(action_count),
+        distance_m=float(distance),
+    )
     return {
         "group_id": plan.group_id,
         "category": plan.category,
@@ -865,6 +871,9 @@ def make_habitat_closed_loop_option_row(
         "matching_reason": plan.matching_reason,
         "memory_reused": memory_reused,
         "memory_decision_bucket": decision_bucket,
+        "hindsight_best_candidate_type": hindsight["best_candidate_type"],
+        "hindsight_action_regret": hindsight["action_regret"],
+        "hindsight_distance_regret_m": hindsight["distance_regret_m"],
         "stale_repair_recorded": bool(plan.stale_repair),
         "action_count": int(action_count),
         "executed_distance_m": round(float(distance), 6),
@@ -1395,6 +1404,55 @@ def _memory_decision_bucket(
             return "memory_reused_despite_shorter_frontier"
         return "memory_attempt_failed"
     return "other"
+
+
+def _hindsight_decision_metrics(
+    *,
+    plan: HabitatClosedLoopOptionPlan,
+    selected: Sequence[str],
+    action_count: int,
+    distance_m: float,
+) -> dict[str, Any]:
+    feasible: list[tuple[str, int, float]] = []
+    if plan.memory_verified:
+        feasible.append(
+            ("memory", int(plan.memory_action_count), float(plan.memory_executed_distance_m))
+        )
+    if plan.fallback_verified:
+        feasible.append(
+            ("frontier", int(plan.fallback_action_count), float(plan.fallback_executed_distance_m))
+        )
+    fallback_from_memory_verified = (
+        plan.fallback_from_memory_verified
+        if plan.fallback_from_memory_verified is not None
+        else plan.fallback_verified
+    )
+    if fallback_from_memory_verified:
+        feasible.append(
+            (
+                "memory_then_frontier",
+                int(plan.memory_action_count + plan.fallback_from_memory_action_count),
+                float(
+                    plan.memory_executed_distance_m
+                    + plan.fallback_from_memory_executed_distance_m
+                ),
+            )
+        )
+    if not feasible:
+        return {
+            "best_candidate_type": "none",
+            "action_regret": 0,
+            "distance_regret_m": 0.0,
+        }
+    best_type, best_actions, best_distance = min(
+        feasible,
+        key=lambda item: (item[1], item[2], item[0]),
+    )
+    return {
+        "best_candidate_type": best_type,
+        "action_regret": max(0, int(action_count) - int(best_actions)),
+        "distance_regret_m": round(max(0.0, float(distance_m) - best_distance), 6),
+    }
 
 
 def _memory_verified_by_shared_gate(
@@ -1928,6 +1986,29 @@ def _summarize_rows_by_policy(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 for row in policy_rows
             ),
             "memory_decision_buckets": _count_memory_decision_buckets(policy_rows),
+            "total_hindsight_action_regret": sum(
+                int(row.get("hindsight_action_regret", 0) or 0)
+                for row in policy_rows
+            ),
+            "mean_hindsight_action_regret": round(
+                _safe_div(
+                    float(
+                        sum(
+                            int(row.get("hindsight_action_regret", 0) or 0)
+                            for row in policy_rows
+                        )
+                    ),
+                    len(policy_rows),
+                ),
+                6,
+            ),
+            "total_hindsight_distance_regret_m": round(
+                sum(
+                    float(row.get("hindsight_distance_regret_m", 0.0) or 0.0)
+                    for row in policy_rows
+                ),
+                6,
+            ),
         }
     return summaries
 
@@ -1938,6 +2019,10 @@ def _count_memory_decision_buckets(rows: Sequence[dict[str, Any]]) -> dict[str, 
         bucket = str(row.get("memory_decision_bucket", "unknown"))
         counts[bucket] = counts.get(bucket, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _safe_div(numerator: float, denominator: int | float) -> float:
+    return 0.0 if float(denominator) == 0.0 else float(numerator) / float(denominator)
 
 
 def _compare_policy_summaries(summaries: dict[str, Any]) -> dict[str, Any]:
