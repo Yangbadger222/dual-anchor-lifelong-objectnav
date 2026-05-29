@@ -85,6 +85,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
+- `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/superpowers/plans/2026-05-29-closed-loop-dual-anchor-grid-benchmark.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
@@ -127,6 +128,8 @@ python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_closed
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --frontier-mode navmesh_frontier --frontier-probe-count 5'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/navmesh_frontier_oracle_smoke_balanced6_evidence_calibrated_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4'
 ```
 
 Linux commands run:
@@ -246,6 +249,16 @@ Passed locally before this handoff update:
   `36` passed.
 - Full local core tests after the calibration update: `222` passed.
 - `git diff --check` passed after the calibration update.
+- Linux focused Habitat/CLI tests after pulling calibration commit `3bff3c5`:
+  `36` passed.
+- Linux balanced6 oracle navmesh evidence calibration smoke completed
+  successfully. It produced `memory_guided=561`, `naive_count=575`, and
+  `frontier_only=943` actions. `memory_guided` had
+  `total_hindsight_action_regret=0` and buckets
+  `memory_shorter_reused=4`, `memory_rescued_frontier_failure=1`, and
+  `frontier_shorter_selected=1`. The targeted `sofa` row selected memory at
+  `98` actions; the targeted `plant` row still selected frontier at `125`
+  actions.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -320,9 +333,10 @@ Passed locally before this handoff update:
   tiny oracle run and a balanced6 direction check, but it uses
   oracle/Grounding-DINO candidate-view evidence rather than per-action
   perception and remains a transparent heuristic, not learned calibration.
-- The local calibration targets the balanced6 `sofa` wrong-deferral row, but it
-  still needs a Linux balanced6 Habitat rerun before claiming the scene-level
-  behavior changed.
+- The Linux balanced6 calibration smoke fixed the targeted `sofa`
+  wrong-deferral row and kept `plant` frontier-selected, but this is still a
+  tiny oracle navmesh smoke with a small 14-action gain over `naive_count`, not
+  a benchmark claim.
 - The strong-positive floor is a hand-designed guardrail from hindsight-regret
   diagnostics. It should be treated as a calibration baseline, not the final
   algorithm, until it is validated on held-out scenes and replaced or supported
@@ -330,10 +344,7 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Rerun the Linux balanced6 evidence-mode navmesh smoke after pulling the
-   calibration commit and check whether `sofa` changes from
-   `valid_memory_wrongly_deferred` to `memory_shorter_reused` while `plant`
-   remains `frontier_shorter_selected`.
+1. Run the same calibration audit with Grounding-DINO candidate-view evidence.
 2. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
