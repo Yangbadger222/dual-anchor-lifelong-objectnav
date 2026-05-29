@@ -209,6 +209,10 @@ Passed on Linux:
 - Lifecycle summaries now qualify selected episode ids with scene ids because
   HM3D episode ids can repeat across scenes. Repaired `memory_guided` repeat
   rows also report the repaired fallback anchor as `memory_anchor_source`.
+- Search-proxy waypoint sampling now uses the explicit protocol seed, pathfinder
+  bounds, `snap_point`, and `is_navigable` instead of Habitat pathfinder's
+  internal random sampler. Action route sequences use a `720` step budget per
+  route goal.
 
 ## Known Risks
 
@@ -241,6 +245,9 @@ Passed on Linux:
 - Older lifecycle summaries that show selected episode ids such as `["0",
   "0"]` may still be valid; inspect scene ids/group ids before assuming a
   duplicate-selection bug.
+- The first six-category clean action-metrics matrix had two `no_memory` rows
+  where the follower did not emit stop. Treat that run as diagnostic until the
+  deterministic search-proxy sampling and higher action step budget are rerun.
 
 ## Next Recommended Step
 

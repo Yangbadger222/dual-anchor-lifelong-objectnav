@@ -45,6 +45,7 @@ DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO = 1.2
 DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_SEARCH_PROXY_WAYPOINTS = 3
 DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS = 48
+DEFAULT_ACTION_MAX_STEPS_PER_GOAL = 720
 DEFAULT_DETECTOR_PROMPT_MODE = "target"
 DEFAULT_ANCHOR_CANDIDATE_LIMIT = 4
 SUPPORTED_ANCHOR_STRATEGIES: tuple[str, ...] = (
@@ -1118,7 +1119,7 @@ def _cached_action_route_sequence(
             start_position=start,
             start_rotation=rotation,
             goal_positions=goals,
-            max_steps_per_goal=240,
+            max_steps_per_goal=DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
             goal_radius=0.2,
         )
     return cache[key]
@@ -1446,11 +1447,17 @@ def _sample_search_proxy_waypoints(
     attempts: int,
 ) -> list[tuple[float, float, float]]:
     waypoints: list[tuple[float, float, float]] = []
+    bounds_min, bounds_max = sim.pathfinder.get_bounds()
+    min_values = np.asarray(tuple(float(value) for value in bounds_min), dtype=float)
+    max_values = np.asarray(tuple(float(value) for value in bounds_max), dtype=float)
     for _ in range(attempts):
         if len(waypoints) >= waypoint_count:
             break
-        point = _tuple3(sim.pathfinder.get_random_navigable_point())
+        sampled = rng.uniform(min_values, max_values)
+        point = _tuple3(sim.pathfinder.snap_point(sampled))
         if point is None:
+            continue
+        if not sim.pathfinder.is_navigable(point):
             continue
         if any(_distance3(point, existing) < 1.0 for existing in waypoints):
             continue

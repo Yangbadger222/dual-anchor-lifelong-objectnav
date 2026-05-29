@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
+    DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
     LifecycleVerification,
     _active_memory_anchor_source,
     _cached_action_route_sequence,
@@ -13,6 +14,7 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     _choose_lifecycle_fallback_candidate,
     _episode_selection_key,
     _rank_lifecycle_anchor_candidates,
+    _sample_search_proxy_waypoints,
     _stale_memory_verification,
     _lifecycle_row,
     plan_lifecycle_query,
@@ -34,6 +36,29 @@ def _verification(
         evidence_strength=1.0,
         evidence_reason=evidence_type.value,
     )
+
+
+class _DeterministicPathfinder:
+    def __init__(self) -> None:
+        self.random_calls = 0
+
+    def get_bounds(self):
+        return (0.0, 0.0, 0.0), (10.0, 0.0, 10.0)
+
+    def get_random_navigable_point(self):
+        self.random_calls += 1
+        raise AssertionError("search proxy sampling should use the provided rng")
+
+    def snap_point(self, point):
+        return (float(point[0]), 0.0, float(point[2]))
+
+    def is_navigable(self, _point) -> bool:
+        return True
+
+
+class _SearchProxySim:
+    def __init__(self) -> None:
+        self.pathfinder = _DeterministicPathfinder()
 
 
 def test_memory_guided_stops_after_successful_memory_verification() -> None:
@@ -491,11 +516,34 @@ def test_summary_aggregates_optional_action_metrics() -> None:
     assert summary["mode_metrics"]["memory_guided"]["total_executed_distance_m"] == 10.5
 
 
+def test_search_proxy_waypoint_sampling_uses_provided_rng() -> None:
+    first_sim = _SearchProxySim()
+    second_sim = _SearchProxySim()
+
+    first = _sample_search_proxy_waypoints(
+        sim=first_sim,
+        rng=__import__("numpy").random.default_rng(7),
+        waypoint_count=3,
+        attempts=12,
+    )
+    second = _sample_search_proxy_waypoints(
+        sim=second_sim,
+        rng=__import__("numpy").random.default_rng(7),
+        waypoint_count=3,
+        attempts=12,
+    )
+
+    assert first == second
+    assert len(first) == 3
+    assert first_sim.pathfinder.random_calls == 0
+    assert second_sim.pathfinder.random_calls == 0
+
+
 def test_cached_action_route_sequence_preserves_all_route_goals(monkeypatch) -> None:
-    calls: list[tuple[tuple[float, float, float], ...]] = []
+    calls: list[tuple[tuple[tuple[float, float, float], ...], int]] = []
 
     def fake_follow_sequence(**kwargs):
-        calls.append(tuple(kwargs["goal_positions"]))
+        calls.append((tuple(kwargs["goal_positions"]), kwargs["max_steps_per_goal"]))
         return SimpleNamespace(
             action_count=7,
             executed_distance_m=3.5,
@@ -530,7 +578,12 @@ def test_cached_action_route_sequence_preserves_all_route_goals(monkeypatch) -> 
 
     assert route is cached_route
     assert route.action_count == 7
-    assert calls == [((1.0, 0.0, 0.0), (2.0, 0.0, 0.0))]
+    assert calls == [
+        (
+            ((1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+            DEFAULT_ACTION_MAX_STEPS_PER_GOAL,
+        )
+    ]
 
 
 def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:
