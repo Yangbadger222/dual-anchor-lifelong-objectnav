@@ -584,3 +584,65 @@ multi-view: all modes should be allowed to verify the top query goal viewpoints
 and stop at the first detector-positive fallback view. This models fallback
 search more realistically and avoids making a single brittle Habitat viewpoint
 the determinant of every mode's success.
+
+### Shared Multi-View Fallback Results
+
+`tv_monitor` failure slice:
+
+`runs/habitat_usability/habitat_memory_lifecycle_tv_monitor_shared_fallback_stale_pf_v1`
+
+- `memory_guided`: `12/12`, `537.704572 m`
+- `naive_count`: `12/12`, `894.269446 m`
+- `no_memory`: `12/12`, `530.643154 m`
+- detector misses: `0`
+- memory vs naive path reduction: `39.8722%`
+- memory vs no-memory path reduction: `-1.3307%`
+
+The slice confirms the root cause: `tv_monitor` was not globally undetectable.
+The previous fallback chose a brittle single viewpoint; a shared top-K fallback
+view search finds detector-positive `tv_monitor` views. The memory-vs-no-memory
+path delta is slightly negative in this slice because the first stale query pays
+the old memory visit before fallback, while `no_memory` goes straight to the
+shared fallback.
+
+Full six-category stale matrix with shared fallback:
+
+`runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_shared_fallback_v1`
+
+Parameters: full HM3D `val`, `12` groups, two per category,
+`clean,mild,heavy`, `query_repeats=2`, Grounding-DINO tiny, detector-qualified
+memory anchors, shared detector-qualified fallback, synthetic stale relocation.
+
+Result:
+
+- `memory_guided`: `72/72`, `2156.956065 m`
+- `naive_count`: `72/72`, `3392.699022 m`
+- `no_memory`: `72/72`, `2871.725046 m`
+- memory vs naive path reduction: `36.4236%`
+- memory vs no-memory path reduction: `24.8899%`
+- detector misses: `0` for all modes
+
+Trace audit:
+
+- `memory_guided` routes: `36` memory-then-fallback first queries and `36`
+  repaired memory-only repeats.
+- `naive_count` routes: `72` memory-then-fallback attempts.
+- `no_memory` routes: `72` fallback-only attempts.
+- `180/216` trace rows used a non-first fallback viewpoint, which confirms that
+  the earlier single-fallback protocol was overly viewpoint-sensitive.
+- Every `memory|fallback` row satisfied
+  `path_length_m = memory_path_cost_m + fallback_from_memory_path_cost_m`.
+
+Critical interpretation:
+
+- Shared multi-view fallback removes the detector-miss ceiling in this 12-group
+  matrix, but it also changes the benchmark semantics. Use
+  `*_stale_shared_fallback_v1` as the current best geodesic lifecycle protocol,
+  and keep the single-view results as diagnostic history.
+- The strongest current result is now: under detector-qualified memory creation,
+  shared detector-qualified fallback, synthetic stale relocation, and repeated
+  queries, `memory_guided` preserves the same `72/72` success as the shared
+  baselines while reducing path by `36.42%` versus positive-only `naive_count`
+  and `24.89%` versus `no_memory`.
+- This is still not official Habitat SPL. It remains a geodesic/search-proxy
+  lifecycle benchmark and needs action-level validation before paper claims.

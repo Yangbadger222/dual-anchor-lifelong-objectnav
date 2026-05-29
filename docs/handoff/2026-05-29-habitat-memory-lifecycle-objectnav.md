@@ -2,7 +2,7 @@
 
 Date: 2026-05-29  
 Owner: Codex  
-Status: In Progress - Shared Multi-View Fallback Pending Linux Rerun
+Status: In Progress - Shared Multi-View Fallback Matrix Complete
 
 ## Current State
 
@@ -59,6 +59,12 @@ New full-val sanity results:
   memory reduced path by `33.9575%` vs `naive_count` and `7.1708%` vs
   `no_memory`. This is the current main stale-repair result, with the important
   caveat that it is still geodesic/search-proxy and synthetic relocation.
+- Shared-fallback synthetic stale matrix:
+  `runs/habitat_usability/habitat_memory_lifecycle_val_grounding_dino_stale_shared_fallback_v1`
+  produced `memory_guided=72/72`, `naive_count=72/72`, `no_memory=72/72`;
+  memory reduced path by `36.4236%` vs `naive_count` and `24.8899%` vs
+  `no_memory`. This is the current best geodesic lifecycle result, but it
+  changes fallback semantics from single-view to shared multi-view fallback.
 
 Critical accounting fix in progress:
 
@@ -81,7 +87,9 @@ Shared fallback revision now in local code:
 - This is shared by `memory_guided`, `naive_count`, and `no_memory`; it is not a
   memory-only helper.
 - New trace fields: `fallback_anchor_source` and `fallback_strategy`.
-- Linux rerun is still pending for this revision.
+- Linux rerun passed. `180/216` rows in the six-category matrix used a
+  non-first fallback viewpoint, confirming that the earlier protocol was
+  viewpoint-sensitive.
 
 ## Files Touched
 
@@ -183,6 +191,13 @@ Passed on Linux:
   `target_aliases`, all-category prompts, lower thresholds, cap `512/640`, or
   Grounding-DINO base on the clean slice. The next protocol fix is shared
   multi-view fallback, not detector-threshold tuning.
+- Shared-fallback `tv_monitor` slice:
+  `memory_guided=12/12`, `naive_count=12/12`, `no_memory=12/12`; detector misses
+  dropped to `0`.
+- Shared-fallback six-category stale matrix:
+  `memory_guided=72/72`, `naive_count=72/72`, `no_memory=72/72`; memory vs
+  naive path reduction `36.4236%`; memory vs no-memory path reduction
+  `24.8899%`; route-cost audit found `0` bad rows.
 
 ## Known Risks
 
@@ -191,9 +206,9 @@ Passed on Linux:
 - Stale-relocation path numbers from `*_stale_*` runs before the
   post-memory fallback fix should be treated as pre-fix debugging results. Use
   the `*_post_memory_fallback_v1` directories for current stale metrics.
-- The newly implemented shared multi-view fallback changes fallback selection
-  semantics and still needs Linux reruns before its metrics can replace the
-  corrected single-fallback numbers.
+- Shared multi-view fallback changes fallback selection semantics. It is fairer
+  than single-view fallback because all modes share it, but results should be
+  reported separately from the older single-view matrix.
 - `search_proxy` is a deterministic proxy for no-memory search cost, not a
   learned or frontier closed-loop policy.
 - `val_mini` only forms three strict same-instance lifecycle groups:
@@ -212,13 +227,11 @@ Passed on Linux:
 
 ## Next Recommended Step
 
-1. Pull and rerun the shared multi-view fallback revision on Linux, starting
-   with the `tv_monitor` failure slice and then the full corrected stale matrix.
-2. Replace teleport-to-viewpoint with an action-level Habitat follower and
+1. Replace teleport-to-viewpoint with an action-level Habitat follower and
    report SPL-like metrics.
-3. Scale the stale-relocation matrix beyond 12 groups after detector robustness
+2. Scale the stale-relocation matrix beyond 12 groups after detector robustness
    is better understood.
-4. Only after those pass, compare against stronger semantic-map and frontier
+3. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor
