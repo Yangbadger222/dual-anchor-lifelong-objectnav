@@ -110,6 +110,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
+- `docs/experiments/2026-05-29-habitat-detector-confirmation-ablation-balanced3.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-stale-detector-pixels-smoke.md`
@@ -408,6 +409,15 @@ Passed locally before this handoff update:
   Memory evidence and post-memory fallback evidence were
   `confirmed_detector_positive_mask`; no detector false confirmations were
   counted in this smoke.
+- Linux paired detector-confirmation balanced3 ablation completed. The
+  `single_frame` run reproduced the earlier action profile
+  (`memory_guided=347`, `frontier_only=357`, `naive_count=347`) and retained a
+  `plant` memory false confirmation. The `multiview` run removed the false
+  confirmation and reported `detector_confirmation_counts={'confirmed': 7}`,
+  but frontier-only failed on two categories and rose to `1016` actions
+  (`memory_guided=354`, `naive_count=354`). Two invalid multiview command
+  attempts failed before producing metrics and are documented as excluded in the
+  experiment report.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -493,10 +503,10 @@ Passed locally before this handoff update:
   reported alongside detector audit counts; do not treat detector-positive alone
   as proof of real target localization in simulation.
 - Multiview detector confirmation has one Linux 1-group smoke. It confirmed two
-  positive evidence sources and did not exercise suppressed-positive counts.
-  Expect it to suppress some true positives as well as false confirmations;
-  paired `single_frame`/`multiview` ablations are required before treating it as
-  an improvement.
+  positive evidence sources and a paired balanced3 ablation. It removed the
+  observed plant false confirmation, but it also made frontier-only much less
+  reliable. This should motivate adaptive or learned detector reliability, not a
+  fixed claim that stricter confirmation is always better.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -508,10 +518,10 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Run paired `single_frame`/`multiview` balanced detector ablations before
-   claiming detector-backed memory improvements.
-2. Add a targeted weak-positive detector case so suppressed-positive summary
+1. Add a targeted weak-positive detector case so suppressed-positive summary
    counts are exercised in runtime artifacts, not just unit tests.
+2. Design an adaptive or learned detector reliability model that can trade off
+   multiview precision against frontier recall instead of using one global gate.
 3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
 4. Continue calibrating the reliability estimator against bucket counts and
