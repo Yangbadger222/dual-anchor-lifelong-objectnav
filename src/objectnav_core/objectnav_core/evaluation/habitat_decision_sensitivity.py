@@ -9,6 +9,7 @@ from typing import Any, Sequence
 DEFAULT_MAX_MARGIN_ACTIONS = 5.0
 DEFAULT_MIN_DETECTOR_EVENT_COUNT = 1
 DEFAULT_MIN_RELIABILITY_DELTA = 0.1
+DEFAULT_MAX_RELIABILITY_INTERVAL_GAP = 0.05
 DEFAULT_POLICIES: tuple[str, ...] = ("memory_guided",)
 
 _CSV_FIELDS: tuple[str, ...] = (
@@ -35,6 +36,10 @@ _CSV_FIELDS: tuple[str, ...] = (
     "decision_boundary_reliability_raw",
     "decision_boundary_region",
     "reliability_delta",
+    "reliability_interval_min",
+    "reliability_interval_max",
+    "boundary_reliability_interval_gap",
+    "boundary_reliability_interval_position",
     "expected_memory_first_action_count",
     "expected_frontier_first_action_count",
     "event_posterior_expected_memory_first_action_count",
@@ -63,6 +68,7 @@ def mine_habitat_decision_sensitivity(
     max_margin_actions: float = DEFAULT_MAX_MARGIN_ACTIONS,
     min_detector_event_count: int = DEFAULT_MIN_DETECTOR_EVENT_COUNT,
     min_reliability_delta: float = DEFAULT_MIN_RELIABILITY_DELTA,
+    max_reliability_interval_gap: float = DEFAULT_MAX_RELIABILITY_INTERVAL_GAP,
     policies: Sequence[str] = DEFAULT_POLICIES,
     top_k: int | None = None,
 ) -> dict[str, Any]:
@@ -102,6 +108,7 @@ def mine_habitat_decision_sensitivity(
                     max_margin_actions=max_margin_actions,
                     min_detector_event_count=min_detector_event_count,
                     min_reliability_delta=min_reliability_delta,
+                    max_reliability_interval_gap=max_reliability_interval_gap,
                 )
             except (TypeError, ValueError, KeyError) as exc:
                 warning_count += 1
@@ -129,6 +136,10 @@ def mine_habitat_decision_sensitivity(
             "max_margin_actions": round(float(max_margin_actions), 6),
             "min_detector_event_count": int(min_detector_event_count),
             "min_reliability_delta": round(float(min_reliability_delta), 6),
+            "max_reliability_interval_gap": round(
+                float(max_reliability_interval_gap),
+                6,
+            ),
             "policies": sorted(policy_filter),
             "top_k": top_k,
         },
@@ -185,6 +196,7 @@ def _candidate_from_row(
     max_margin_actions: float,
     min_detector_event_count: int,
     min_reliability_delta: float,
+    max_reliability_interval_gap: float,
 ) -> dict[str, Any] | None:
     memory_actions = _require_int(row, "memory_action_count")
     frontier_actions = _require_int(row, "fallback_action_count")
@@ -270,10 +282,24 @@ def _candidate_from_row(
         frontier_actions,
     )
     boundary_region = _decision_boundary_region(boundary_raw)
+    reliability_interval_min = min(evidence_reliability, event_posterior_reliability)
+    reliability_interval_max = max(evidence_reliability, event_posterior_reliability)
+    boundary_interval_gap = _boundary_reliability_interval_gap(
+        boundary_raw,
+        reliability_interval_min,
+        reliability_interval_max,
+    )
+    boundary_interval_position = _boundary_reliability_interval_position(
+        boundary_raw,
+        reliability_interval_min,
+        reliability_interval_max,
+    )
     reasons = _sensitivity_reasons(
         decision_margin=decision_margin,
         max_margin_actions=max_margin_actions,
         decision_boundary_region=boundary_region,
+        boundary_reliability_interval_gap=boundary_interval_gap,
+        max_reliability_interval_gap=max_reliability_interval_gap,
         detector_event_count=detector_event_count,
         min_detector_event_count=min_detector_event_count,
         confirmed_weight=confirmed_weight,
@@ -313,6 +339,10 @@ def _candidate_from_row(
         ),
         "decision_boundary_region": boundary_region,
         "reliability_delta": reliability_delta,
+        "reliability_interval_min": round(reliability_interval_min, 6),
+        "reliability_interval_max": round(reliability_interval_max, 6),
+        "boundary_reliability_interval_gap": boundary_interval_gap,
+        "boundary_reliability_interval_position": boundary_interval_position,
         "expected_memory_first_action_count": round(actual_expected_memory, 6),
         "expected_frontier_first_action_count": round(expected_frontier, 6),
         "event_posterior_expected_memory_first_action_count": round(
@@ -467,11 +497,41 @@ def _decision_boundary_region(boundary: float | None) -> str:
     return "reliability_sensitive"
 
 
+def _boundary_reliability_interval_gap(
+    boundary: float | None,
+    reliability_interval_min: float,
+    reliability_interval_max: float,
+) -> float | None:
+    if boundary is None:
+        return None
+    if boundary < reliability_interval_min:
+        return round(float(reliability_interval_min) - float(boundary), 6)
+    if boundary > reliability_interval_max:
+        return round(float(boundary) - float(reliability_interval_max), 6)
+    return 0.0
+
+
+def _boundary_reliability_interval_position(
+    boundary: float | None,
+    reliability_interval_min: float,
+    reliability_interval_max: float,
+) -> str:
+    if boundary is None:
+        return "no_boundary"
+    if boundary < reliability_interval_min:
+        return "below_interval"
+    if boundary > reliability_interval_max:
+        return "above_interval"
+    return "inside_interval"
+
+
 def _sensitivity_reasons(
     *,
     decision_margin: float,
     max_margin_actions: float,
     decision_boundary_region: str,
+    boundary_reliability_interval_gap: float | None,
+    max_reliability_interval_gap: float,
     detector_event_count: float,
     min_detector_event_count: int,
     confirmed_weight: float,
@@ -488,6 +548,11 @@ def _sensitivity_reasons(
         reasons.append("close_expected_costs")
     if decision_boundary_region == "reliability_sensitive":
         reasons.append("reliability_sensitive_boundary")
+    if (
+        boundary_reliability_interval_gap is not None
+        and boundary_reliability_interval_gap <= float(max_reliability_interval_gap)
+    ):
+        reasons.append("near_reliability_interval_boundary")
     if hindsight_regret > 0:
         reasons.append("hindsight_regret")
     if (
@@ -521,6 +586,11 @@ def _sensitivity_score(candidate: dict[str, Any]) -> float:
         score += 100.0
     if candidate["decision_boundary_region"] == "reliability_sensitive":
         score += 50.0
+    gap = candidate.get("boundary_reliability_interval_gap")
+    if gap is not None:
+        score += 60.0 / (1.0 + 20.0 * float(gap))
+    if "near_reliability_interval_boundary" in candidate["sensitivity_reasons"]:
+        score += 35.0
     score += 2.0 * float(candidate["hindsight_action_regret"])
     return round(score, 6)
 

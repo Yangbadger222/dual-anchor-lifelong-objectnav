@@ -80,6 +80,9 @@ Each candidate row should include:
 - unclamped decision-boundary reliability and boundary region
   (`reliability_sensitive`, `memory_always_no_worse`,
   `frontier_requires_perfect_memory`, or `no_post_memory_fallback`);
+- distance from the evidence/event-posterior reliability interval to the
+  decision boundary, so rows just outside the flippable region can be targeted
+  deliberately;
 - detector event counts, event posterior, confirmed/suppressed weights;
 - hindsight regret fields;
 - a ranking score and short sensitivity reasons.
@@ -99,8 +102,8 @@ Each candidate row should include:
    `(0, 1)` are genuinely reliability-sensitive; boundaries at or outside the
    interval mean one side dominates for all valid reliability estimates.
 6. Score rows using reliability-sensitive boundaries, close expected costs,
-   reliability deltas, mixed detector events, counterfactual decision flips, and
-   hindsight regret.
+   reliability deltas, mixed detector events, counterfactual decision flips,
+   boundary-to-reliability-interval gap, and hindsight regret.
 7. Write a sorted JSON report and optional CSV table.
 
 ## Failure Modes

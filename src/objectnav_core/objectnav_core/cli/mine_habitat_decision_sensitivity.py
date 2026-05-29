@@ -7,6 +7,7 @@ from typing import Sequence
 
 from objectnav_core.evaluation.habitat_decision_sensitivity import (
     DEFAULT_MAX_MARGIN_ACTIONS,
+    DEFAULT_MAX_RELIABILITY_INTERVAL_GAP,
     DEFAULT_MIN_DETECTOR_EVENT_COUNT,
     DEFAULT_MIN_RELIABILITY_DELTA,
     DEFAULT_POLICIES,
@@ -45,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_MIN_RELIABILITY_DELTA,
     )
+    parser.add_argument(
+        "--max-reliability-interval-gap",
+        type=float,
+        default=DEFAULT_MAX_RELIABILITY_INTERVAL_GAP,
+    )
     parser.add_argument("--policies", default=",".join(DEFAULT_POLICIES))
     return parser
 
@@ -56,6 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_margin_actions=args.max_margin_actions,
         min_detector_event_count=args.min_detector_event_count,
         min_reliability_delta=args.min_reliability_delta,
+        max_reliability_interval_gap=args.max_reliability_interval_gap,
         policies=_split_csv(args.policies),
         top_k=args.top_k,
     )

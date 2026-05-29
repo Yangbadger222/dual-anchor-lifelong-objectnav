@@ -745,3 +745,25 @@ Result:
   `memory_action_count=63`, `fallback_action_count=63`,
   `fallback_from_memory_action_count=2`, and
   `decision_boundary_reliability_raw=1.0`.
+
+## 2026-05-29 Interval-Gap Miner Update
+
+The decision-sensitivity miner now records how far the reliability decision
+boundary is from the interval spanned by evidence reliability and
+event-posterior reliability.
+
+New fields:
+
+- `reliability_interval_min`
+- `reliability_interval_max`
+- `boundary_reliability_interval_gap`
+- `boundary_reliability_interval_position`
+
+New reason:
+
+- `near_reliability_interval_boundary`
+
+This directly addresses the targeted sofa replay failure: the row had mixed
+events and a small action margin, but the decision boundary was just above the
+reliability interval. The next broad mining pass should prioritize rows with a
+small interval gap, not merely rows with small action margins.

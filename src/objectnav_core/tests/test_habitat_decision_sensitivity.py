@@ -131,6 +131,29 @@ def test_miner_marks_reliability_sensitive_decision_boundaries(
     }
 
 
+def test_miner_records_boundary_reliability_interval_gap(
+    tmp_path: Path,
+) -> None:
+    summary_path = _write_summary(
+        tmp_path / "run" / "summary.json",
+        rows=[_boundary_interval_gap_row()],
+    )
+
+    report = mine_habitat_decision_sensitivity(
+        [summary_path],
+        max_margin_actions=5.0,
+    )
+
+    candidate = report["candidates"][0]
+    assert candidate["decision_boundary_reliability_raw"] == 1.0
+    assert candidate["reliability_interval_min"] == 0.819916
+    assert candidate["reliability_interval_max"] == 0.96
+    assert candidate["boundary_reliability_interval_gap"] == 0.04
+    assert candidate["boundary_reliability_interval_position"] == "above_interval"
+    assert "near_reliability_interval_boundary" in candidate["sensitivity_reasons"]
+    assert report["aggregate"]["by_reason"]["near_reliability_interval_boundary"] == 1
+
+
 def test_decision_sensitivity_cli_writes_json_and_csv(tmp_path: Path) -> None:
     from objectnav_core.cli.mine_habitat_decision_sensitivity import main
 
@@ -276,6 +299,41 @@ def _reliability_sensitive_row(*, category: str = "sofa") -> dict[str, object]:
                     "detector_event_count": 4.0,
                     "detector_event_posterior": 0.214545,
                     "detector_event_suppressed_weight": 4.0,
+                    "matching": 1.0,
+                    "recency": 1.0,
+                    "transform_covariance": 0.909091,
+                },
+            },
+        }
+    )
+    return row
+
+
+def _boundary_interval_gap_row(*, category: str = "sofa") -> dict[str, object]:
+    row = _close_mixed_event_row(category=category)
+    row.update(
+        {
+            "memory_decision": "frontier_first",
+            "memory_decision_bucket": "frontier_shorter_selected",
+            "memory_valid_prior": 0.819916,
+            "memory_action_count": 63,
+            "fallback_action_count": 63,
+            "fallback_from_memory_action_count": 2,
+            "expected_memory_first_action_count": 63.360168,
+            "expected_frontier_first_action_count": 63.0,
+            "hindsight_best_candidate_type": "frontier",
+            "memory_reliability": {
+                "mode": "event_posterior",
+                "value": 0.819916,
+                "reason": "event_posterior_weighted",
+                "components": {
+                    "base_prior": 0.5,
+                    "category_prior": 0.82,
+                    "current_evidence": 0.98,
+                    "detector_event_confirmed_weight": 7.517547,
+                    "detector_event_count": 6.0,
+                    "detector_event_posterior": 0.705301,
+                    "detector_event_suppressed_weight": 2.85,
                     "matching": 1.0,
                     "recency": 1.0,
                     "transform_covariance": 0.909091,
