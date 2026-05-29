@@ -148,7 +148,7 @@
   Then run:
   `git diff --check`
 
-- [ ] **Step 5: Optional artifact smoke**
+- [x] **Step 5: Optional artifact smoke**
 
   If summary artifacts are available locally or through an approved Linux
   command, run the CLI on existing balanced3 event-posterior summaries and

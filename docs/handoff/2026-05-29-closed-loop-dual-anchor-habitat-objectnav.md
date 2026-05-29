@@ -126,6 +126,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/experiments/2026-05-29-habitat-detector-confirmation-ablation-balanced3.md`
+- `docs/experiments/2026-05-29-habitat-decision-sensitivity-mining-balanced3.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-balanced3-comparison.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-grounding-dino-smoke.md`
 - `docs/experiments/2026-05-29-habitat-event-posterior-stale-balanced3-comparison.md`
@@ -226,6 +227,8 @@ HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m o
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_stable_balanced6_eu_p05_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/grounding_dino_candidate_gate_6cat_stale_repeats2_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --challenge stale_proxy --query-repeats 2
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/grounding_dino_candidate_gate_6cat_stable_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --challenge stable --query-repeats 1
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_decision_sensitivity.py -q
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.mine_habitat_decision_sensitivity runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_balanced3_event_posterior_v1/summary.json runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_balanced3_stale_event_posterior_v1/summary.json --output runs/habitat_closed_loop_dual_anchor/decision_sensitivity_balanced3_event_posterior_mining_v1/report.json --csv-output runs/habitat_closed_loop_dual_anchor/decision_sensitivity_balanced3_event_posterior_mining_v1/candidates.csv --top-k 20
 ```
 
 ## Verification
@@ -537,6 +540,16 @@ Passed locally before this handoff update:
 - Narrow sensitive-pattern scan for the provided Linux password produced no
   matches in `docs` or `src`. The exact command is omitted so the secret is not
   recorded in docs.
+- Linux pulled commit `2476009` and the focused decision-sensitivity miner tests
+  produced `4` passed in conda env `habitat`.
+- Linux decision-sensitivity mining over stable and stale balanced3
+  Grounding-DINO `event_posterior` summaries completed successfully at
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_balanced3_event_posterior_mining_v1`.
+  The report mined `2` summaries, scanned `9` memory-guided rows, reported `9`
+  candidate rows, and found `0` counterfactual decision flips with `0`
+  warnings. Top rows were stable `chair` repeat 0
+  (`margin=2.050443`, `0.96 -> 0.683481`) and stale `chair` repeat 1
+  (`margin=3.808479`, `0.96 -> 0.730507`).
 
 ## Known Risks
 
@@ -621,13 +634,14 @@ Passed locally before this handoff update:
   expected-utility arithmetic. It is useful for selecting targeted follow-up
   rows, but mined rows are not policy results until rerun in Habitat with the
   chosen detector/frontier configuration.
+- The first balanced3 mining smoke found no counterfactual decision flips.
+  This reinforces that the existing balanced3 slices are still too stable for
+  policy-gain claims.
 
 ## Next Recommended Step
 
-1. Run
-   `python -m objectnav_core.cli.mine_habitat_decision_sensitivity` on the
-   Linux balanced3/stale balanced3 Grounding-DINO summaries and inspect the
-   highest-ranked weak-evidence, cost-close candidates.
+1. Mine a larger set of balanced6/stale/per-action summaries for
+   weak-evidence, cost-close candidates beyond the current balanced3 pair.
 2. Build or select a weak-evidence, cost-close Grounding-DINO row where
    `event_posterior` can plausibly flip memory-vs-frontier selection.
 3. Continue calibrating the reliability estimator against bucket counts and
