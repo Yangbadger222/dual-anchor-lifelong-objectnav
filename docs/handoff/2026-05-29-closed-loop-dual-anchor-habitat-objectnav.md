@@ -56,6 +56,12 @@ Implemented foundation:
   of borrowing oracle semantic pixel counts. Oracle pixels remain in row payloads
   for audit/gate diagnostics, but must not inflate Grounding-DINO-backed policy
   reliability.
+- Route observation mode via `--route-observation-mode option_end|per_action`.
+  `option_end` preserves previous candidate/probe endpoint checks. `per_action`
+  records GreedyGeodesic poses after each action, verifies them in execution
+  order, and truncates memory/fallback/navmesh-probe route cost at the first
+  positive shared gate. Initial stale-proxy memory attempts are explicitly kept
+  non-confirming and untruncated.
 - Row-level `memory_decision_bucket` and per-policy bucket counts for separating
   memory wins, frontier wins, harmful memory avoided, valid memory wrongly
   deferred, naive reuse, and frontier-only rows.
@@ -74,8 +80,9 @@ Implemented foundation:
 
 Not implemented yet:
 
-- Grounding-DINO per-step Habitat closed-loop perception. The current detector
-  path verifies selected memory/fallback candidate views only.
+- True closed-loop per-step replanning. The current `per_action` mode observes
+  poses along a precomputed option route and can stop/charge early, but it does
+  not yet choose a new action after every observation.
 - True Habitat frontier mapping/exploration policy.
 - Natural object relocation/removal in Habitat.
 - SPL-like action-level ObjectNav metrics for memory-vs-frontier decisions.
@@ -98,6 +105,7 @@ Not implemented yet:
 - `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/cli/run_closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py`
+- `src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py`
 - `src/objectnav_core/objectnav_core/evaluation/closed_loop_dual_anchor_benchmark.py`
 - `src/objectnav_core/objectnav_core/geometry/dual_anchor.py`
 - `src/objectnav_core/objectnav_core/evaluation/dual_anchor_pressure.py`
@@ -107,6 +115,7 @@ Not implemented yet:
 - `src/objectnav_core/tests/test_closed_loop_dual_anchor_cli.py`
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py`
+- `src/objectnav_core/tests/test_habitat_action_follower.py`
 - `src/objectnav_core/tests/test_dual_anchor_geometry.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure.py`
 - `src/objectnav_core/tests/test_dual_anchor_pressure_cli.py`
@@ -140,6 +149,14 @@ ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source 
 PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_detector_reliability_uses_detector_pixels_not_oracle_pixels -q
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_action_follower.py::test_follow_greedy_geodesic_route_records_per_action_observations src/objectnav_core/tests/test_habitat_action_follower.py::test_follow_greedy_geodesic_route_sequence_preserves_waypoint_costs -q
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_habitat_closed_loop_preflight_records_route_observation_mode src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_per_action_route_observation_truncates_at_first_positive_step -q
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py::test_habitat_closed_loop_cli_preflight_accepts_route_observation_mode -q
+PYTHONPATH=src/objectnav_core pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py::test_stale_proxy_initial_memory_route_is_not_truncated_by_per_action_positive -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_action_follower.py src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+git diff --check
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ```
 
@@ -291,6 +308,18 @@ Passed locally before this handoff update:
   actions. Repeat-0 stale memories had `current_evidence=0.15`,
   `memory_valid_prior=0.225`, and reason `matching_no_current_observation`;
   repaired detector-positive memories could return to prior `0.96` on repeat 1.
+- Local per-action route observation red tests failed first because route
+  observations, the CLI/preflight argument, and `_observe_route_until_positive`
+  were missing. After implementation, focused route/CLI tests produced `46`
+  passed.
+- A stale-proxy per-action accounting regression failed first because
+  `_observe_initial_memory_route` was missing, then because positive upstream
+  evidence was still accepted. The final helper keeps initial stale memory
+  routes untruncated and non-confirming.
+- Full local core tests after per-action route observation mode: `229` passed.
+- `py_compile` for `habitat_action_follower.py`,
+  `habitat_closed_loop_dual_anchor_objectnav.py`, and the Habitat CLI passed.
+- `git diff --check` passed after the per-action route observation update.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -328,10 +357,9 @@ Passed locally before this handoff update:
 
 - The current pressure runner is deterministic synthetic math, not Habitat.
 - The closed-loop grid harness is option-level and config-truth, not Habitat.
-- The Habitat closed-loop runner is currently option-level. It executes real
-  Habitat GreedyGeodesic routes and can use Grounding-DINO at selected
-  memory/fallback candidate views, but it does not yet run per-action perception
-  or true frontier mapping.
+- The Habitat closed-loop runner now has optional per-action route observation
+  on precomputed GreedyGeodesic options, but it is still not a stepwise policy
+  that replans after each frame and it still lacks true frontier mapping.
 - `navmesh_frontier` is target-agnostic with respect to sampled route goals, but
   it is still a navmesh probe approximation, not an occupancy frontier built
   from depth observations. It has only been verified locally with unit tests and
@@ -370,8 +398,9 @@ Passed locally before this handoff update:
   tiny oracle navmesh smoke with a small 14-action gain over `naive_count`, not
   a benchmark claim.
 - The Grounding-DINO candidate-view calibration smoke preserved the same bucket
-  pattern with an 11-action gain over `naive_count`, but it still verifies only
-  selected candidate views and does not replace per-action perception.
+  pattern with an 11-action gain over `naive_count`. Per-action route
+  observation mode is now implemented locally but still needs Linux Habitat
+  smoke verification and larger detector-backed runs.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -383,21 +412,23 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Push the per-action route observation slice, then run Linux focused tests and
+   a small `--route-observation-mode per_action` Habitat smoke.
+2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-2. Continue calibrating the reliability estimator against bucket counts and
+3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-3. Replace oracle/candidate-view reliability evidence with detector/per-action
+4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-5. Move Grounding-DINO from selected candidate-view verification to per-action
-   observation and stopping decisions.
-6. Implement natural Habitat object relocation/removal or a clearly labeled
+6. Move Grounding-DINO from selected candidate-view verification to larger
+   per-action observation and stopping experiments.
+7. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-7. Scale the balanced runs beyond six groups and report confidence intervals.
-8. Convert the smoke metrics into SPL-like metrics only after per-action
+8. Scale the balanced runs beyond six groups and report confidence intervals.
+9. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

@@ -147,3 +147,26 @@ def test_habitat_closed_loop_cli_preflight_accepts_memory_reliability_mode(
 
     assert exit_code == 0
     assert summary["memory_reliability_mode"] == "evidence"
+
+
+def test_habitat_closed_loop_cli_preflight_accepts_route_observation_mode(
+    tmp_path,
+) -> None:
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--route-observation-mode",
+            "per_action",
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert summary["route_observation_mode"] == "per_action"

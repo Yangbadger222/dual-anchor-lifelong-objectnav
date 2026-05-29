@@ -7,12 +7,22 @@ import numpy as np
 
 
 @dataclass(frozen=True)
+class HabitatRouteObservation:
+    action_index: int
+    action: str
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float, float]
+    cumulative_distance_m: float
+
+
+@dataclass(frozen=True)
 class HabitatActionRoute:
     actions: tuple[str, ...]
     reached_stop: bool
     final_position: tuple[float, float, float]
     executed_distance_m: float
     final_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    observations: tuple[HabitatRouteObservation, ...] = ()
 
     @property
     def action_count(self) -> int:
@@ -47,6 +57,7 @@ def follow_greedy_geodesic_route(
         right_key="turn_right",
     )
     actions: list[str] = []
+    observations: list[HabitatRouteObservation] = []
     reached_stop = False
     previous_position = _agent_position(agent)
     executed_distance = 0.0
@@ -63,6 +74,15 @@ def follow_greedy_geodesic_route(
         current_position = _agent_position(agent)
         executed_distance += _distance3(previous_position, current_position)
         previous_position = current_position
+        observations.append(
+            HabitatRouteObservation(
+                action_index=len(actions) - 1,
+                action=action_name,
+                position=tuple(float(value) for value in current_position),
+                rotation=_agent_rotation(agent),
+                cumulative_distance_m=round(executed_distance, 6),
+            )
+        )
 
     return HabitatActionRoute(
         actions=tuple(actions),
@@ -70,6 +90,7 @@ def follow_greedy_geodesic_route(
         final_position=tuple(float(value) for value in previous_position),
         executed_distance_m=round(executed_distance, 6),
         final_rotation=_agent_rotation(agent),
+        observations=tuple(observations),
     )
 
 
@@ -87,6 +108,7 @@ def follow_greedy_geodesic_route_sequence(
     if not goal_positions:
         raise ValueError("goal_positions must contain at least one goal")
     actions: list[str] = []
+    observations: list[HabitatRouteObservation] = []
     executed_distance = 0.0
     reached_stop = True
     current_position = tuple(float(value) for value in start_position)
@@ -103,7 +125,22 @@ def follow_greedy_geodesic_route_sequence(
             goal_radius=goal_radius,
             agent_id=agent_id,
         )
+        action_offset = len(actions)
+        distance_offset = executed_distance
         actions.extend(segment.actions)
+        observations.extend(
+            HabitatRouteObservation(
+                action_index=action_offset + observation.action_index,
+                action=observation.action,
+                position=observation.position,
+                rotation=observation.rotation,
+                cumulative_distance_m=round(
+                    distance_offset + observation.cumulative_distance_m,
+                    6,
+                ),
+            )
+            for observation in segment.observations
+        )
         executed_distance += float(segment.executed_distance_m)
         reached_stop = reached_stop and bool(segment.reached_stop)
         current_position = segment.final_position
@@ -117,6 +154,7 @@ def follow_greedy_geodesic_route_sequence(
         final_position=current_position,
         executed_distance_m=round(executed_distance, 6),
         final_rotation=current_rotation,
+        observations=tuple(observations),
     )
 
 

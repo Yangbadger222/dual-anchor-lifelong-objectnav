@@ -90,6 +90,33 @@ def test_follow_greedy_geodesic_route_steps_until_stop() -> None:
     assert sim.stepped_actions == ["move_forward", "turn_left"]
 
 
+def test_follow_greedy_geodesic_route_records_per_action_observations() -> None:
+    sim = _FakeSim()
+
+    route = follow_greedy_geodesic_route(
+        habitat_sim=_FakeHabitatSim(),
+        sim=sim,
+        start_position=(1.0, 0.0, 2.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        goal_position=(2.0, 0.0, 2.0),
+        max_steps=10,
+        goal_radius=0.2,
+    )
+
+    assert [
+        (
+            observation.action_index,
+            observation.action,
+            observation.position,
+            observation.cumulative_distance_m,
+        )
+        for observation in route.observations
+    ] == [
+        (0, "move_forward", (1.25, 0.0, 2.0), 0.25),
+        (1, "turn_left", (1.5, 0.0, 2.0), 0.5),
+    ]
+
+
 def test_follow_greedy_geodesic_route_sequence_preserves_waypoint_costs() -> None:
     sim = _FakeSim()
 
@@ -107,6 +134,12 @@ def test_follow_greedy_geodesic_route_sequence_preserves_waypoint_costs() -> Non
     assert route.actions == ("move_forward", "turn_left", "move_forward", "turn_left")
     assert route.action_count == 4
     assert route.executed_distance_m == 1.0
+    assert [observation.action_index for observation in route.observations] == [
+        0,
+        1,
+        2,
+        3,
+    ]
 
 
 def test_agent_rotation_converts_numpy_quaternion_components_to_xyzw() -> None:

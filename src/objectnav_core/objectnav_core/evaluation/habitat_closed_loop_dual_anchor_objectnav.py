@@ -36,6 +36,8 @@ DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
 SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = ("fixed", "evidence")
 DEFAULT_MEMORY_RELIABILITY_MODE = "fixed"
+SUPPORTED_ROUTE_OBSERVATION_MODES: tuple[str, ...] = ("option_end", "per_action")
+DEFAULT_ROUTE_OBSERVATION_MODE = "option_end"
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
 SUPPORTED_DETECTORS: tuple[str, ...] = (
@@ -110,6 +112,15 @@ class MemoryReliabilityEstimate:
     reason: str
 
 
+@dataclass(frozen=True)
+class RouteObservationResult:
+    route: Any
+    selected_source: str
+    selected_verification: Any
+    selected_step_index: int | None
+    observation_count: int
+
+
 def run_habitat_closed_loop_dual_anchor_preflight(
     output_dir: str | Path,
     *,
@@ -130,6 +141,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
+    route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -161,6 +173,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        route_observation_mode=route_observation_mode,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -191,6 +204,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        route_observation_mode=route_observation_mode,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -228,6 +242,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
+    route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -259,6 +274,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        route_observation_mode=route_observation_mode,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -487,6 +503,34 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     start_rotation=group.query_episode.start_rotation,
                     route_goals=(fallback_candidate.position,),
                 )
+                if route_observation_mode == "per_action":
+                    memory_observation = _observe_initial_memory_route(
+                        route=memory_route,
+                        route_source=f"{memory_candidate.source}:route",
+                        challenge=challenge,
+                        mode=route_observation_mode,
+                        initial_memory_verification=initial_memory_verification,
+                        verify_observation=_route_observation_verifier(
+                            detector=detector,
+                            sim=sim,
+                            target_semantic_ids=target_semantic_ids,
+                            target_category=group.category,
+                            detector_adapter=detector_adapter,
+                            accepted_detection_labels=accepted_labels,
+                            noise_level=noise_level,
+                            rgb_noise=rgb_noise,
+                            depth_noise=depth_noise,
+                            min_target_pixels=min_target_pixels,
+                            min_detector_pixels=min_detector_pixels,
+                            max_detection_area_ratio=max_detection_area_ratio,
+                            helpers=helper_bundle,
+                            frame_index_base=base_frame_index + 500,
+                        ),
+                    )
+                    memory_route = memory_observation.route
+                    initial_memory_verification = (
+                        memory_observation.selected_verification
+                    )
                 fallback_from_memory_verification = fallback_verification
                 fallback_from_memory_anchor_source = fallback_candidate.source
                 fallback_from_memory_evidence_source = fallback_verification
@@ -523,6 +567,73 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             ),
                         )[0],
                     )
+                    if route_observation_mode == "per_action":
+                        fallback_observation = _observe_route_until_positive(
+                            route=fallback_route,
+                            route_source=f"{fallback_candidate.source}:route",
+                            mode=route_observation_mode,
+                            verify_observation=_route_observation_verifier(
+                                detector=detector,
+                                sim=sim,
+                                target_semantic_ids=target_semantic_ids,
+                                target_category=group.category,
+                                detector_adapter=detector_adapter,
+                                accepted_detection_labels=accepted_labels,
+                                noise_level=noise_level,
+                                rgb_noise=rgb_noise,
+                                depth_noise=depth_noise,
+                                min_target_pixels=min_target_pixels,
+                                min_detector_pixels=min_detector_pixels,
+                                max_detection_area_ratio=max_detection_area_ratio,
+                                helpers=helper_bundle,
+                                frame_index_base=base_frame_index + 600,
+                            ),
+                        )
+                        fallback_route = fallback_observation.route
+                        fallback_verification = fallback_observation.selected_verification
+                        fallback_candidate = _replace_candidate_pose(
+                            fallback_candidate,
+                            source=fallback_observation.selected_source,
+                            position=tuple(fallback_route.final_position),
+                            rotation=tuple(fallback_route.final_rotation),
+                        )
+                        fallback_from_memory_observation = (
+                            _observe_route_until_positive(
+                                route=fallback_from_memory_route,
+                                route_source=(
+                                    f"{fallback_candidate.source}:from_memory_route"
+                                ),
+                                mode=route_observation_mode,
+                                verify_observation=_route_observation_verifier(
+                                    detector=detector,
+                                    sim=sim,
+                                    target_semantic_ids=target_semantic_ids,
+                                    target_category=group.category,
+                                    detector_adapter=detector_adapter,
+                                    accepted_detection_labels=accepted_labels,
+                                    noise_level=noise_level,
+                                    rgb_noise=rgb_noise,
+                                    depth_noise=depth_noise,
+                                    min_target_pixels=min_target_pixels,
+                                    min_detector_pixels=min_detector_pixels,
+                                    max_detection_area_ratio=max_detection_area_ratio,
+                                    helpers=helper_bundle,
+                                    frame_index_base=base_frame_index + 700,
+                                ),
+                            )
+                        )
+                        fallback_from_memory_route = (
+                            fallback_from_memory_observation.route
+                        )
+                        fallback_from_memory_verification = (
+                            fallback_from_memory_observation.selected_verification
+                        )
+                        fallback_from_memory_anchor_source = (
+                            fallback_from_memory_observation.selected_source
+                        )
+                        fallback_from_memory_evidence_source = (
+                            fallback_from_memory_observation.selected_verification
+                        )
                 else:
                     fallback_result = _navmesh_frontier_result(
                         habitat_sim=habitat_sim,
@@ -544,6 +655,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         seed=313 + len(rows),
                         probe_count=frontier_probe_count,
                         probe_heading_count=frontier_probe_heading_count,
+                        route_observation_mode=route_observation_mode,
                         frame_index_base=base_frame_index + 300,
                     )
                     fallback_route = fallback_result.route
@@ -577,6 +689,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         seed=313 + len(rows) + 500000,
                         probe_count=frontier_probe_count,
                         probe_heading_count=frontier_probe_heading_count,
+                        route_observation_mode=route_observation_mode,
                         frame_index_base=base_frame_index + 400,
                     )
                     fallback_from_memory_route = fallback_from_memory_result.route
@@ -766,6 +879,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        route_observation_mode=route_observation_mode,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -936,6 +1050,7 @@ def _base_summary(
     query_repeats: int,
     memory_valid_prior: float,
     memory_reliability_mode: str,
+    route_observation_mode: str,
     detector: str,
     detector_weights: str,
     detector_conf: float,
@@ -968,6 +1083,7 @@ def _base_summary(
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
         "memory_reliability_mode": memory_reliability_mode,
+        "route_observation_mode": route_observation_mode,
         "detector": detector,
         "detector_weights": detector_weights,
         "detector_conf": round(float(detector_conf), 6),
@@ -996,7 +1112,11 @@ def _base_summary(
         "limits": [
             "Preflight does not import Habitat or detector weights.",
             "Current Habitat slice is option-level action smoke, not official SPL.",
-            "Grounding-DINO is applied at selected memory/fallback candidate views, not every action step yet.",
+            (
+                "Grounding-DINO route checks are controlled by "
+                "route_observation_mode; per_action verifies route poses but "
+                "still does not build a map."
+            ),
             "navmesh_frontier samples deterministic navmesh probes but is not an occupancy-grid frontier.",
         ],
     }
@@ -1019,6 +1139,7 @@ def _validate_common(
     query_repeats: int,
     memory_valid_prior: float,
     memory_reliability_mode: str,
+    route_observation_mode: str,
     detector: str,
     detector_conf: float,
     grounding_dino_text_threshold: float,
@@ -1065,6 +1186,11 @@ def _validate_common(
         raise ValueError(
             "memory_reliability_mode must be one of: "
             + ", ".join(SUPPORTED_MEMORY_RELIABILITY_MODES)
+        )
+    if route_observation_mode not in SUPPORTED_ROUTE_OBSERVATION_MODES:
+        raise ValueError(
+            "route_observation_mode must be one of: "
+            + ", ".join(SUPPORTED_ROUTE_OBSERVATION_MODES)
         )
     if detector not in SUPPORTED_DETECTORS:
         raise ValueError(
@@ -1526,6 +1652,68 @@ def _verify_candidate_views(
     }
 
 
+def _route_observation_verifier(
+    *,
+    detector: str,
+    sim: Any,
+    target_semantic_ids: Sequence[int],
+    target_category: str,
+    detector_adapter: Any,
+    accepted_detection_labels: set[str],
+    noise_level: str,
+    rgb_noise: Any,
+    depth_noise: Any,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    helpers: dict[str, Any],
+    frame_index_base: int,
+) -> Any:
+    from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
+        _verify_lifecycle_view,
+    )
+
+    def verify_observation(
+        *,
+        source: str,
+        position: tuple[float, float, float] | None,
+        rotation: tuple[float, float, float, float] | None,
+        step_index: int | None,
+        action: str,
+    ) -> Any:
+        del source, action
+        if position is None or rotation is None:
+            return _OracleVisible(target_visible=False)
+        if detector == "oracle_semantic_visibility":
+            return _verify_oracle_pose(
+                sim=sim,
+                position=position,
+                rotation=rotation,
+                target_semantic_ids=target_semantic_ids,
+                min_target_pixels=min_target_pixels,
+            )
+        return _verify_lifecycle_view(
+            sim=sim,
+            position=position,
+            rotation=rotation,
+            target_semantic_ids=target_semantic_ids,
+            target_category=target_category,
+            detector=detector,
+            detector_adapter=detector_adapter,
+            accepted_detection_labels=accepted_detection_labels,
+            noise_level=noise_level,
+            rgb_noise=rgb_noise,
+            depth_noise=depth_noise,
+            frame_index=frame_index_base + max(0, int(step_index or 0)),
+            min_target_pixels=min_target_pixels,
+            min_detector_pixels=min_detector_pixels,
+            max_detection_area_ratio=max_detection_area_ratio,
+            helpers=helpers,
+        )
+
+    return verify_observation
+
+
 def _navmesh_frontier_probe_goals(
     *,
     sim: Any,
@@ -1567,6 +1755,132 @@ def _navmesh_frontier_probe_goals(
     return tuple(goals)
 
 
+def _observe_route_until_positive(
+    *,
+    route: Any,
+    route_source: str,
+    mode: str,
+    verify_observation: Any,
+) -> RouteObservationResult:
+    if mode not in SUPPORTED_ROUTE_OBSERVATION_MODES:
+        raise ValueError(
+            "mode must be one of: " + ", ".join(SUPPORTED_ROUTE_OBSERVATION_MODES)
+        )
+    if mode == "option_end":
+        source = f"{route_source}:option_end"
+        verification = verify_observation(
+            source=source,
+            position=_tuple3(getattr(route, "final_position", None)),
+            rotation=_tuple4(getattr(route, "final_rotation", None)),
+            step_index=None,
+            action="option_end",
+        )
+        return RouteObservationResult(
+            route=route,
+            selected_source=source,
+            selected_verification=verification,
+            selected_step_index=None,
+            observation_count=1,
+        )
+
+    observations = tuple(getattr(route, "observations", ()) or ())
+    if not observations:
+        return _observe_route_until_positive(
+            route=route,
+            route_source=route_source,
+            mode="option_end",
+            verify_observation=verify_observation,
+        )
+
+    selected_source = f"{route_source}:step:none"
+    selected_verification: Any = _OracleVisible(target_visible=False)
+    selected_step_index: int | None = None
+    for observation_count, observation in enumerate(observations, start=1):
+        step_index = int(getattr(observation, "action_index", observation_count - 1))
+        selected_step_index = step_index
+        selected_source = f"{route_source}:step:{step_index}"
+        selected_verification = verify_observation(
+            source=selected_source,
+            position=_tuple3(getattr(observation, "position", None)),
+            rotation=_tuple4(getattr(observation, "rotation", None)),
+            step_index=step_index,
+            action=str(getattr(observation, "action", "")),
+        )
+        if bool(selected_verification.shared_gate_success):
+            return RouteObservationResult(
+                route=_truncate_route_at_observation(
+                    route=route,
+                    observation=observation,
+                    observation_count=observation_count,
+                ),
+                selected_source=selected_source,
+                selected_verification=selected_verification,
+                selected_step_index=step_index,
+                observation_count=observation_count,
+            )
+
+    return RouteObservationResult(
+        route=route,
+        selected_source=selected_source,
+        selected_verification=selected_verification,
+        selected_step_index=selected_step_index,
+        observation_count=len(observations),
+    )
+
+
+def _observe_initial_memory_route(
+    *,
+    route: Any,
+    route_source: str,
+    challenge: str,
+    mode: str,
+    initial_memory_verification: Any,
+    verify_observation: Any,
+) -> RouteObservationResult:
+    if challenge == "stale_proxy":
+        del mode, verify_observation
+        return RouteObservationResult(
+            route=route,
+            selected_source=f"{route_source}:stale_proxy_absent",
+            selected_verification=_stale_proxy_initial_memory_verification(
+                initial_memory_verification
+            ),
+            selected_step_index=None,
+            observation_count=0,
+        )
+    return _observe_route_until_positive(
+        route=route,
+        route_source=route_source,
+        mode=mode,
+        verify_observation=verify_observation,
+    )
+
+
+def _truncate_route_at_observation(
+    *,
+    route: Any,
+    observation: Any,
+    observation_count: int,
+) -> _RouteAggregate:
+    action_count = int(getattr(observation, "action_index", observation_count - 1)) + 1
+    actions = tuple(str(action) for action in getattr(route, "actions", ())[:action_count])
+    return _RouteAggregate(
+        actions=actions,
+        reached_stop=bool(getattr(route, "reached_stop", False)),
+        final_position=_tuple3(getattr(observation, "position", None))
+        or _tuple3(getattr(route, "final_position", None))
+        or (0.0, 0.0, 0.0),
+        final_rotation=_tuple4(getattr(observation, "rotation", None))
+        or _tuple4(getattr(route, "final_rotation", None))
+        or (0.0, 0.0, 0.0, 1.0),
+        executed_distance_m=round(
+            float(getattr(observation, "cumulative_distance_m", 0.0) or 0.0),
+            6,
+        ),
+        observations=tuple(getattr(route, "observations", ())[:observation_count]),
+    )
+
+
 def _run_navmesh_frontier_probe_route(
     *,
     start_position: Sequence[float],
@@ -1576,9 +1890,15 @@ def _run_navmesh_frontier_probe_route(
     verify_probe: Any,
     route_error_types: tuple[type[BaseException], ...] = (),
     probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
+    route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
 ) -> NavmeshFrontierRouteResult:
     if probe_heading_count <= 0:
         raise ValueError("probe_heading_count must be positive")
+    if route_observation_mode not in SUPPORTED_ROUTE_OBSERVATION_MODES:
+        raise ValueError(
+            "route_observation_mode must be one of: "
+            + ", ".join(SUPPORTED_ROUTE_OBSERVATION_MODES)
+        )
     current_position = _tuple3(start_position)
     current_rotation = _tuple4(start_rotation)
     if current_position is None or current_rotation is None:
@@ -1604,7 +1924,49 @@ def _run_navmesh_frontier_probe_route(
             )
         except route_error_types:
             continue
-        actions.extend(str(action) for action in getattr(segment, "actions", ()))
+        segment_actions = tuple(str(action) for action in getattr(segment, "actions", ()))
+        if route_observation_mode == "per_action":
+            for observation in tuple(getattr(segment, "observations", ()) or ()):
+                step_index = int(getattr(observation, "action_index", 0))
+                selected_source = f"navmesh_frontier_probe:{probe_index}:step:{step_index}"
+                verification_count += 1
+                selected_verification = verify_probe(
+                    source=selected_source,
+                    position=(
+                        _tuple3(getattr(observation, "position", None))
+                        or current_position
+                    ),
+                    rotation=(
+                        _tuple4(getattr(observation, "rotation", None))
+                        or current_rotation
+                    ),
+                    probe_index=probe_index,
+                )
+                selected_position = (
+                    _tuple3(getattr(observation, "position", None))
+                    or current_position
+                )
+                if bool(selected_verification.shared_gate_success):
+                    action_count = step_index + 1
+                    actions.extend(segment_actions[:action_count])
+                    executed_distance_m += float(
+                        getattr(observation, "cumulative_distance_m", 0.0) or 0.0
+                    )
+                    current_position = selected_position
+                    current_rotation = (
+                        _tuple4(getattr(observation, "rotation", None))
+                        or current_rotation
+                    )
+                    reached_stop = reached_stop and bool(
+                        getattr(segment, "reached_stop", False)
+                    )
+                    break
+            if (
+                selected_verification is not None
+                and bool(selected_verification.shared_gate_success)
+            ):
+                break
+        actions.extend(segment_actions)
         executed_distance_m += float(getattr(segment, "executed_distance_m", 0.0) or 0.0)
         reached_stop = reached_stop and bool(getattr(segment, "reached_stop", False))
         current_position = _tuple3(getattr(segment, "final_position", None)) or goal
@@ -1648,6 +2010,7 @@ def _run_navmesh_frontier_probe_route(
             final_position=current_position,
             final_rotation=current_rotation,
             executed_distance_m=round(executed_distance_m, 6),
+            observations=tuple(),
         ),
         selected_probe_source=selected_source,
         selected_probe_position=selected_position,
@@ -1677,6 +2040,7 @@ def _navmesh_frontier_result(
     seed: int,
     probe_count: int,
     probe_heading_count: int,
+    route_observation_mode: str,
     frame_index_base: int,
 ) -> NavmeshFrontierRouteResult:
     from objectnav_core.evaluation.habitat_action_follower import (
@@ -1757,6 +2121,7 @@ def _navmesh_frontier_result(
         verify_probe=verify_probe,
         route_error_types=(GreedyFollowerError,),
         probe_heading_count=probe_heading_count,
+        route_observation_mode=route_observation_mode,
     )
 
 
@@ -1967,6 +2332,7 @@ class _RouteAggregate:
     final_position: tuple[float, float, float]
     final_rotation: tuple[float, float, float, float]
     executed_distance_m: float
+    observations: tuple[Any, ...] = ()
 
     @property
     def action_count(self) -> int:

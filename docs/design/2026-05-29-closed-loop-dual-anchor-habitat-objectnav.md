@@ -217,26 +217,49 @@ Local implementation status:
   diagnostics, but they must not inflate memory reliability in
   Grounding-DINO-backed policy decisions.
 
+## Per-Action Observation Slice
+
+The next slice moves the Habitat runner one step closer to real ObjectNav by
+adding a route observation mode:
+
+- `option_end` keeps the current behavior for reproducibility: selected memory,
+  fallback, and navmesh probe options are verified at their candidate/probe
+  endpoint or heading-scan pose.
+- `per_action` records the agent pose after every GreedyGeodesic action,
+  verifies those poses in execution order, and truncates the charged route when
+  the shared gate first becomes positive.
+- Route observations must use the same oracle or Grounding-DINO shared gate as
+  candidate verification. Detector-backed route evidence must not borrow oracle
+  pixels for reliability.
+- In `stale_proxy`, old-memory observations remain non-confirmations by
+  protocol; only rediscovered/repaired anchors may become positive memories on
+  later repeats.
+
+This is still not a full ObjectNav benchmark. It does not build an occupancy map
+from depth and it does not learn a frontier scorer. Its value is to remove the
+"only check the final candidate view" shortcut and expose whether memory or
+frontier routes would have seen the target earlier during actual execution.
+
 Scope for this slice:
 
-- support `--frontier-mode search_proxy|navmesh_frontier`;
-- keep `search_proxy` as the default for comparability with existing reports;
-- in `navmesh_frontier`, sample navigable frontier probes from the Habitat
-  pathfinder using only start pose, scene bounds, seed, and navigability;
-- route to sampled probes in a deterministic order that does not use target
-  pose or target visibility;
-- verify each probe with the same oracle/Grounding-DINO shared gate already
-  used for memory/fallback candidates;
-- stop at the first positive probe, otherwise report failure after the probe
-  budget is exhausted;
-- use the same frontier procedure for `frontier_only`, memory fallback, and
-  `naive_count` fallback.
+- add `--route-observation-mode option_end|per_action`, with `option_end` as
+  the default for comparability with existing reports;
+- record per-action route observations from the GreedyGeodesic follower without
+  changing the target-agnostic route goal sampler;
+- in `per_action`, verify memory, fallback, and navmesh-probe route poses with
+  the same oracle/Grounding-DINO shared gate used for candidate verification;
+- truncate the charged route at the first positive observation, rather than
+  charging to a later endpoint after the target was already visible;
+- keep stale-proxy initial memory attempts non-confirming and untruncated, so a
+  synthetic old-object positive cannot make stale memory look cheaper;
+- keep `search_proxy` and `navmesh_frontier` behavior comparable when
+  `option_end` is selected.
 
 Non-scope for this slice:
 
 - building occupancy directly from depth;
-- per-action mapping and detector decisions;
-- learned frontier scoring;
+- learned frontier scoring or occupancy-map frontier selection;
+- closed-loop replanning after every observation;
 - claiming official ObjectNav SPL.
 
 This slice is expected to make `frontier_only` weaker and more realistic than

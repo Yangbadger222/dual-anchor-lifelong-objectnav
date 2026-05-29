@@ -117,6 +117,21 @@ def test_habitat_closed_loop_preflight_records_memory_reliability_mode(
     assert summary["memory_reliability_mode"] == "evidence"
 
 
+def test_habitat_closed_loop_preflight_records_route_observation_mode(
+    tmp_path,
+) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        route_observation_mode="per_action",
+    )
+
+    assert summary["route_observation_mode"] == "per_action"
+
+
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
     from types import SimpleNamespace
 
@@ -869,6 +884,170 @@ def test_navmesh_frontier_route_skips_unreachable_probe_segment() -> None:
     assert visited_sources == ["navmesh_frontier_probe:1:heading:0"]
     assert result.selected_probe_source == "navmesh_frontier_probe:1:heading:0"
     assert result.route.action_count == 1
+
+
+def test_per_action_route_observation_truncates_at_first_positive_step() -> None:
+    from types import SimpleNamespace
+
+    route = SimpleNamespace(
+        actions=("move_forward", "turn_left", "move_forward"),
+        action_count=3,
+        reached_stop=True,
+        final_position=(3.0, 0.0, 0.0),
+        final_rotation=(0.0, 0.0, 0.0, 1.0),
+        executed_distance_m=3.0,
+        observations=(
+            SimpleNamespace(
+                action_index=0,
+                action="move_forward",
+                position=(1.0, 0.0, 0.0),
+                rotation=(0.0, 0.0, 0.0, 1.0),
+                cumulative_distance_m=1.0,
+            ),
+            SimpleNamespace(
+                action_index=1,
+                action="turn_left",
+                position=(2.0, 0.0, 0.0),
+                rotation=(0.0, 0.1, 0.0, 0.99),
+                cumulative_distance_m=2.0,
+            ),
+            SimpleNamespace(
+                action_index=2,
+                action="move_forward",
+                position=(3.0, 0.0, 0.0),
+                rotation=(0.0, 0.1, 0.0, 0.99),
+                cumulative_distance_m=3.0,
+            ),
+        ),
+    )
+    visited_sources: list[str] = []
+
+    def verify_observation(*, source, position, rotation, step_index, action):
+        del position, rotation, action
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(target_visible=step_index == 1)
+
+    result = closed_loop._observe_route_until_positive(
+        route=route,
+        route_source="memory",
+        mode="per_action",
+        verify_observation=verify_observation,
+    )
+
+    assert visited_sources == ["memory:step:0", "memory:step:1"]
+    assert result.selected_source == "memory:step:1"
+    assert result.selected_step_index == 1
+    assert result.observation_count == 2
+    assert result.selected_verification.shared_gate_success is True
+    assert result.route.actions == ("move_forward", "turn_left")
+    assert result.route.action_count == 2
+    assert result.route.executed_distance_m == 2.0
+    assert result.route.final_position == (2.0, 0.0, 0.0)
+
+
+def test_stale_proxy_initial_memory_route_is_not_truncated_by_per_action_positive() -> None:
+    from types import SimpleNamespace
+
+    route = SimpleNamespace(
+        actions=("move_forward", "turn_left", "move_forward"),
+        action_count=3,
+        reached_stop=True,
+        final_position=(3.0, 0.0, 0.0),
+        final_rotation=(0.0, 0.0, 0.0, 1.0),
+        executed_distance_m=3.0,
+        observations=(
+            SimpleNamespace(
+                action_index=0,
+                action="move_forward",
+                position=(1.0, 0.0, 0.0),
+                rotation=(0.0, 0.0, 0.0, 1.0),
+                cumulative_distance_m=1.0,
+            ),
+        ),
+    )
+    verification_calls: list[str] = []
+
+    def verify_observation(*, source, position, rotation, step_index, action):
+        del position, rotation, step_index, action
+        verification_calls.append(source)
+        return closed_loop._OracleVisible(target_visible=True)
+
+    result = closed_loop._observe_initial_memory_route(
+        route=route,
+        route_source="memory_candidate:route",
+        challenge="stale_proxy",
+        mode="per_action",
+        initial_memory_verification=closed_loop._OracleVisible(
+            target_visible=True,
+            oracle_target_pixels=128,
+        ),
+        verify_observation=verify_observation,
+    )
+
+    assert verification_calls == []
+    assert result.route is route
+    assert result.route.action_count == 3
+    assert result.route.executed_distance_m == 3.0
+    assert result.selected_source == "memory_candidate:route:stale_proxy_absent"
+    assert result.selected_verification.shared_gate_success is False
+    assert result.observation_count == 0
+
+
+def test_navmesh_frontier_route_checks_per_action_observations_before_probe_heading() -> None:
+    from types import SimpleNamespace
+
+    visited_sources: list[str] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        return SimpleNamespace(
+            actions=("move_forward", "move_forward", "move_forward"),
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 0.0, 0.0, 1.0),
+            executed_distance_m=3.0,
+            observations=(
+                SimpleNamespace(
+                    action_index=0,
+                    action="move_forward",
+                    position=(1.0, 0.0, 0.0),
+                    rotation=(0.0, 0.0, 0.0, 1.0),
+                    cumulative_distance_m=1.0,
+                ),
+                SimpleNamespace(
+                    action_index=1,
+                    action="move_forward",
+                    position=(2.0, 0.0, 0.0),
+                    rotation=(0.0, 0.0, 0.0, 1.0),
+                    cumulative_distance_m=2.0,
+                ),
+            ),
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position, rotation, probe_index
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(
+            target_visible=source == "navmesh_frontier_probe:0:step:1"
+        )
+
+    result = closed_loop._run_navmesh_frontier_probe_route(
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        probe_goals=((3.0, 0.0, 0.0),),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        route_observation_mode="per_action",
+    )
+
+    assert visited_sources == [
+        "navmesh_frontier_probe:0:step:0",
+        "navmesh_frontier_probe:0:step:1",
+    ]
+    assert result.selected_probe_source == "navmesh_frontier_probe:0:step:1"
+    assert result.route.actions == ("move_forward", "move_forward")
+    assert result.route.action_count == 2
+    assert result.route.executed_distance_m == 2.0
 
 
 def test_navmesh_frontier_probe_scans_headings_before_next_probe() -> None:

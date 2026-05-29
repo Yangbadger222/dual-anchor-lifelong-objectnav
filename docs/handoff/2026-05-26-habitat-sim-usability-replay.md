@@ -351,7 +351,7 @@ HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet conda run -n habitat env PYTHONPATH=src/o
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python3 -m pytest src/objectnav_core/tests -q
 git diff --check
 git check-ignore -v runs/habitat_usability/hm3d_valmini_semantic_stress_confirmed_30ep/summary.json runs/habitat_usability/hm3d_valmini_semantic_stress_episode_start_confirmed_30ep/summary.json
-rg -n "041027|password|密码" README.md docs src || true
+rg -n "<sensitive-literal-pattern>" README.md docs src || true
 ```
 
 ## Verification
@@ -446,7 +446,7 @@ The user explicitly said not to check HTML rendering, so no browser/render valid
 - Official `episode_start` confirmation run completed with 30 episodes and 210 rows; target-visible episodes were 6 and target-visible rows were 27.
 - `git diff --check` passed.
 - `git check-ignore -v` confirmed both new run `summary.json` files are ignored by the repository's `runs/**` rule.
-- Sensitive scan `rg -n "041027|password|密码" README.md docs src || true` found no matches.
+- Sensitive scan found no matches.
 
 ## Known Risks
 
