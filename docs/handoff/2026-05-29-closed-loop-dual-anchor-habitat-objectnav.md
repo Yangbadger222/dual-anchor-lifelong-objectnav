@@ -123,7 +123,8 @@ Not implemented yet:
 - Physical object relocation/removal in Habitat. The new relocation challenge
   is an instance-pair proxy built from existing HM3D episodes, not a mesh edit.
 - SPL-like action-level ObjectNav metrics for memory-vs-frontier decisions.
-- Real Linux Habitat relocation artifacts and decision-sensitivity mining.
+- Broader Linux Habitat relocation sweep and decision-sensitivity mining beyond
+  the initial two-group smoke.
 
 ## Latest Relocation State
 
@@ -139,10 +140,14 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest 
 git diff --check
 ```
 
-Still needed: run a real Linux oracle smoke for
-`--challenge goal_object_relocation`, inspect selected group ids and row
-metadata, then run Grounding-DINO/event-posterior relocation artifacts and mine
-them. Do not claim a policy flip until the mined relocation artifacts show one.
+Initial Linux oracle and Grounding-DINO relocation smokes completed and are
+summarized in
+`docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`.
+They selected `bed goal_object:194->goal_object:698` and
+`chair goal_object:13->goal_object:483`, showed stale-memory reuse avoided by
+`memory_guided`, and mined reliability-sensitive rows with `0` counterfactual
+flips. Do not claim detector-event reliability improvement until a broader
+relocation sweep produces a true mined flip.
 
 ## Files Touched
 
@@ -150,6 +155,7 @@ them. Do not claim a policy flip until the mined relocation artifacts show one.
 - `docs/design/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/design/2026-05-30-habitat-goal-object-relocation-challenge.md`
 - `docs/devlog/2026-05.md`
+- `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`
