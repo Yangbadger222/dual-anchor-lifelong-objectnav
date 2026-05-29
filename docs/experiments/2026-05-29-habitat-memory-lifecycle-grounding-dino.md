@@ -317,3 +317,7 @@ Grounding-DINO and connected-component mask scoring over every discovery
 viewpoint was too slow for iterative smoke testing. The runner now sorts
 discovery viewpoints by Habitat target pixels and verifies only the top
 `--anchor-candidate-limit` candidates by default (`4`).
+
+Metric note: `detector_miss_count` now counts misses only on the route a mode
+actually attempted. A missed fallback view is not charged to `memory_guided`
+when memory already succeeded and fallback was never used.

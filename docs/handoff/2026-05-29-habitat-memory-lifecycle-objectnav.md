@@ -61,6 +61,8 @@ Recent code also adds:
 - `--anchor-strategy`
 - `--anchor-candidate-limit` with default `4`
 - trace fields for `memory_anchor_source` and evidence reasons
+- `detector_miss_count` is based on `attempted_detector_miss`, so unused
+  fallback misses do not pollute successful memory rows.
 
 ## Commands Run
 

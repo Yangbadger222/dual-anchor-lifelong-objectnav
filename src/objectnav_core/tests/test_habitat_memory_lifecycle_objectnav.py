@@ -312,6 +312,40 @@ def test_summarize_lifecycle_results_reports_mode_comparison() -> None:
     assert summary["comparison"]["memory_guided_vs_no_memory_path_reduction_ratio"] > 0.2
 
 
+def test_summary_counts_detector_miss_only_when_attempted_route_misses() -> None:
+    rows = [
+        {
+            "mode": "memory_guided",
+            "success": True,
+            "path_length_m": 4.0,
+            "memory_reused": True,
+            "fallback_used": False,
+            "stale_check_count": 0,
+            "detector_miss": True,
+            "attempted_detector_miss": False,
+        },
+        {
+            "mode": "no_memory",
+            "success": False,
+            "path_length_m": 18.0,
+            "memory_reused": False,
+            "fallback_used": True,
+            "stale_check_count": 0,
+            "detector_miss": True,
+            "attempted_detector_miss": True,
+        },
+    ]
+
+    summary = summarize_lifecycle_results(
+        rows=rows,
+        selected_episode_ids=("1",),
+        selected_groups=1,
+    )
+
+    assert summary["mode_metrics"]["memory_guided"]["detector_miss_count"] == 0
+    assert summary["mode_metrics"]["no_memory"]["detector_miss_count"] == 1
+
+
 def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:
     result = plan_lifecycle_query(
         mode="no_memory",

@@ -966,6 +966,15 @@ def _lifecycle_row(
         fallback_verification.target_visible
         and fallback_verification.evidence_type is not EvidenceType.POSITIVE
     )
+    attempted_detector_miss = (
+        result.memory_attempted
+        and memory_verification.target_visible
+        and memory_verification.evidence_type is not EvidenceType.POSITIVE
+    ) or (
+        result.fallback_used
+        and fallback_verification.target_visible
+        and fallback_verification.evidence_type is not EvidenceType.POSITIVE
+    )
     return {
         "group_id": group.group_id,
         "scene_id": group.scene_key,
@@ -1017,6 +1026,7 @@ def _lifecycle_row(
             + fallback_verification.detection_filtered_count
         ),
         "detector_miss": detector_miss,
+        "attempted_detector_miss": attempted_detector_miss,
     }
 
 
@@ -1212,7 +1222,8 @@ def _mode_metrics(rows: Sequence[dict[str, Any]], mode: str) -> dict[str, Any]:
             int(row.get("stale_check_count", 0) or 0) for row in mode_rows
         ),
         "detector_miss_count": sum(
-            int(bool(row.get("detector_miss"))) for row in mode_rows
+            int(bool(row.get("attempted_detector_miss", row.get("detector_miss"))))
+            for row in mode_rows
         ),
     }
 
