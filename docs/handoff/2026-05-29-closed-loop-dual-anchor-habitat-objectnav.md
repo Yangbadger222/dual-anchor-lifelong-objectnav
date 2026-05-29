@@ -201,6 +201,27 @@ Local verification after adding the baseline: focused model/exporter tests
 produced `5` passed, `py_compile` passed for the trainer and CLI, the full
 local core suite produced `270` passed, and `git diff --check` was clean.
 
+The learned-decision scorer is also local/offline:
+
+- Design:
+  `docs/design/2026-05-30-memory-validity-learned-decision-scorer.md`
+- Plan:
+  `docs/superpowers/plans/2026-05-30-memory-validity-learned-decision-scorer.md`
+- API:
+  `score_memory_validity_decisions(dataset, model)` and
+  `write_memory_validity_decision_scores_csv(path, rows)`
+- CLI:
+  `python -m objectnav_core.cli.score_habitat_memory_validity_model <dataset.json> --model <model.json> --output <scores.json> --csv-output <scores.csv>`
+
+This scorer applies model probabilities to the same expected-utility arithmetic
+used by the decision-sensitivity miner. It reports learned validity, expected
+memory-first cost, frontier-first cost, boundary reliability, boundary region,
+and flips against saved auxiliary decisions. It still does not prove a Habitat
+result until run on real ranked relocation artifacts. Local verification after
+adding the scorer: focused model/exporter tests produced `8` passed,
+`py_compile` passed for trainer and scorer modules, the full local core suite
+produced `273` passed, and `git diff --check` was clean.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -208,6 +229,7 @@ local core suite produced `270` passed, and `git diff --check` was clean.
 - `docs/design/2026-05-30-habitat-goal-object-relocation-challenge.md`
 - `docs/design/2026-05-30-memory-validity-learning-dataset.md`
 - `docs/design/2026-05-30-memory-validity-logistic-baseline.md`
+- `docs/design/2026-05-30-memory-validity-learned-decision-scorer.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-30-habitat-goal-object-relocation-smoke.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
@@ -230,7 +252,9 @@ local core suite produced `270` passed, and `git diff --check` was clean.
 - `docs/superpowers/plans/2026-05-29-habitat-decision-sensitivity-miner.md`
 - `docs/superpowers/plans/2026-05-29-habitat-closed-loop-dual-anchor-smoke.md`
 - `docs/superpowers/plans/2026-05-30-memory-validity-logistic-baseline.md`
+- `docs/superpowers/plans/2026-05-30-memory-validity-learned-decision-scorer.md`
 - `src/objectnav_core/objectnav_core/cli/mine_habitat_decision_sensitivity.py`
+- `src/objectnav_core/objectnav_core/cli/score_habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/cli/train_habitat_memory_validity_model.py`
 - `src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py`
 - `src/objectnav_core/objectnav_core/cli/run_closed_loop_dual_anchor_benchmark.py`

@@ -1,12 +1,34 @@
 from __future__ import annotations
 
+import csv
 import math
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
 DEFAULT_EPOCHS = 400
 DEFAULT_LEARNING_RATE = 0.1
 DEFAULT_L2 = 0.001
+
+_DECISION_SCORE_CSV_FIELDS: tuple[str, ...] = (
+    "source_summary",
+    "run_id",
+    "group_id",
+    "category",
+    "label_memory_valid",
+    "aux_memory_decision",
+    "learned_memory_valid_probability",
+    "memory_action_count",
+    "fallback_action_count",
+    "fallback_from_memory_action_count",
+    "learned_expected_memory_first_action_count",
+    "learned_expected_frontier_first_action_count",
+    "learned_decision",
+    "decision_flip_from_aux",
+    "decision_boundary_reliability",
+    "decision_boundary_reliability_raw",
+    "decision_boundary_region",
+)
 
 
 def train_memory_validity_logistic_model(
@@ -111,6 +133,110 @@ def predict_memory_validity(
     return _sigmoid(_dot(weights[: len(feature_names)], row) + bias)
 
 
+def score_memory_validity_decisions(
+    dataset: Mapping[str, Any],
+    model: Mapping[str, Any],
+) -> dict[str, Any]:
+    examples = _examples(dataset)
+    rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    skipped_count = 0
+    for index, example in enumerate(examples):
+        features = example.get("features", {})
+        if not isinstance(features, Mapping):
+            skipped_count += 1
+            warnings.append(f"example {index}: features is not an object")
+            continue
+        action_counts = _decision_action_counts(features)
+        if action_counts is None:
+            skipped_count += 1
+            warnings.append(f"example {index}: missing action-count feature")
+            continue
+        memory_actions, frontier_actions, fallback_from_memory_actions = action_counts
+        probability = predict_memory_validity(model, features)
+        expected_memory = _expected_memory_first_action_count(
+            memory_actions,
+            fallback_from_memory_actions,
+            probability,
+        )
+        expected_frontier = round(float(frontier_actions), 6)
+        learned_decision = (
+            "memory_first"
+            if expected_memory <= expected_frontier
+            else "frontier_first"
+        )
+        boundary_raw = _decision_boundary_reliability_raw(
+            memory_actions,
+            fallback_from_memory_actions,
+            frontier_actions,
+        )
+        aux_decision = str(example.get("aux_memory_decision", ""))
+        decision_flip = (
+            learned_decision != aux_decision
+            if aux_decision in {"memory_first", "frontier_first"}
+            else None
+        )
+        rows.append(
+            {
+                "source_summary": str(example.get("source_summary", "")),
+                "run_id": str(example.get("run_id", "")),
+                "group_id": str(example.get("group_id", "")),
+                "category": str(example.get("category", "")),
+                "policy": str(example.get("policy", "")),
+                "challenge": str(example.get("challenge", "")),
+                "detector": str(example.get("detector", "")),
+                "label_memory_valid": bool(example.get("label_memory_valid")),
+                "aux_memory_decision": aux_decision,
+                "learned_memory_valid_probability": round(probability, 6),
+                "memory_action_count": round(float(memory_actions), 6),
+                "fallback_action_count": round(float(frontier_actions), 6),
+                "fallback_from_memory_action_count": round(
+                    float(fallback_from_memory_actions),
+                    6,
+                ),
+                "learned_expected_memory_first_action_count": expected_memory,
+                "learned_expected_frontier_first_action_count": expected_frontier,
+                "learned_decision": learned_decision,
+                "decision_flip_from_aux": decision_flip,
+                "decision_boundary_reliability": (
+                    None if boundary_raw is None else round(_clamp01(boundary_raw), 6)
+                ),
+                "decision_boundary_reliability_raw": (
+                    None if boundary_raw is None else round(boundary_raw, 6)
+                ),
+                "decision_boundary_region": _decision_boundary_region(boundary_raw),
+            }
+        )
+
+    return {
+        "task": "habitat_memory_validity_decision_scores",
+        "input_example_count": len(examples),
+        "example_count": len(rows),
+        "skipped_count": skipped_count,
+        "aggregate": _decision_score_aggregate(rows),
+        "warnings": warnings,
+        "rows": rows,
+    }
+
+
+def write_memory_validity_decision_scores_csv(
+    path: str | Path,
+    rows: Sequence[Mapping[str, Any]],
+) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_DECISION_SCORE_CSV_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    field: _csv_value(row.get(field))
+                    for field in _DECISION_SCORE_CSV_FIELDS
+                }
+            )
+
+
 def _examples(dataset: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     examples = dataset.get("examples", [])
     if not isinstance(examples, list):
@@ -119,6 +245,23 @@ def _examples(dataset: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if not parsed:
         raise ValueError("dataset has no examples")
     return parsed
+
+
+def _decision_action_counts(
+    features: Mapping[str, Any],
+) -> tuple[float, float, float] | None:
+    required = (
+        "memory_action_count",
+        "fallback_action_count",
+        "fallback_from_memory_action_count",
+    )
+    values: list[float] = []
+    for feature_name in required:
+        raw_value = features.get(feature_name)
+        if not _is_finite_number(raw_value):
+            return None
+        values.append(float(raw_value))
+    return values[0], values[1], values[2]
 
 
 def _feature_names(
@@ -256,6 +399,62 @@ def _metrics(*, labels: Sequence[float], predictions: Sequence[float]) -> dict[s
     }
 
 
+def _decision_score_aggregate(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    memory_first_count = sum(
+        1 for row in rows if row.get("learned_decision") == "memory_first"
+    )
+    frontier_first_count = sum(
+        1 for row in rows if row.get("learned_decision") == "frontier_first"
+    )
+    decision_flip_count = sum(
+        1 for row in rows if row.get("decision_flip_from_aux") is True
+    )
+    boundary_region_counts: dict[str, int] = {}
+    for row in rows:
+        region = str(row.get("decision_boundary_region", "unknown"))
+        boundary_region_counts[region] = boundary_region_counts.get(region, 0) + 1
+    return {
+        "learned_memory_first_count": memory_first_count,
+        "learned_frontier_first_count": frontier_first_count,
+        "decision_flip_count": decision_flip_count,
+        "boundary_region_counts": dict(sorted(boundary_region_counts.items())),
+    }
+
+
+def _expected_memory_first_action_count(
+    memory_action_count: float,
+    fallback_from_memory_action_count: float,
+    reliability: float,
+) -> float:
+    return round(
+        float(memory_action_count)
+        + (1.0 - _clamp01(reliability)) * float(fallback_from_memory_action_count),
+        6,
+    )
+
+
+def _decision_boundary_reliability_raw(
+    memory_action_count: float,
+    fallback_from_memory_action_count: float,
+    fallback_action_count: float,
+) -> float | None:
+    if fallback_from_memory_action_count <= 0.0:
+        return None
+    return 1.0 - (
+        float(fallback_action_count) - float(memory_action_count)
+    ) / float(fallback_from_memory_action_count)
+
+
+def _decision_boundary_region(boundary: float | None) -> str:
+    if boundary is None:
+        return "no_post_memory_fallback"
+    if boundary <= 0.0:
+        return "memory_always_no_worse"
+    if boundary >= 1.0:
+        return "frontier_requires_perfect_memory"
+    return "reliability_sensitive"
+
+
 def _float_mapping(value: object) -> dict[str, float]:
     if not isinstance(value, Mapping):
         return {}
@@ -292,6 +491,16 @@ def _logit(probability: float) -> float:
 
 def _clamp_probability(probability: float) -> float:
     return min(1.0 - 1e-12, max(1e-12, float(probability)))
+
+
+def _clamp01(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
+
+
+def _csv_value(value: object) -> object:
+    if value is None:
+        return ""
+    return value
 
 
 def _dot(left: Sequence[float], right: Sequence[float]) -> float:

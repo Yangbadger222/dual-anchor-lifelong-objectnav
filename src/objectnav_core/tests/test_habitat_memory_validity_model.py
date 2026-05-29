@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import csv
 import json
 import math
 from pathlib import Path
 
 from objectnav_core.evaluation.habitat_memory_validity_model import (
     predict_memory_validity,
+    score_memory_validity_decisions,
     train_memory_validity_logistic_model,
+    write_memory_validity_decision_scores_csv,
 )
 
 
@@ -139,6 +142,86 @@ def test_memory_validity_training_cli_writes_model_report(tmp_path: Path) -> Non
     assert report["metrics"]["example_count"] == 2
 
 
+def test_memory_validity_scorer_reports_learned_decision_flips() -> None:
+    report = score_memory_validity_decisions(
+        _decision_dataset(),
+        _deterministic_precision_model(),
+    )
+
+    assert report["task"] == "habitat_memory_validity_decision_scores"
+    assert report["example_count"] == 2
+    assert report["aggregate"]["learned_memory_first_count"] == 1
+    assert report["aggregate"]["learned_frontier_first_count"] == 1
+    assert report["aggregate"]["decision_flip_count"] == 1
+    assert report["aggregate"]["boundary_region_counts"] == {
+        "reliability_sensitive": 2
+    }
+    memory_row = report["rows"][0]
+    frontier_row = report["rows"][1]
+    assert memory_row["learned_decision"] == "memory_first"
+    assert memory_row["decision_flip_from_aux"] is True
+    assert memory_row["decision_boundary_region"] == "reliability_sensitive"
+    assert memory_row["decision_boundary_reliability_raw"] == 0.6
+    assert memory_row["learned_expected_memory_first_action_count"] < (
+        memory_row["learned_expected_frontier_first_action_count"]
+    )
+    assert frontier_row["learned_decision"] == "frontier_first"
+    assert frontier_row["decision_flip_from_aux"] is False
+
+
+def test_memory_validity_score_csv_writer(tmp_path: Path) -> None:
+    report = score_memory_validity_decisions(
+        _decision_dataset(),
+        _deterministic_precision_model(),
+    )
+    csv_path = tmp_path / "scores.csv"
+
+    write_memory_validity_decision_scores_csv(csv_path, report["rows"])
+
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["group_id"] == "scene|toilet|relocated:old->new"
+    assert rows[0]["learned_decision"] == "memory_first"
+    assert rows[0]["decision_flip_from_aux"] == "True"
+    assert rows[0]["decision_boundary_reliability_raw"] == "0.6"
+
+
+def test_memory_validity_score_cli_writes_json_and_csv(tmp_path: Path) -> None:
+    from objectnav_core.cli.score_habitat_memory_validity_model import main
+
+    dataset_path = tmp_path / "dataset.json"
+    model_path = tmp_path / "model.json"
+    output_path = tmp_path / "scores.json"
+    csv_path = tmp_path / "scores.csv"
+    dataset_path.write_text(json.dumps(_decision_dataset()), encoding="utf-8")
+    model_path.write_text(
+        json.dumps(_deterministic_precision_model()),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                str(dataset_path),
+                "--model",
+                str(model_path),
+                "--output",
+                str(output_path),
+                "--csv-output",
+                str(csv_path),
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["example_count"] == 2
+    assert report["aggregate"]["decision_flip_count"] == 1
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[1]["learned_decision"] == "frontier_first"
+
+
 def _memory_validity_dataset(
     rows: list[tuple[bool, dict[str, object]]],
     *,
@@ -152,4 +235,63 @@ def _memory_validity_dataset(
             {"label_memory_valid": label, "features": features}
             for label, features in rows
         ],
+    }
+
+
+def _decision_dataset() -> dict[str, object]:
+    return {
+        "task": "habitat_memory_validity_dataset",
+        "feature_schema": [
+            "memory_evidence_detector_precision",
+            "memory_action_count",
+            "fallback_action_count",
+            "fallback_from_memory_action_count",
+        ],
+        "example_count": 2,
+        "examples": [
+            {
+                "source_summary": "/tmp/ranked/summary.json",
+                "run_id": "ranked",
+                "group_id": "scene|toilet|relocated:old->new",
+                "category": "toilet",
+                "label_memory_valid": True,
+                "aux_memory_decision": "frontier_first",
+                "features": {
+                    "memory_evidence_detector_precision": 1.0,
+                    "memory_action_count": 10,
+                    "fallback_action_count": 30,
+                    "fallback_from_memory_action_count": 50,
+                },
+            },
+            {
+                "source_summary": "/tmp/ranked/summary.json",
+                "run_id": "ranked",
+                "group_id": "scene|chair|relocated:old->new",
+                "category": "chair",
+                "label_memory_valid": False,
+                "aux_memory_decision": "frontier_first",
+                "features": {
+                    "memory_evidence_detector_precision": 0.0,
+                    "memory_action_count": 10,
+                    "fallback_action_count": 30,
+                    "fallback_from_memory_action_count": 50,
+                },
+            },
+        ],
+    }
+
+
+def _deterministic_precision_model() -> dict[str, object]:
+    return {
+        "task": "habitat_memory_validity_logistic_model",
+        "model_type": "logistic_regression",
+        "feature_names": ["memory_evidence_detector_precision"],
+        "weights": [4.0],
+        "bias": 0.0,
+        "preprocessing": {
+            "feature_means": {"memory_evidence_detector_precision": 0.5},
+            "feature_scales": {"memory_evidence_detector_precision": 0.5},
+            "missing_value_count": 0,
+            "warnings": [],
+        },
     }
