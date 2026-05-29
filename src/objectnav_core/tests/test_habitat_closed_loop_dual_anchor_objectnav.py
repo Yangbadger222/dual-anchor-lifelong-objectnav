@@ -15,6 +15,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     summarize_habitat_closed_loop_rows,
 )
 from objectnav_core.evaluation import habitat_closed_loop_dual_anchor_objectnav as closed_loop
+from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import LifecycleGroup
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,26 @@ class DetectorVerification:
     @property
     def shared_gate_success(self) -> bool:
         return self.target_visible and self.detector_pixels > 0
+
+
+def _lifecycle_group(
+    *,
+    scene_key: str,
+    category: str,
+    instance_id: str,
+) -> LifecycleGroup:
+    return LifecycleGroup(
+        group_id=f"{scene_key}|{category}|{instance_id}",
+        scene_key=scene_key,
+        category=category,
+        instance_id=instance_id,
+        discovery_episode=SimpleNamespace(name=f"discover:{instance_id}"),
+        query_episode=SimpleNamespace(name=f"query:{instance_id}"),
+        memory_position=(1.0, 0.0, 0.0),
+        memory_rotation=(0.0, 0.0, 0.0, 1.0),
+        fallback_position=(2.0, 0.0, 0.0),
+        fallback_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
 
 
 def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> None:
@@ -209,6 +230,94 @@ def test_select_closed_loop_groups_rejects_missing_explicit_group_ids() -> None:
         )
 
 
+def test_build_goal_object_relocation_groups_pairs_same_scene_category_instances() -> None:
+    old_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:1",
+    )
+    new_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:2",
+    )
+    other_scene_group = _lifecycle_group(
+        scene_key="scene-b.glb",
+        category="chair",
+        instance_id="goal_object:3",
+    )
+
+    relocated = closed_loop._build_goal_object_relocation_groups(
+        [old_group, new_group, other_scene_group]
+    )
+
+    assert [group.group_id for group in relocated] == [
+        "scene-a.glb|chair|relocated:goal_object:1->goal_object:2",
+        "scene-a.glb|chair|relocated:goal_object:2->goal_object:1",
+    ]
+    assert relocated[0].discovery_episode is old_group.discovery_episode
+    assert relocated[0].query_episode is new_group.query_episode
+    assert relocated[0].memory_instance_id == "goal_object:1"
+    assert relocated[0].target_instance_id == "goal_object:2"
+
+
+def test_goal_object_relocation_uses_old_memory_and_new_query_semantic_ids() -> None:
+    old_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:1",
+    )
+    new_group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:2",
+    )
+    relocated = closed_loop._build_goal_object_relocation_groups(
+        [old_group, new_group]
+    )[0]
+
+    memory_ids, query_ids = closed_loop._semantic_ids_for_closed_loop_group(
+        semantic_id_to_category={1: "chair", 2: "chair", 3: "plant"},
+        group=relocated,
+        challenge="goal_object_relocation",
+    )
+
+    assert memory_ids == (1,)
+    assert query_ids == (2,)
+
+
+def test_stable_challenge_keeps_category_semantic_scope() -> None:
+    group = _lifecycle_group(
+        scene_key="scene-a.glb",
+        category="chair",
+        instance_id="goal_object:1",
+    )
+
+    memory_ids, query_ids = closed_loop._semantic_ids_for_closed_loop_group(
+        semantic_id_to_category={1: "chair", 2: "chair", 3: "plant"},
+        group=group,
+        challenge="stable",
+    )
+
+    assert memory_ids == (1, 2)
+    assert query_ids == (1, 2)
+
+
+def test_goal_object_relocation_verifies_memory_candidates_against_old_instance() -> None:
+    assert closed_loop._candidate_verification_semantic_ids(
+        challenge="goal_object_relocation",
+        candidate_role="memory_anchor",
+        memory_target_semantic_ids=(1,),
+        target_semantic_ids=(2,),
+    ) == (1,)
+    assert closed_loop._candidate_verification_semantic_ids(
+        challenge="goal_object_relocation",
+        candidate_role="query_task",
+        memory_target_semantic_ids=(1,),
+        target_semantic_ids=(2,),
+    ) == (2,)
+
+
 def test_habitat_option_row_records_closed_loop_action_decision() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
@@ -236,6 +345,30 @@ def test_habitat_option_row_records_closed_loop_action_decision() -> None:
     assert row["executed_distance_m"] == 8.5
     assert row["frame_transform"]["dx"] != 0.0
     assert row["memory_decision_bucket"] == "memory_missed_then_frontier_repaired"
+
+
+def test_habitat_option_row_records_goal_object_scope_metadata() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="scene|chair|relocated:goal_object:1->goal_object:2",
+            category="chair",
+            policy="memory_guided",
+            memory_action_count=12,
+            memory_executed_distance_m=3.5,
+            fallback_action_count=30,
+            fallback_executed_distance_m=9.0,
+            fallback_from_memory_action_count=18,
+            fallback_from_memory_executed_distance_m=5.0,
+            matching_reason="accepted",
+            memory_verified=False,
+            fallback_verified=True,
+            memory_instance_id="goal_object:1",
+            target_instance_id="goal_object:2",
+        )
+    )
+
+    assert row["memory_instance_id"] == "goal_object:1"
+    assert row["target_instance_id"] == "goal_object:2"
 
 
 def test_habitat_option_row_defers_memory_under_ambiguous_match() -> None:

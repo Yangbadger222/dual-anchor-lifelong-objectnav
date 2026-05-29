@@ -56,7 +56,12 @@ DEFAULT_DETECTOR_CONFIRMATION_FRAMES = 2
 DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M = 0.05
 DEFAULT_DETECTOR_CONFIRMATION_MIN_ROTATION_DEG = 5.0
 DEFAULT_DETECTOR_CONFIRMATION_MIN_MASK_IOU = 0.05
-SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
+SUPPORTED_CHALLENGES: tuple[str, ...] = (
+    "stable",
+    "ambiguous",
+    "stale_proxy",
+    "goal_object_relocation",
+)
 DEFAULT_CHALLENGE = "stable"
 SUPPORTED_DETECTORS: tuple[str, ...] = (
     "oracle_semantic_visibility",
@@ -150,6 +155,8 @@ class HabitatClosedLoopOptionPlan:
     memory_anchor_source: str = ""
     fallback_anchor_source: str = ""
     fallback_from_memory_anchor_source: str = ""
+    memory_instance_id: str | None = None
+    target_instance_id: str | None = None
     memory_evidence: dict[str, Any] | None = None
     fallback_evidence: dict[str, Any] | None = None
     fallback_from_memory_evidence: dict[str, Any] | None = None
@@ -538,6 +545,8 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         episode_selection_strategy="structured_visibility",
     )
     groups = _build_lifecycle_groups(selected_episodes)
+    if challenge == "goal_object_relocation":
+        groups = _build_goal_object_relocation_groups(groups)
     groups = _select_closed_loop_groups(
         groups,
         max_groups=max_groups,
@@ -597,9 +606,32 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
             semantic_id_to_category = _semantic_id_to_category(sim)
             agent = sim.initialize_agent(0)
             for group in selected_scene_groups:
-                target_semantic_ids = _semantic_ids_for_target_category(
-                    semantic_id_to_category,
-                    group.category,
+                memory_target_semantic_ids, target_semantic_ids = (
+                    _semantic_ids_for_closed_loop_group(
+                        semantic_id_to_category=semantic_id_to_category,
+                        group=group,
+                        challenge=challenge,
+                    )
+                )
+                if not memory_target_semantic_ids:
+                    memory_target_semantic_ids = _semantic_ids_for_target_category(
+                        semantic_id_to_category,
+                        group.category,
+                    )
+                if not target_semantic_ids:
+                    target_semantic_ids = _semantic_ids_for_target_category(
+                        semantic_id_to_category,
+                        group.category,
+                    )
+                target_semantic_ids = tuple(target_semantic_ids)
+                memory_target_semantic_ids = tuple(memory_target_semantic_ids)
+                memory_verification_target_semantic_ids = (
+                    _candidate_verification_semantic_ids(
+                        challenge=challenge,
+                        candidate_role="memory_anchor",
+                        memory_target_semantic_ids=memory_target_semantic_ids,
+                        target_semantic_ids=target_semantic_ids,
+                    )
                 )
                 detector_adapter = _detector_for_target(
                     detector_cache=detector_cache,
@@ -624,7 +656,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         sim=sim,
                         agent=agent,
                         episode=group.discovery_episode,
-                        target_semantic_ids=target_semantic_ids,
+                        target_semantic_ids=memory_target_semantic_ids,
                     ),
                     limit=4,
                 )
@@ -654,7 +686,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     verify_view=_verify_lifecycle_view,
                     sim=sim,
                     candidates=memory_candidates,
-                    target_semantic_ids=target_semantic_ids,
+                    target_semantic_ids=memory_verification_target_semantic_ids,
                     target_category=group.category,
                     detector_adapter=detector_adapter,
                     accepted_detection_labels=accepted_labels,
@@ -668,7 +700,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     detector_confirmation_mode=detector_confirmation_mode,
                     detector_confirmation=detector_confirmation,
                     helpers=helper_bundle,
-                    detector_confirmation_events=detector_confirmation_events,
+                    detector_confirmation_events=(
+                        None
+                        if challenge == "goal_object_relocation"
+                        else detector_confirmation_events
+                    ),
                     detector_confirmation_context="memory",
                 )
                 fallback_verifications = _verify_candidate_views(
@@ -712,6 +748,33 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                 initial_memory_verification = memory_verifications[
                     memory_candidate.source
                 ]
+                if challenge == "goal_object_relocation":
+                    initial_memory_verification = _route_observation_verifier(
+                        detector=detector,
+                        sim=sim,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        detector_confirmation_mode=detector_confirmation_mode,
+                        detector_confirmation=detector_confirmation,
+                        helpers=helper_bundle,
+                        frame_index_base=base_frame_index + 150,
+                        detector_confirmation_events=detector_confirmation_events,
+                        detector_confirmation_context="memory",
+                    )(
+                        source=memory_candidate.source,
+                        position=memory_candidate.position,
+                        rotation=memory_candidate.rotation,
+                        step_index=None,
+                        action="memory_candidate",
+                    )
                 if challenge == "stale_proxy":
                     initial_memory_verification = _stale_proxy_initial_memory_verification(
                         initial_memory_verification
@@ -1080,6 +1143,14 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     group_id=group.group_id,
                                     category=group.category,
                                     policy=policy,
+                                    memory_instance_id=(
+                                        getattr(group, "memory_instance_id", None)
+                                        or getattr(group, "instance_id", None)
+                                    ),
+                                    target_instance_id=(
+                                        getattr(group, "target_instance_id", None)
+                                        or getattr(group, "instance_id", None)
+                                    ),
                                     memory_action_count=active_memory_route.action_count,
                                     memory_executed_distance_m=(
                                         active_memory_route.executed_distance_m
@@ -1339,6 +1410,8 @@ def make_habitat_closed_loop_option_row(
         "group_id": plan.group_id,
         "category": plan.category,
         "policy": plan.policy,
+        "memory_instance_id": plan.memory_instance_id,
+        "target_instance_id": plan.target_instance_id,
         "query_repeat_index": int(plan.query_repeat_index),
         "success": bool(success),
         "selected_candidate_types": selected,
@@ -1964,11 +2037,138 @@ def _select_closed_loop_groups(
     return list(groups)
 
 
+def _build_goal_object_relocation_groups(groups: Sequence[Any]) -> list[Any]:
+    by_scene_category: dict[tuple[str, str], list[Any]] = {}
+    for group in groups:
+        instance_id = str(getattr(group, "instance_id", ""))
+        if not instance_id.startswith("goal_object:"):
+            continue
+        key = (str(getattr(group, "scene_key", "")), str(getattr(group, "category", "")))
+        by_scene_category.setdefault(key, []).append(group)
+
+    relocated: list[Any] = []
+    for (scene_key, category), bucket in sorted(by_scene_category.items()):
+        ordered = sorted(bucket, key=lambda group: str(getattr(group, "instance_id", "")))
+        for old_group in ordered:
+            old_instance_id = str(getattr(old_group, "instance_id"))
+            for new_group in ordered:
+                new_instance_id = str(getattr(new_group, "instance_id"))
+                if old_instance_id == new_instance_id:
+                    continue
+                relocated.append(
+                    replace(
+                        old_group,
+                        group_id=(
+                            f"{scene_key}|{category}|relocated:"
+                            f"{old_instance_id}->{new_instance_id}"
+                        ),
+                        instance_id=f"relocated:{old_instance_id}->{new_instance_id}",
+                        query_episode=getattr(new_group, "query_episode"),
+                        fallback_position=getattr(new_group, "fallback_position"),
+                        fallback_rotation=getattr(new_group, "fallback_rotation"),
+                        memory_instance_id=old_instance_id,
+                        target_instance_id=new_instance_id,
+                    )
+                )
+    return relocated
+
+
+def _semantic_ids_for_closed_loop_group(
+    *,
+    semantic_id_to_category: dict[int, str],
+    group: Any,
+    challenge: str,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    from objectnav_core.evaluation.habitat_objectnav_valmini_semantic_stress import (
+        _semantic_ids_for_target_category,
+    )
+
+    category = str(getattr(group, "category"))
+    category_ids = _semantic_ids_for_target_category(
+        semantic_id_to_category,
+        category,
+    )
+    if challenge != "goal_object_relocation":
+        return category_ids, category_ids
+
+    memory_ids = _semantic_ids_for_goal_object_instance(
+        semantic_id_to_category=semantic_id_to_category,
+        category=category,
+        instance_id=(
+            str(getattr(group, "memory_instance_id", "") or "")
+            or str(getattr(group, "instance_id", ""))
+        ),
+        fallback_ids=category_ids,
+    )
+    query_ids = _semantic_ids_for_goal_object_instance(
+        semantic_id_to_category=semantic_id_to_category,
+        category=category,
+        instance_id=(
+            str(getattr(group, "target_instance_id", "") or "")
+            or str(getattr(group, "instance_id", ""))
+        ),
+        fallback_ids=category_ids,
+    )
+    return memory_ids, query_ids
+
+
+def _candidate_verification_semantic_ids(
+    *,
+    challenge: str,
+    candidate_role: str,
+    memory_target_semantic_ids: Sequence[int],
+    target_semantic_ids: Sequence[int],
+) -> tuple[int, ...]:
+    if candidate_role not in {"memory_anchor", "query_task"}:
+        raise ValueError("candidate_role must be memory_anchor or query_task")
+    if challenge == "goal_object_relocation" and candidate_role == "memory_anchor":
+        return tuple(memory_target_semantic_ids)
+    return tuple(target_semantic_ids)
+
+
+def _semantic_ids_for_goal_object_instance(
+    *,
+    semantic_id_to_category: dict[int, str],
+    category: str,
+    instance_id: str,
+    fallback_ids: tuple[int, ...],
+) -> tuple[int, ...]:
+    semantic_id = _goal_object_semantic_id(instance_id)
+    if semantic_id is None:
+        return fallback_ids
+    if semantic_id not in semantic_id_to_category:
+        return fallback_ids
+
+    from objectnav_core.evaluation.habitat_objectnav_valmini_semantic_stress import (
+        _semantic_ids_for_target_category,
+    )
+
+    category_ids = _semantic_ids_for_target_category(
+        semantic_id_to_category,
+        category,
+    )
+    if semantic_id not in category_ids:
+        return fallback_ids
+    return (semantic_id,)
+
+
+def _goal_object_semantic_id(instance_id: str) -> int | None:
+    prefix = "goal_object:"
+    if not instance_id.startswith(prefix):
+        return None
+    try:
+        return int(instance_id[len(prefix) :])
+    except ValueError:
+        return None
+
+
 def _matching_reason_for_challenge(challenge: str) -> str:
     if challenge == "stable":
         return "accepted"
     if challenge == "ambiguous":
         return "ambiguous"
+    if challenge == "goal_object_relocation":
+        return "accepted"
     if challenge == "stale_proxy":
         return "no_current_observation"
     raise ValueError(

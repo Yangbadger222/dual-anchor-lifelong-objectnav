@@ -2,7 +2,7 @@
 
 Date: 2026-05-30
 Owner: Codex
-Status: Draft
+Status: Implemented locally; Habitat smoke pending
 
 ## Goal
 

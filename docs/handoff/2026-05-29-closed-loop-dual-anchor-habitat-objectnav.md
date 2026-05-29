@@ -1,6 +1,6 @@
 # Handoff: Closed-Loop Dual-Anchor Habitat ObjectNav
 
-Date: 2026-05-29  
+Date: 2026-05-30
 Owner: Codex  
 Status: In Progress
 
@@ -104,6 +104,11 @@ Implemented foundation:
 - Explicit `selected_group_ids` replay slicing for the Habitat closed-loop
   runner and CLI. Explicit slices bypass balanced sampling, preserve requested
   order, and are recorded in `episode_selection`.
+- Goal-object relocation challenge:
+  `--challenge goal_object_relocation` pairs same-scene, same-category
+  `goal_object:<id>` lifecycle groups so discovery memory comes from an old
+  instance and query/fallback verification targets a different instance. Rows
+  now record `memory_instance_id` and `target_instance_id` for auditability.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
   oracle/action smoke.
 - A Markdown experiment report for the Grounding-DINO candidate-gate smoke:
@@ -115,13 +120,35 @@ Not implemented yet:
   poses along a precomputed option route and can stop/charge early, but it does
   not yet choose a new action after every observation.
 - True Habitat frontier mapping/exploration policy.
-- Natural object relocation/removal in Habitat.
+- Physical object relocation/removal in Habitat. The new relocation challenge
+  is an instance-pair proxy built from existing HM3D episodes, not a mesh edit.
 - SPL-like action-level ObjectNav metrics for memory-vs-frontier decisions.
+- Real Linux Habitat relocation artifacts and decision-sensitivity mining.
+
+## Latest Relocation State
+
+Local implementation is in place for the relocation proxy. The focused local
+checks passed:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_goal_object_relocation_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories chair,sofa --max-groups 2 --challenge goal_object_relocation --preflight-only
+python -m py_compile src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/objectnav_core/evaluation/habitat_memory_lifecycle_objectnav.py src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+git diff --check
+```
+
+Still needed: run a real Linux oracle smoke for
+`--challenge goal_object_relocation`, inspect selected group ids and row
+metadata, then run Grounding-DINO/event-posterior relocation artifacts and mine
+them. Do not claim a policy flip until the mined relocation artifacts show one.
 
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
 - `docs/design/2026-05-29-habitat-decision-sensitivity-miner.md`
+- `docs/design/2026-05-30-habitat-goal-object-relocation-challenge.md`
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
