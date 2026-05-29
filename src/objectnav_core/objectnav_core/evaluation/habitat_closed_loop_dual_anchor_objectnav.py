@@ -258,9 +258,20 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     sim=sim,
                     start_position=memory_candidate.position,
                     start_rotation=memory_candidate.rotation,
-                    route_goals=(fallback_candidate.position,),
+                    route_goals=_search_proxy_route_goals(
+                        sim=sim,
+                        start=memory_candidate.position,
+                        goal=fallback_candidate.position,
+                        seed=313 + len(rows) + 500000,
+                        waypoint_count=(
+                            frontier_proxy_waypoints
+                            if challenge == "stale_proxy"
+                            else 0
+                        ),
+                    )[0],
                 )
                 for policy in policies:
+                    matching_reason = _matching_reason_for_challenge(challenge)
                     rows.append(
                         make_habitat_closed_loop_option_row(
                             HabitatClosedLoopOptionPlan(
@@ -277,13 +288,16 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                 fallback_from_memory_executed_distance_m=(
                                     fallback_from_memory_route.executed_distance_m
                                 ),
-                                matching_reason="accepted",
+                                matching_reason=matching_reason,
                                 memory_verified=(
                                     policy != "frontier_only"
-                                    and challenge not in ("ambiguous", "stale_proxy")
+                                    and matching_reason == "accepted"
                                 ),
                                 fallback_verified=True,
-                                stale_repair=challenge == "stale_proxy",
+                                stale_repair=(
+                                    policy != "frontier_only"
+                                    and challenge == "stale_proxy"
+                                ),
                             )
                         )
                     )
@@ -483,6 +497,18 @@ def _session_restart_transform() -> FrameTransform2D:
         dy=-0.15,
         dyaw=0.0,
         covariance=((0.05, 0.0), (0.0, 0.05)),
+    )
+
+
+def _matching_reason_for_challenge(challenge: str) -> str:
+    if challenge == "stable":
+        return "accepted"
+    if challenge == "ambiguous":
+        return "ambiguous"
+    if challenge == "stale_proxy":
+        return "no_current_observation"
+    raise ValueError(
+        "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
     )
 
 

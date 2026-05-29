@@ -82,3 +82,28 @@ def test_habitat_option_row_defers_memory_under_ambiguous_match() -> None:
     assert row["selected_candidate_types"] == ["frontier"]
     assert row["memory_reused"] is False
     assert row["action_count"] == 30
+
+
+def test_habitat_option_row_charges_post_memory_fallback_for_stale_repair() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="scene|plant|1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=12,
+            memory_executed_distance_m=3.5,
+            fallback_action_count=30,
+            fallback_executed_distance_m=9.0,
+            fallback_from_memory_action_count=18,
+            fallback_from_memory_executed_distance_m=5.0,
+            matching_reason="no_current_observation",
+            memory_verified=False,
+            fallback_verified=True,
+            stale_repair=True,
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["memory", "frontier"]
+    assert row["action_count"] == 30
+    assert row["executed_distance_m"] == 8.5
+    assert row["stale_repair_recorded"] is True

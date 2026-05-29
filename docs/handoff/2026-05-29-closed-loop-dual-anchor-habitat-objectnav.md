@@ -116,6 +116,8 @@ Passed locally before this handoff update:
 - Full local core tests after adding the Habitat smoke entry: `189` passed.
 - Habitat challenge-mode focused tests: `4` passed locally.
 - Full local core tests after challenge modes: `190` passed.
+- Habitat challenge semantics focused tests: `5` passed locally.
+- Full local core tests after challenge semantics fix: `191` passed.
 
 Pending:
 
@@ -132,6 +134,9 @@ Pending:
   direct fallback routes were identical. `frontier_only` has since been changed
   to use deterministic `frontier_proxy_waypoints` before the fallback goal;
   rerun the smoke before interpreting policy deltas.
+- The first Linux challenge smoke exposed partial challenge semantics
+  (`ambiguous` rows labeled accepted and stale fallback charged as zero from
+  memory). This has been fixed locally and should be rerun on Linux.
 - The current grid smoke does not beat `naive_count`; after the shared gate,
   memory-guided and naive-count tie. Treat this as plumbing/pressure validation,
   not a headline result.
