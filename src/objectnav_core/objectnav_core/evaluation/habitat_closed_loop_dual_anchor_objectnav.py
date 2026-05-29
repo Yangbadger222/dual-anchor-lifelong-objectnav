@@ -174,7 +174,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     )
     groups = _build_lifecycle_groups(selected_episodes)
     if max_groups is not None:
-        groups = groups[:max_groups]
+        groups = _select_balanced_groups(groups, max_groups=max_groups)
     if not groups:
         raise ValueError("No lifecycle groups could be built from selected episodes")
 
@@ -600,6 +600,30 @@ def _session_restart_transform() -> FrameTransform2D:
         dyaw=0.0,
         covariance=((0.05, 0.0), (0.0, 0.05)),
     )
+
+
+def _select_balanced_groups(groups: Sequence[Any], *, max_groups: int) -> list[Any]:
+    if max_groups <= 0:
+        raise ValueError("max_groups must be positive")
+    selected: list[Any] = []
+    selected_ids: set[int] = set()
+    seen_categories: set[str] = set()
+    for group in groups:
+        category = str(getattr(group, "category"))
+        if category in seen_categories:
+            continue
+        selected.append(group)
+        selected_ids.add(id(group))
+        seen_categories.add(category)
+        if len(selected) >= max_groups:
+            return selected
+    for group in groups:
+        if id(group) in selected_ids:
+            continue
+        selected.append(group)
+        if len(selected) >= max_groups:
+            return selected
+    return selected
 
 
 def _matching_reason_for_challenge(challenge: str) -> str:

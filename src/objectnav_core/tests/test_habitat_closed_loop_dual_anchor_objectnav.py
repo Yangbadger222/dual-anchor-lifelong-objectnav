@@ -35,6 +35,25 @@ def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> N
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 
 
+def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
+    from types import SimpleNamespace
+
+    groups = [
+        SimpleNamespace(category="chair", group_id="chair-1"),
+        SimpleNamespace(category="chair", group_id="chair-2"),
+        SimpleNamespace(category="plant", group_id="plant-1"),
+        SimpleNamespace(category="sofa", group_id="sofa-1"),
+    ]
+
+    selected = closed_loop._select_balanced_groups(groups, max_groups=3)
+
+    assert [group.group_id for group in selected] == [
+        "chair-1",
+        "plant-1",
+        "sofa-1",
+    ]
+
+
 def test_habitat_option_row_records_closed_loop_action_decision() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
