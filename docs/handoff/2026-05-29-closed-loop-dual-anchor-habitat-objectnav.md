@@ -397,6 +397,17 @@ Passed locally before this handoff update:
 - `py_compile` passed for the Habitat closed-loop runner, lifecycle verification
   module, and Habitat CLI.
 - `git diff --check` passed after the multiview confirmation update.
+- Linux focused Habitat route/CLI tests after pulling commit `88d1fa0`:
+  `58` passed.
+- Linux 1-group Grounding-DINO per-action navmesh smoke with
+  `--detector-confirmation-mode multiview` completed successfully. It recorded
+  `detector_confirmation_mode=multiview`, `route_observation_mode=per_action`,
+  and `detector=grounding_dino`. The selected `plant` group produced
+  `memory_guided=127`, `naive_count=127`, and `frontier_only=354` actions.
+  Policy summaries reported `detector_confirmation_counts={'confirmed': 2}`.
+  Memory evidence and post-memory fallback evidence were
+  `confirmed_detector_positive_mask`; no detector false confirmations were
+  counted in this smoke.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -481,10 +492,11 @@ Passed locally before this handoff update:
   confirmation. This reinforces that aggregate action reductions must be
   reported alongside detector audit counts; do not treat detector-positive alone
   as proof of real target localization in simulation.
-- Multiview detector confirmation is now implemented locally, but it has not
-  yet been run on the Linux Habitat/GPU machine. Expect it to suppress some true
-  positives as well as false confirmations; paired `single_frame`/`multiview`
-  ablations are required before treating it as an improvement.
+- Multiview detector confirmation has one Linux 1-group smoke. It confirmed two
+  positive evidence sources and did not exercise suppressed-positive counts.
+  Expect it to suppress some true positives as well as false confirmations;
+  paired `single_frame`/`multiview` ablations are required before treating it as
+  an improvement.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
   selected memory detector masks are strong, but weak positive detections still
@@ -496,11 +508,10 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Push the multiview detector confirmation update and run a small Linux
-   Grounding-DINO `multiview` smoke to confirm runtime fields and count
-   suppressed versus confirmed positives.
-2. Run paired `single_frame`/`multiview` balanced detector ablations before
+1. Run paired `single_frame`/`multiview` balanced detector ablations before
    claiming detector-backed memory improvements.
+2. Add a targeted weak-positive detector case so suppressed-positive summary
+   counts are exercised in runtime artifacts, not just unit tests.
 3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
 4. Continue calibrating the reliability estimator against bucket counts and
