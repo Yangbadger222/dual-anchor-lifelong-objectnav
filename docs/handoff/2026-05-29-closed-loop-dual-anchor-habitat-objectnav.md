@@ -119,6 +119,7 @@ Not implemented yet:
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/experiments/2026-05-29-habitat-detector-confirmation-ablation-balanced3.md`
+- `docs/experiments/2026-05-29-habitat-event-posterior-grounding-dino-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-evidence-calibration-smoke.md`
 - `docs/experiments/2026-05-29-habitat-navmesh-grounding-dino-stale-detector-pixels-smoke.md`
@@ -280,6 +281,15 @@ Passed locally before this handoff update:
   the reliability/confirmation subset produced `11` passed, the focused
   Habitat route/CLI suite produced `65` passed, `py_compile` passed, and the
   full local core suite produced `248` passed.
+- Linux pulled commit `1419a5e` and the focused Habitat route/CLI suite passed
+  with `65` tests.
+- Linux 1-group Grounding-DINO per-action navmesh smoke with
+  `--memory-reliability-mode event_posterior` completed successfully at
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_event_posterior_1group_v1`.
+  It produced the same action outcome as the earlier `evidence` event probe
+  (`memory_guided=127`, `naive_count=127`, `frontier_only=354`), but lowered
+  the memory-guided reliability from `0.96` to `0.710654` and recorded
+  `detector_event_posterior=0.506644` from mixed confirmed/suppressed events.
 - Linux balanced6 evidence-reliability oracle navmesh smoke completed
   successfully. It produced `memory_guided=565`, `frontier_only=943`, and
   `naive_count=575` actions. `memory_guided` selected memory for chair, toilet,
@@ -555,25 +565,23 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Pull the `event_posterior` branch on Linux and run focused Habitat tests in
-   the `habitat` conda environment.
-2. Run paired Grounding-DINO smokes comparing `evidence` and `event_posterior`
+1. Run paired Grounding-DINO smokes comparing `evidence` and `event_posterior`
    on the same per-action navmesh configuration.
-3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-4. Continue calibrating the reliability estimator against bucket counts and
+3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-5. Replace oracle/candidate-view reliability evidence with detector/per-action
+4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-7. Move Grounding-DINO from selected candidate-view verification to larger
+6. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-8. Implement natural Habitat object relocation/removal or a clearly labeled
+7. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-9. Scale the balanced runs beyond six groups and report confidence intervals.
-10. Convert the smoke metrics into SPL-like metrics only after per-action
+8. Scale the balanced runs beyond six groups and report confidence intervals.
+9. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor

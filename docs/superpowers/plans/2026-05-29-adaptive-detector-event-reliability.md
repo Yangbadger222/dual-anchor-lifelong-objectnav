@@ -93,5 +93,5 @@
 - [x] **Step 2: Run final local checks**
   Run focused tests, `py_compile`, `git diff --check`, and sensitive scan.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
   Stage only relevant files, commit, push `codex/habitat-memory-lifecycle`.
