@@ -35,6 +35,43 @@ def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> N
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8")) == summary
 
 
+def test_habitat_closed_loop_preflight_records_grounding_dino_detector_config(
+    tmp_path,
+) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        detector="grounding_dino",
+        detector_weights="IDEA-Research/grounding-dino-tiny",
+        detector_conf=0.25,
+        grounding_dino_text_threshold=0.2,
+        grounding_dino_max_image_side=384,
+        rgb_noise_profile="configs/noise/rgb_published_v1.yaml",
+        depth_noise_profile="configs/noise/depth_realsense_d435_v1.yaml",
+        noise_level="mild",
+        min_target_pixels=24,
+        min_detector_pixels=20,
+        max_detection_area_ratio=0.7,
+        detector_prompt_mode="target",
+    )
+
+    assert summary["detector"] == "grounding_dino"
+    assert summary["detector_weights"] == "IDEA-Research/grounding-dino-tiny"
+    assert summary["detector_conf"] == 0.25
+    assert summary["grounding_dino_text_threshold"] == 0.2
+    assert summary["grounding_dino_max_image_side"] == 384
+    assert summary["rgb_noise_profile"] == "configs/noise/rgb_published_v1.yaml"
+    assert summary["depth_noise_profile"] == "configs/noise/depth_realsense_d435_v1.yaml"
+    assert summary["noise_level"] == "mild"
+    assert summary["min_target_pixels"] == 24
+    assert summary["min_detector_pixels"] == 20
+    assert summary["max_detection_area_ratio"] == 0.7
+    assert summary["detector_prompt_mode"] == "target"
+
+
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
     from types import SimpleNamespace
 
@@ -288,6 +325,37 @@ def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> Non
             memory_valid_prior=0.5,
         )
         == "memory_first"
+    )
+
+
+def test_shared_detector_gate_controls_memory_verification_for_all_memory_policies() -> None:
+    positive = closed_loop._OracleVisible(target_visible=True)
+    missed = closed_loop._OracleVisible(target_visible=False)
+
+    assert closed_loop._memory_verified_by_shared_gate(
+        policy="memory_guided",
+        matching_reason="accepted",
+        active_memory_verification=positive,
+    )
+    assert closed_loop._memory_verified_by_shared_gate(
+        policy="naive_count",
+        matching_reason="accepted",
+        active_memory_verification=positive,
+    )
+    assert not closed_loop._memory_verified_by_shared_gate(
+        policy="frontier_only",
+        matching_reason="accepted",
+        active_memory_verification=positive,
+    )
+    assert not closed_loop._memory_verified_by_shared_gate(
+        policy="memory_guided",
+        matching_reason="accepted",
+        active_memory_verification=missed,
+    )
+    assert not closed_loop._memory_verified_by_shared_gate(
+        policy="naive_count",
+        matching_reason="ambiguous",
+        active_memory_verification=positive,
     )
 
 

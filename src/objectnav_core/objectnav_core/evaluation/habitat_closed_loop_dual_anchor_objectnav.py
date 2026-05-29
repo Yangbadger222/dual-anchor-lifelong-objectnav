@@ -27,6 +27,28 @@ DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
+SUPPORTED_DETECTORS: tuple[str, ...] = (
+    "oracle_semantic_visibility",
+    "grounding_dino",
+)
+DEFAULT_DETECTOR = "oracle_semantic_visibility"
+DEFAULT_DETECTOR_WEIGHTS = "IDEA-Research/grounding-dino-tiny"
+DEFAULT_DETECTOR_CONF = 0.25
+DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD = 0.25
+DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE = 384
+DEFAULT_RGB_NOISE_PROFILE = "configs/noise/rgb_published_v1.yaml"
+DEFAULT_DEPTH_NOISE_PROFILE = "configs/noise/depth_realsense_d435_v1.yaml"
+SUPPORTED_NOISE_LEVELS: tuple[str, ...] = ("clean", "mild", "heavy")
+DEFAULT_NOISE_LEVEL = "clean"
+SUPPORTED_DETECTOR_PROMPT_MODES: tuple[str, ...] = (
+    "target",
+    "all_categories",
+    "target_aliases",
+)
+DEFAULT_DETECTOR_PROMPT_MODE = "target"
+DEFAULT_MIN_TARGET_PIXELS = 24
+DEFAULT_MIN_DETECTOR_PIXELS = 20
+DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 
 
 @dataclass(frozen=True)
@@ -49,6 +71,10 @@ class HabitatClosedLoopOptionPlan:
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR
     expected_memory_first_action_count: float | None = None
     expected_frontier_first_action_count: float | None = None
+    memory_anchor_source: str = ""
+    fallback_anchor_source: str = ""
+    memory_evidence: dict[str, Any] | None = None
+    fallback_evidence: dict[str, Any] | None = None
 
 
 def run_habitat_closed_loop_dual_anchor_preflight(
@@ -67,6 +93,18 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
+    detector: str = DEFAULT_DETECTOR,
+    detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
+    detector_conf: float = DEFAULT_DETECTOR_CONF,
+    grounding_dino_text_threshold: float = DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
+    grounding_dino_max_image_side: int | None = DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
+    rgb_noise_profile: str | Path = DEFAULT_RGB_NOISE_PROFILE,
+    depth_noise_profile: str | Path = DEFAULT_DEPTH_NOISE_PROFILE,
+    noise_level: str = DEFAULT_NOISE_LEVEL,
+    min_target_pixels: int = DEFAULT_MIN_TARGET_PIXELS,
+    min_detector_pixels: int = DEFAULT_MIN_DETECTOR_PIXELS,
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -82,6 +120,15 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        detector=detector,
+        detector_conf=detector_conf,
+        grounding_dino_text_threshold=grounding_dino_text_threshold,
+        grounding_dino_max_image_side=grounding_dino_max_image_side,
+        noise_level=noise_level,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_prompt_mode=detector_prompt_mode,
     )
     summary = _base_summary(
         task="habitat_closed_loop_dual_anchor_objectnav_preflight",
@@ -99,6 +146,18 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        detector=detector,
+        detector_weights=detector_weights,
+        detector_conf=detector_conf,
+        grounding_dino_text_threshold=grounding_dino_text_threshold,
+        grounding_dino_max_image_side=grounding_dino_max_image_side,
+        rgb_noise_profile=rgb_noise_profile,
+        depth_noise_profile=depth_noise_profile,
+        noise_level=noise_level,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_prompt_mode=detector_prompt_mode,
     )
     _write_json(output_path / "summary.json", summary)
     return summary
@@ -120,6 +179,18 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
+    detector: str = DEFAULT_DETECTOR,
+    detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
+    detector_conf: float = DEFAULT_DETECTOR_CONF,
+    grounding_dino_text_threshold: float = DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
+    grounding_dino_max_image_side: int | None = DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
+    rgb_noise_profile: str | Path = DEFAULT_RGB_NOISE_PROFILE,
+    depth_noise_profile: str | Path = DEFAULT_DEPTH_NOISE_PROFILE,
+    noise_level: str = DEFAULT_NOISE_LEVEL,
+    min_target_pixels: int = DEFAULT_MIN_TARGET_PIXELS,
+    min_detector_pixels: int = DEFAULT_MIN_DETECTOR_PIXELS,
+    max_detection_area_ratio: float | None = DEFAULT_MAX_DETECTION_AREA_RATIO,
+    detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
 ) -> dict[str, Any]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -135,9 +206,19 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        detector=detector,
+        detector_conf=detector_conf,
+        grounding_dino_text_threshold=grounding_dino_text_threshold,
+        grounding_dino_max_image_side=grounding_dino_max_image_side,
+        noise_level=noise_level,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_prompt_mode=detector_prompt_mode,
     )
 
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
+        _verify_lifecycle_view,
         _build_lifecycle_groups,
         _cached_action_route_sequence,
         _search_proxy_route_goals,
@@ -147,8 +228,12 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         _rank_lifecycle_anchor_candidates,
     )
     from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+        _accepted_yolo_detection_labels,
+        _detector_for_target,
+        _detector_mask,
         _select_episodes,
         _sample_replay_view_candidates,
+        _target_view_metrics,
     )
     from objectnav_core.evaluation.habitat_objectnav_valmini_semantic_stress import (
         _group_by_scene,
@@ -158,9 +243,16 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         _write_scene_dataset_config,
     )
     from objectnav_core.evaluation.habitat_semantic_yolo_stress import (
+        _classify_semantic_evidence,
+        _depth_valid_ratio,
         _load_habitat_sim,
         _make_simulator,
+        _mask_metrics,
     )
+    from objectnav_core.simulation.depth_noise import DepthNoisePipelineD435
+    from objectnav_core.simulation.depth_noise import DepthNoiseProfile
+    from objectnav_core.simulation.rgb_noise import RgbNoisePipeline
+    from objectnav_core.simulation.rgb_noise import RgbNoiseProfile
 
     dataset_path = Path(dataset_dir).expanduser().resolve()
     scene_root_path = Path(scene_root).expanduser().resolve()
@@ -187,6 +279,19 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     )
     habitat_sim = _load_habitat_sim()
     action_route_cache: dict[Any, Any] = {}
+    detector_cache: dict[tuple[str, tuple[str, ...]], Any] = {}
+    rgb_noise = RgbNoisePipeline(RgbNoiseProfile.from_yaml(rgb_noise_profile), seed=313)
+    depth_noise = DepthNoisePipelineD435(
+        DepthNoiseProfile.from_yaml(depth_noise_profile),
+        seed=313,
+    )
+    helper_bundle = {
+        "detector_mask": _detector_mask,
+        "mask_metrics": _mask_metrics,
+        "target_view_metrics": _target_view_metrics,
+        "classify": _classify_semantic_evidence,
+        "depth_valid_ratio": _depth_valid_ratio,
+    }
     rows: list[dict[str, Any]] = []
     scene_to_groups: dict[Path, list[Any]] = {}
     for group in groups:
@@ -214,6 +319,24 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     semantic_id_to_category,
                     group.category,
                 )
+                detector_adapter = _detector_for_target(
+                    detector_cache=detector_cache,
+                    detector=(
+                        "grounding_dino"
+                        if detector == "grounding_dino"
+                        else "oracle_semantic_visibility"
+                    ),
+                    detector_weights=detector_weights,
+                    detector_conf=detector_conf,
+                    grounding_dino_text_threshold=grounding_dino_text_threshold,
+                    grounding_dino_max_image_side=grounding_dino_max_image_side,
+                    target_category=group.category,
+                    yolo_prompt_mode=detector_prompt_mode,
+                )
+                accepted_labels = _accepted_yolo_detection_labels(
+                    group.category,
+                    detector_prompt_mode,
+                )
                 memory_candidates = _rank_lifecycle_anchor_candidates(
                     _sample_replay_view_candidates(
                         sim=sim,
@@ -232,21 +355,65 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                     ),
                     limit=4,
                 )
-                fake_verifications = {
-                    candidate.source: _OracleVisible(target_visible=candidate.target_pixels > 0)
-                    for candidate in (*memory_candidates, *fallback_candidates)
-                }
+                base_frame_index = len(rows) * 100
+                memory_verifications = _verify_candidate_views(
+                    detector=detector,
+                    verify_view=_verify_lifecycle_view,
+                    sim=sim,
+                    candidates=memory_candidates,
+                    target_semantic_ids=target_semantic_ids,
+                    target_category=group.category,
+                    detector_adapter=detector_adapter,
+                    accepted_detection_labels=accepted_labels,
+                    noise_level=noise_level,
+                    rgb_noise=rgb_noise,
+                    depth_noise=depth_noise,
+                    frame_index_base=base_frame_index + 100,
+                    min_target_pixels=min_target_pixels,
+                    min_detector_pixels=min_detector_pixels,
+                    max_detection_area_ratio=max_detection_area_ratio,
+                    helpers=helper_bundle,
+                )
+                fallback_verifications = _verify_candidate_views(
+                    detector=detector,
+                    verify_view=_verify_lifecycle_view,
+                    sim=sim,
+                    candidates=fallback_candidates,
+                    target_semantic_ids=target_semantic_ids,
+                    target_category=group.category,
+                    detector_adapter=detector_adapter,
+                    accepted_detection_labels=accepted_labels,
+                    noise_level=noise_level,
+                    rgb_noise=rgb_noise,
+                    depth_noise=depth_noise,
+                    frame_index_base=base_frame_index + 200,
+                    min_target_pixels=min_target_pixels,
+                    min_detector_pixels=min_detector_pixels,
+                    max_detection_area_ratio=max_detection_area_ratio,
+                    helpers=helper_bundle,
+                )
+                anchor_strategy = (
+                    "detector_positive"
+                    if detector == "grounding_dino"
+                    else "most_visible"
+                )
                 memory_candidate = _choose_lifecycle_anchor_candidate(
                     candidates=memory_candidates,
-                    verifications=fake_verifications,
-                    strategy="most_visible",
-                    min_target_pixels=1,
+                    verifications=memory_verifications,
+                    strategy=anchor_strategy,
+                    min_target_pixels=min_target_pixels,
                 )
                 fallback_candidate = _choose_lifecycle_fallback_candidate(
                     candidates=fallback_candidates,
-                    verifications=fake_verifications,
-                    min_target_pixels=1,
+                    verifications=fallback_verifications,
+                    min_target_pixels=min_target_pixels,
                 )
+                initial_memory_verification = memory_verifications[
+                    memory_candidate.source
+                ]
+                fallback_verification = fallback_verifications[
+                    fallback_candidate.source
+                ]
                 memory_route = _cached_action_route_sequence(
                     cache=action_route_cache,
                     habitat_sim=habitat_sim,
@@ -332,6 +499,13 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             and memory_decision == "frontier_first"
                         ):
                             matching_reason = "expected_utility_frontier"
+                        active_memory_verification = _active_memory_verification_for_repeat(
+                            challenge=challenge,
+                            policy=policy,
+                            repeat_index=repeat_index,
+                            initial_memory_verification=initial_memory_verification,
+                            repaired_memory_verification=fallback_verification,
+                        )
                         rows.append(
                             make_habitat_closed_loop_option_row(
                                 HabitatClosedLoopOptionPlan(
@@ -353,11 +527,16 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         fallback_from_memory_route.executed_distance_m
                                     ),
                                     matching_reason=matching_reason,
-                                    memory_verified=(
-                                        policy != "frontier_only"
-                                        and matching_reason == "accepted"
+                                    memory_verified=_memory_verified_by_shared_gate(
+                                        policy=policy,
+                                        matching_reason=matching_reason,
+                                        active_memory_verification=(
+                                            active_memory_verification
+                                        ),
                                     ),
-                                    fallback_verified=True,
+                                    fallback_verified=(
+                                        fallback_verification.shared_gate_success
+                                    ),
                                     stale_repair=(
                                         policy != "frontier_only"
                                         and matching_reason == "no_current_observation"
@@ -374,6 +553,14 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     ),
                                     expected_frontier_first_action_count=(
                                         expected_frontier_first
+                                    ),
+                                    memory_anchor_source=memory_candidate.source,
+                                    fallback_anchor_source=fallback_candidate.source,
+                                    memory_evidence=_verification_payload(
+                                        active_memory_verification
+                                    ),
+                                    fallback_evidence=_verification_payload(
+                                        fallback_verification
                                     ),
                                 )
                             )
@@ -397,10 +584,21 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        detector=detector,
+        detector_weights=detector_weights,
+        detector_conf=detector_conf,
+        grounding_dino_text_threshold=grounding_dino_text_threshold,
+        grounding_dino_max_image_side=grounding_dino_max_image_side,
+        rgb_noise_profile=rgb_noise_profile,
+        depth_noise_profile=depth_noise_profile,
+        noise_level=noise_level,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_prompt_mode=detector_prompt_mode,
     )
     summary.update(
         {
-            "detector": "oracle_semantic_visibility",
             "selected_groups": len(groups),
             "episode_selection": {
                 "candidate_episode_count": len(selected_episodes),
@@ -491,6 +689,10 @@ def make_habitat_closed_loop_option_row(
             float(plan.fallback_from_memory_executed_distance_m),
             6,
         ),
+        "memory_anchor_source": plan.memory_anchor_source,
+        "fallback_anchor_source": plan.fallback_anchor_source,
+        "memory_evidence": plan.memory_evidence,
+        "fallback_evidence": plan.fallback_evidence,
         "memory_decision": plan.memory_decision,
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
         "expected_memory_first_action_count": (
@@ -523,6 +725,18 @@ def _base_summary(
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
+    detector: str,
+    detector_weights: str,
+    detector_conf: float,
+    grounding_dino_text_threshold: float,
+    grounding_dino_max_image_side: int | None,
+    rgb_noise_profile: str | Path,
+    depth_noise_profile: str | Path,
+    noise_level: str,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    detector_prompt_mode: str,
 ) -> dict[str, Any]:
     return {
         "task": task,
@@ -539,6 +753,25 @@ def _base_summary(
         "challenge": challenge,
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
+        "detector": detector,
+        "detector_weights": detector_weights,
+        "detector_conf": round(float(detector_conf), 6),
+        "grounding_dino_text_threshold": round(
+            float(grounding_dino_text_threshold),
+            6,
+        ),
+        "grounding_dino_max_image_side": grounding_dino_max_image_side,
+        "rgb_noise_profile": str(rgb_noise_profile),
+        "depth_noise_profile": str(depth_noise_profile),
+        "noise_level": noise_level,
+        "min_target_pixels": int(min_target_pixels),
+        "min_detector_pixels": int(min_detector_pixels),
+        "max_detection_area_ratio": (
+            None
+            if max_detection_area_ratio is None
+            else round(float(max_detection_area_ratio), 6)
+        ),
+        "detector_prompt_mode": detector_prompt_mode,
         "session_restart": {
             "memory_frame_id": "map_session_1",
             "runtime_frame_id": "map_session_2",
@@ -547,8 +780,9 @@ def _base_summary(
         "artifact_files": {"summary": "summary.json"},
         "limits": [
             "Preflight does not import Habitat or detector weights.",
-            "First Habitat slice is oracle/action-level smoke, not official SPL.",
-            "Grounding-DINO per-step closed-loop perception is still pending.",
+            "Current Habitat slice is option-level action smoke, not official SPL.",
+            "Grounding-DINO is applied at selected memory/fallback candidate views, not every action step yet.",
+            "Frontier remains a deterministic search proxy until the next benchmark slice.",
         ],
     }
 
@@ -566,6 +800,15 @@ def _validate_common(
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
+    detector: str,
+    detector_conf: float,
+    grounding_dino_text_threshold: float,
+    grounding_dino_max_image_side: int | None,
+    noise_level: str,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    detector_prompt_mode: str,
 ) -> None:
     unknown_policies = sorted(set(policies) - set(POLICIES))
     if unknown_policies:
@@ -591,6 +834,37 @@ def _validate_common(
         raise ValueError("query_repeats must be positive")
     if not 0.0 <= memory_valid_prior <= 1.0:
         raise ValueError("memory_valid_prior must be in [0, 1]")
+    if detector not in SUPPORTED_DETECTORS:
+        raise ValueError(
+            "detector must be one of: " + ", ".join(SUPPORTED_DETECTORS)
+        )
+    if not 0.0 <= detector_conf <= 1.0:
+        raise ValueError("detector_conf must be in [0, 1]")
+    if not 0.0 <= grounding_dino_text_threshold <= 1.0:
+        raise ValueError("grounding_dino_text_threshold must be in [0, 1]")
+    if (
+        grounding_dino_max_image_side is not None
+        and grounding_dino_max_image_side <= 0
+    ):
+        raise ValueError("grounding_dino_max_image_side must be positive when provided")
+    if noise_level not in SUPPORTED_NOISE_LEVELS:
+        raise ValueError(
+            "noise_level must be one of: " + ", ".join(SUPPORTED_NOISE_LEVELS)
+        )
+    if min_target_pixels <= 0:
+        raise ValueError("min_target_pixels must be positive")
+    if min_detector_pixels <= 0:
+        raise ValueError("min_detector_pixels must be positive")
+    if (
+        max_detection_area_ratio is not None
+        and not 0.0 < max_detection_area_ratio <= 1.0
+    ):
+        raise ValueError("max_detection_area_ratio must be in (0, 1] when provided")
+    if detector_prompt_mode not in SUPPORTED_DETECTOR_PROMPT_MODES:
+        raise ValueError(
+            "detector_prompt_mode must be one of: "
+            + ", ".join(SUPPORTED_DETECTOR_PROMPT_MODES)
+        )
 
 
 def _session_restart_transform() -> FrameTransform2D:
@@ -663,6 +937,19 @@ def _active_memory_route_for_repeat(
     return initial_memory_route
 
 
+def _active_memory_verification_for_repeat(
+    *,
+    challenge: str,
+    policy: str,
+    repeat_index: int,
+    initial_memory_verification: Any,
+    repaired_memory_verification: Any,
+) -> Any:
+    if challenge == "stale_proxy" and policy == "memory_guided" and repeat_index > 0:
+        return repaired_memory_verification
+    return initial_memory_verification
+
+
 def _expected_memory_first_action_count(
     *,
     memory_action_count: int,
@@ -708,6 +995,101 @@ def _memory_decision_for_row(
     return raw_memory_decision
 
 
+def _memory_verified_by_shared_gate(
+    *,
+    policy: str,
+    matching_reason: str,
+    active_memory_verification: Any,
+) -> bool:
+    return (
+        policy != "frontier_only"
+        and matching_reason == "accepted"
+        and bool(active_memory_verification.shared_gate_success)
+    )
+
+
+def _verify_candidate_views(
+    *,
+    detector: str,
+    verify_view: Any,
+    sim: Any,
+    candidates: Sequence[Any],
+    target_semantic_ids: Sequence[int],
+    target_category: str,
+    detector_adapter: Any,
+    accepted_detection_labels: set[str],
+    noise_level: str,
+    rgb_noise: Any,
+    depth_noise: Any,
+    frame_index_base: int,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    helpers: dict[str, Any],
+) -> dict[str, Any]:
+    if detector == "oracle_semantic_visibility":
+        return {
+            candidate.source: _OracleVisible(
+                target_visible=int(getattr(candidate, "target_pixels", 0) or 0)
+                >= min_target_pixels,
+                oracle_target_pixels=int(getattr(candidate, "target_pixels", 0) or 0),
+            )
+            for candidate in candidates
+        }
+    return {
+        candidate.source: verify_view(
+            sim=sim,
+            position=candidate.position,
+            rotation=candidate.rotation,
+            target_semantic_ids=target_semantic_ids,
+            target_category=target_category,
+            detector=detector,
+            detector_adapter=detector_adapter,
+            accepted_detection_labels=accepted_detection_labels,
+            noise_level=noise_level,
+            rgb_noise=rgb_noise,
+            depth_noise=depth_noise,
+            frame_index=frame_index_base + candidate_index,
+            min_target_pixels=min_target_pixels,
+            min_detector_pixels=min_detector_pixels,
+            max_detection_area_ratio=max_detection_area_ratio,
+            helpers=helpers,
+        )
+        for candidate_index, candidate in enumerate(candidates)
+    }
+
+
+def _verification_payload(verification: Any) -> dict[str, Any]:
+    evidence_type = getattr(verification, "evidence_type", None)
+    if evidence_type is None:
+        evidence_type_value = "positive" if verification.shared_gate_success else "unknown"
+    else:
+        evidence_type_value = str(getattr(evidence_type, "value", evidence_type))
+    return {
+        "shared_gate_success": bool(verification.shared_gate_success),
+        "evidence_type": evidence_type_value,
+        "target_visible": bool(getattr(verification, "target_visible", False)),
+        "evidence_reason": str(getattr(verification, "evidence_reason", "")),
+        "oracle_target_pixels": int(
+            getattr(verification, "oracle_target_pixels", 0) or 0
+        ),
+        "detector_pixels": int(getattr(verification, "detector_pixels", 0) or 0),
+        "overlap_pixels": int(getattr(verification, "overlap_pixels", 0) or 0),
+        "detector_precision": round(
+            float(getattr(verification, "detector_precision", 0.0) or 0.0),
+            6,
+        ),
+        "oracle_recall": round(
+            float(getattr(verification, "oracle_recall", 0.0) or 0.0),
+            6,
+        ),
+        "detection_count": int(getattr(verification, "detection_count", 0) or 0),
+        "detection_filtered_count": int(
+            getattr(verification, "detection_filtered_count", 0) or 0
+        ),
+    }
+
+
 def summarize_habitat_closed_loop_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     policy_summaries = _summarize_rows_by_policy(rows)
     return {
@@ -738,6 +1120,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 @dataclass(frozen=True)
 class _OracleVisible:
     target_visible: bool
+    oracle_target_pixels: int = 0
 
     @property
     def shared_gate_success(self) -> bool:

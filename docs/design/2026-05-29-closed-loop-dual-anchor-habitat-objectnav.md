@@ -122,6 +122,38 @@ This is useful evidence for the direction, but it is not a paper-ready result
 until Grounding-DINO, true frontier exploration, natural staleness, and larger
 run statistics are added.
 
+## Grounding-DINO Detector Slice
+
+The next implementation slice replaces oracle semantic visibility in the
+closed-loop action runner with detector-backed candidate verification while
+keeping the action-route and search-proxy structure fixed. This is still an
+option-level closed-loop smoke, not official ObjectNav SPL, but it removes the
+largest privileged-perception shortcut from the current runner.
+
+Scope for this slice:
+
+- support `--detector oracle_semantic_visibility|grounding_dino`;
+- render each selected memory and fallback candidate at `1280x720`;
+- apply the existing RGB/depth noise profiles before evidence classification;
+- reuse the lifecycle runner's Grounding-DINO adapter, detector-mask filtering,
+  and shared evidence classifier;
+- choose memory and fallback anchors with detector-positive evidence when
+  available, then apply the same shared gate to `memory_guided`,
+  `naive_count`, and `frontier_only`;
+- record detector config, min-pixel thresholds, area filter, and selected-row
+  evidence metrics in `summary.json`.
+
+Non-scope for this slice:
+
+- per-action visual servoing;
+- learned frontier selection;
+- natural object relocation;
+- detector-threshold tuning to rescue a single class.
+
+This keeps the comparison honest: if Grounding-DINO cannot produce usable
+evidence for a category, the run should expose that as detector-limited rather
+than silently falling back to Habitat ground truth.
+
 ## Data Flow
 
 1. Session 1 starts in Habitat with an empty local map.

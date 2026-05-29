@@ -5,16 +5,31 @@ from typing import Sequence
 
 from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import (
     DEFAULT_AMBIGUITY_MARGIN,
+    DEFAULT_DEPTH_NOISE_PROFILE,
+    DEFAULT_DETECTOR,
+    DEFAULT_DETECTOR_CONF,
+    DEFAULT_DETECTOR_PROMPT_MODE,
+    DEFAULT_DETECTOR_WEIGHTS,
     DEFAULT_GATE_THRESHOLD,
     DEFAULT_FRONTIER_PROXY_WAYPOINTS,
+    DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
+    DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
+    DEFAULT_MAX_DETECTION_AREA_RATIO,
     DEFAULT_MAX_GROUPS,
     DEFAULT_MEMORY_VALID_PRIOR,
+    DEFAULT_MIN_DETECTOR_PIXELS,
+    DEFAULT_MIN_TARGET_PIXELS,
+    DEFAULT_NOISE_LEVEL,
     DEFAULT_QUERY_REPEATS,
+    DEFAULT_RGB_NOISE_PROFILE,
     DEFAULT_SENSOR_HEIGHT,
     DEFAULT_SENSOR_WIDTH,
     DEFAULT_CHALLENGE,
     POLICIES,
     SUPPORTED_CHALLENGES,
+    SUPPORTED_DETECTORS,
+    SUPPORTED_DETECTOR_PROMPT_MODES,
+    SUPPORTED_NOISE_LEVELS,
     TARGET_CATEGORIES,
     run_habitat_closed_loop_dual_anchor_objectnav,
     run_habitat_closed_loop_dual_anchor_preflight,
@@ -60,6 +75,46 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--challenge", default=DEFAULT_CHALLENGE, choices=SUPPORTED_CHALLENGES)
+    parser.add_argument("--detector", default=DEFAULT_DETECTOR, choices=SUPPORTED_DETECTORS)
+    parser.add_argument("--detector-weights", default=DEFAULT_DETECTOR_WEIGHTS)
+    parser.add_argument("--detector-conf", type=float, default=DEFAULT_DETECTOR_CONF)
+    parser.add_argument(
+        "--grounding-dino-text-threshold",
+        type=float,
+        default=DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
+    )
+    parser.add_argument(
+        "--grounding-dino-max-image-side",
+        type=int,
+        default=DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
+    )
+    parser.add_argument("--rgb-noise-profile", default=DEFAULT_RGB_NOISE_PROFILE)
+    parser.add_argument("--depth-noise-profile", default=DEFAULT_DEPTH_NOISE_PROFILE)
+    parser.add_argument(
+        "--noise-level",
+        default=DEFAULT_NOISE_LEVEL,
+        choices=SUPPORTED_NOISE_LEVELS,
+    )
+    parser.add_argument(
+        "--min-target-pixels",
+        type=int,
+        default=DEFAULT_MIN_TARGET_PIXELS,
+    )
+    parser.add_argument(
+        "--min-detector-pixels",
+        type=int,
+        default=DEFAULT_MIN_DETECTOR_PIXELS,
+    )
+    parser.add_argument(
+        "--max-detection-area-ratio",
+        type=float,
+        default=DEFAULT_MAX_DETECTION_AREA_RATIO,
+    )
+    parser.add_argument(
+        "--detector-prompt-mode",
+        default=DEFAULT_DETECTOR_PROMPT_MODE,
+        choices=SUPPORTED_DETECTOR_PROMPT_MODES,
+    )
     parser.add_argument("--preflight-only", action="store_true")
     return parser
 
@@ -86,6 +141,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         challenge=args.challenge,
         query_repeats=args.query_repeats,
         memory_valid_prior=args.memory_valid_prior,
+        detector=args.detector,
+        detector_weights=args.detector_weights,
+        detector_conf=args.detector_conf,
+        grounding_dino_text_threshold=args.grounding_dino_text_threshold,
+        grounding_dino_max_image_side=args.grounding_dino_max_image_side,
+        rgb_noise_profile=args.rgb_noise_profile,
+        depth_noise_profile=args.depth_noise_profile,
+        noise_level=args.noise_level,
+        min_target_pixels=args.min_target_pixels,
+        min_detector_pixels=args.min_detector_pixels,
+        max_detection_area_ratio=args.max_detection_area_ratio,
+        detector_prompt_mode=args.detector_prompt_mode,
     )
     return 0
 
