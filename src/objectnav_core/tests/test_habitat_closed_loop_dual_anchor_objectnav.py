@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import (
     HabitatClosedLoopOptionPlan,
@@ -9,6 +10,18 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     summarize_habitat_closed_loop_rows,
 )
 from objectnav_core.evaluation import habitat_closed_loop_dual_anchor_objectnav as closed_loop
+
+
+@dataclass(frozen=True)
+class DetectorVerification:
+    target_visible: bool
+    oracle_target_pixels: int
+    detector_pixels: int
+    evidence_reason: str = "detector_positive_mask"
+
+    @property
+    def shared_gate_success(self) -> bool:
+        return self.target_visible and self.detector_pixels > 0
 
 
 def test_habitat_closed_loop_dual_anchor_preflight_writes_summary(tmp_path) -> None:
@@ -664,6 +677,26 @@ def test_evidence_reliability_rejects_nonpositive_or_ambiguous_memory() -> None:
     assert missed.value < 0.35
     assert ambiguous.value < 0.35
     assert ambiguous.components["matching"] < 0.5
+
+
+def test_detector_reliability_uses_detector_pixels_not_oracle_pixels() -> None:
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=DetectorVerification(
+            target_visible=True,
+            oracle_target_pixels=500_000,
+            detector_pixels=30,
+        ),
+        category="chair",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert estimate.components["current_evidence"] == 0.72
+    assert estimate.reason == "evidence_weighted"
+    assert estimate.value < 0.9
 
 
 def test_shared_detector_gate_controls_memory_verification_for_all_memory_policies() -> None:

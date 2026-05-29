@@ -1324,7 +1324,11 @@ def _current_evidence_reliability_component(verification: Any) -> float:
         return 0.15
     oracle_pixels = int(getattr(verification, "oracle_target_pixels", 0) or 0)
     detector_pixels = int(getattr(verification, "detector_pixels", 0) or 0)
-    visible_pixels = max(oracle_pixels, detector_pixels)
+    evidence_reason = str(getattr(verification, "evidence_reason", ""))
+    if evidence_reason.startswith("detector_"):
+        visible_pixels = detector_pixels
+    else:
+        visible_pixels = max(oracle_pixels, detector_pixels)
     if visible_pixels >= 4096:
         return 0.98
     if visible_pixels >= 512:
