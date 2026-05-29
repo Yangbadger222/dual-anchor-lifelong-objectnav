@@ -124,3 +124,26 @@ def test_habitat_closed_loop_cli_preflight_accepts_navmesh_frontier_config(
     assert summary["frontier_mode"] == "navmesh_frontier"
     assert summary["frontier_probe_count"] == 5
     assert summary["frontier_probe_heading_count"] == 8
+
+
+def test_habitat_closed_loop_cli_preflight_accepts_memory_reliability_mode(
+    tmp_path,
+) -> None:
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--memory-reliability-mode",
+            "evidence",
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert summary["memory_reliability_mode"] == "evidence"

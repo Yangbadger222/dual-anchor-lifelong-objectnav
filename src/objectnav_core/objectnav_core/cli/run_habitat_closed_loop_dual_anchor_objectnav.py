@@ -19,6 +19,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
     DEFAULT_MAX_GROUPS,
+    DEFAULT_MEMORY_RELIABILITY_MODE,
     DEFAULT_MEMORY_VALID_PRIOR,
     DEFAULT_MIN_DETECTOR_PIXELS,
     DEFAULT_MIN_TARGET_PIXELS,
@@ -33,6 +34,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     SUPPORTED_DETECTORS,
     SUPPORTED_DETECTOR_PROMPT_MODES,
     SUPPORTED_FRONTIER_MODES,
+    SUPPORTED_MEMORY_RELIABILITY_MODES,
     SUPPORTED_NOISE_LEVELS,
     TARGET_CATEGORIES,
     run_habitat_closed_loop_dual_anchor_objectnav,
@@ -92,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Prior probability that an unconfirmed memory anchor is still valid "
             "for expected-utility memory-vs-frontier decisions."
         ),
+    )
+    parser.add_argument(
+        "--memory-reliability-mode",
+        default=DEFAULT_MEMORY_RELIABILITY_MODE,
+        choices=SUPPORTED_MEMORY_RELIABILITY_MODES,
     )
     parser.add_argument("--challenge", default=DEFAULT_CHALLENGE, choices=SUPPORTED_CHALLENGES)
     parser.add_argument("--detector", default=DEFAULT_DETECTOR, choices=SUPPORTED_DETECTORS)
@@ -163,6 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         challenge=args.challenge,
         query_repeats=args.query_repeats,
         memory_valid_prior=args.memory_valid_prior,
+        memory_reliability_mode=args.memory_reliability_mode,
         detector=args.detector,
         detector_weights=args.detector_weights,
         detector_conf=args.detector_conf,

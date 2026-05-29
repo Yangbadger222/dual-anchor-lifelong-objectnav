@@ -34,6 +34,8 @@ DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
 DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
 DEFAULT_QUERY_REPEATS = 1
 DEFAULT_MEMORY_VALID_PRIOR = 0.5
+SUPPORTED_MEMORY_RELIABILITY_MODES: tuple[str, ...] = ("fixed", "evidence")
+DEFAULT_MEMORY_RELIABILITY_MODE = "fixed"
 SUPPORTED_CHALLENGES: tuple[str, ...] = ("stable", "ambiguous", "stale_proxy")
 DEFAULT_CHALLENGE = "stable"
 SUPPORTED_DETECTORS: tuple[str, ...] = (
@@ -79,6 +81,8 @@ class HabitatClosedLoopOptionPlan:
     query_repeat_index: int = 0
     memory_decision: str = "memory_first"
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR
+    memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE
+    memory_reliability: dict[str, Any] | None = None
     expected_memory_first_action_count: float | None = None
     expected_frontier_first_action_count: float | None = None
     memory_anchor_source: str = ""
@@ -96,6 +100,14 @@ class NavmeshFrontierRouteResult:
     selected_probe_position: tuple[float, float, float] | None
     selected_verification: Any
     verification_count: int
+
+
+@dataclass(frozen=True)
+class MemoryReliabilityEstimate:
+    mode: str
+    value: float
+    components: dict[str, float]
+    reason: str
 
 
 def run_habitat_closed_loop_dual_anchor_preflight(
@@ -117,6 +129,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
+    memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -147,6 +160,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        memory_reliability_mode=memory_reliability_mode,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -176,6 +190,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        memory_reliability_mode=memory_reliability_mode,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -212,6 +227,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
+    memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
     detector: str = DEFAULT_DETECTOR,
     detector_weights: str = DEFAULT_DETECTOR_WEIGHTS,
     detector_conf: float = DEFAULT_DETECTOR_CONF,
@@ -242,6 +258,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        memory_reliability_mode=memory_reliability_mode,
         detector=detector,
         detector_conf=detector_conf,
         grounding_dino_text_threshold=grounding_dino_text_threshold,
@@ -612,28 +629,6 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             ),
                             fallback_route=fallback_route,
                         )
-                        expected_memory_first = _expected_memory_first_action_count(
-                            memory_action_count=active_memory_route.action_count,
-                            fallback_from_memory_action_count=(
-                                fallback_from_memory_route.action_count
-                            ),
-                            memory_valid_prior=memory_valid_prior,
-                        )
-                        expected_frontier_first = float(fallback_route.action_count)
-                        memory_decision = _memory_first_decision(
-                            memory_action_count=active_memory_route.action_count,
-                            fallback_from_memory_action_count=(
-                                fallback_from_memory_route.action_count
-                            ),
-                            fallback_action_count=fallback_route.action_count,
-                            memory_valid_prior=memory_valid_prior,
-                        )
-                        if (
-                            policy == "memory_guided"
-                            and matching_reason == "no_current_observation"
-                            and memory_decision == "frontier_first"
-                        ):
-                            matching_reason = "expected_utility_frontier"
                         active_memory_verification = _active_memory_verification_for_repeat(
                             challenge=challenge,
                             policy=policy,
@@ -645,6 +640,37 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                 else initial_memory_verification
                             ),
                         )
+                        reliability_estimate = _estimate_memory_valid_prior(
+                            base_prior=memory_valid_prior,
+                            mode=memory_reliability_mode,
+                            matching_reason=matching_reason,
+                            verification=active_memory_verification,
+                            category=group.category,
+                            transform=_session_restart_transform(),
+                            repeat_index=repeat_index,
+                        )
+                        expected_memory_first = _expected_memory_first_action_count(
+                            memory_action_count=active_memory_route.action_count,
+                            fallback_from_memory_action_count=(
+                                fallback_from_memory_route.action_count
+                            ),
+                            memory_valid_prior=reliability_estimate.value,
+                        )
+                        expected_frontier_first = float(fallback_route.action_count)
+                        memory_decision = _memory_first_decision(
+                            memory_action_count=active_memory_route.action_count,
+                            fallback_from_memory_action_count=(
+                                fallback_from_memory_route.action_count
+                            ),
+                            fallback_action_count=fallback_route.action_count,
+                            memory_valid_prior=reliability_estimate.value,
+                        )
+                        if (
+                            policy == "memory_guided"
+                            and matching_reason == "no_current_observation"
+                            and memory_decision == "frontier_first"
+                        ):
+                            matching_reason = "expected_utility_frontier"
                         rows.append(
                             make_habitat_closed_loop_option_row(
                                 HabitatClosedLoopOptionPlan(
@@ -689,7 +715,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         matching_reason=matching_reason,
                                         raw_memory_decision=memory_decision,
                                     ),
-                                    memory_valid_prior=memory_valid_prior,
+                                    memory_valid_prior=reliability_estimate.value,
+                                    memory_reliability_mode=memory_reliability_mode,
+                                    memory_reliability=_memory_reliability_payload(
+                                        reliability_estimate
+                                    ),
                                     expected_memory_first_action_count=(
                                         expected_memory_first
                                     ),
@@ -735,6 +765,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
+        memory_reliability_mode=memory_reliability_mode,
         detector=detector,
         detector_weights=detector_weights,
         detector_conf=detector_conf,
@@ -854,6 +885,8 @@ def make_habitat_closed_loop_option_row(
         "fallback_from_memory_evidence": plan.fallback_from_memory_evidence,
         "memory_decision": plan.memory_decision,
         "memory_valid_prior": round(float(plan.memory_valid_prior), 6),
+        "memory_reliability_mode": plan.memory_reliability_mode,
+        "memory_reliability": plan.memory_reliability,
         "expected_memory_first_action_count": (
             None
             if plan.expected_memory_first_action_count is None
@@ -887,6 +920,7 @@ def _base_summary(
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
+    memory_reliability_mode: str,
     detector: str,
     detector_weights: str,
     detector_conf: float,
@@ -918,6 +952,7 @@ def _base_summary(
         "challenge": challenge,
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
+        "memory_reliability_mode": memory_reliability_mode,
         "detector": detector,
         "detector_weights": detector_weights,
         "detector_conf": round(float(detector_conf), 6),
@@ -968,6 +1003,7 @@ def _validate_common(
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
+    memory_reliability_mode: str,
     detector: str,
     detector_conf: float,
     grounding_dino_text_threshold: float,
@@ -1010,6 +1046,11 @@ def _validate_common(
         raise ValueError("query_repeats must be positive")
     if not 0.0 <= memory_valid_prior <= 1.0:
         raise ValueError("memory_valid_prior must be in [0, 1]")
+    if memory_reliability_mode not in SUPPORTED_MEMORY_RELIABILITY_MODES:
+        raise ValueError(
+            "memory_reliability_mode must be one of: "
+            + ", ".join(SUPPORTED_MEMORY_RELIABILITY_MODES)
+        )
     if detector not in SUPPORTED_DETECTORS:
         raise ValueError(
             "detector must be one of: " + ", ".join(SUPPORTED_DETECTORS)
@@ -1172,6 +1213,135 @@ def _memory_first_decision(
     if expected_memory <= float(fallback_action_count):
         return "memory_first"
     return "frontier_first"
+
+
+def _estimate_memory_valid_prior(
+    *,
+    base_prior: float,
+    mode: str,
+    matching_reason: str,
+    verification: Any,
+    category: str,
+    transform: FrameTransform2D,
+    repeat_index: int,
+) -> MemoryReliabilityEstimate:
+    if not 0.0 <= base_prior <= 1.0:
+        raise ValueError("base_prior must be in [0, 1]")
+    if mode not in SUPPORTED_MEMORY_RELIABILITY_MODES:
+        raise ValueError(
+            "mode must be one of: " + ", ".join(SUPPORTED_MEMORY_RELIABILITY_MODES)
+        )
+    if mode == "fixed":
+        value = round(float(base_prior), 6)
+        return MemoryReliabilityEstimate(
+            mode=mode,
+            value=value,
+            components={"base_prior": value},
+            reason="fixed_prior",
+        )
+
+    matching = _matching_reliability_component(matching_reason)
+    current_evidence = _current_evidence_reliability_component(verification)
+    covariance = _transform_covariance_reliability_component(transform)
+    category_prior = _category_reliability_component(category)
+    recency = _repeat_reliability_component(repeat_index)
+    if matching < 0.5:
+        value = min(0.3, base_prior * matching)
+        reason = f"matching_{matching_reason}"
+    elif current_evidence < 0.5:
+        value = min(0.34, 0.5 * float(base_prior) + 0.25 * current_evidence)
+        reason = "weak_current_evidence"
+    else:
+        value = (
+            0.15 * float(base_prior)
+            + 0.45 * current_evidence
+            + 0.20 * matching
+            + 0.10 * covariance
+            + 0.05 * category_prior
+            + 0.05 * recency
+        )
+        reason = "evidence_weighted"
+    components = {
+        "base_prior": round(float(base_prior), 6),
+        "current_evidence": round(current_evidence, 6),
+        "matching": round(matching, 6),
+        "transform_covariance": round(covariance, 6),
+        "category_prior": round(category_prior, 6),
+        "recency": round(recency, 6),
+    }
+    return MemoryReliabilityEstimate(
+        mode=mode,
+        value=round(_clamp01(value), 6),
+        components=components,
+        reason=reason,
+    )
+
+
+def _memory_reliability_payload(
+    estimate: MemoryReliabilityEstimate,
+) -> dict[str, Any]:
+    return {
+        "mode": estimate.mode,
+        "value": round(float(estimate.value), 6),
+        "components": {
+            key: round(float(value), 6)
+            for key, value in sorted(estimate.components.items())
+        },
+        "reason": estimate.reason,
+    }
+
+
+def _matching_reliability_component(matching_reason: str) -> float:
+    if matching_reason in {"accepted", "expected_utility_frontier"}:
+        return 1.0
+    if matching_reason == "no_current_observation":
+        return 0.45
+    if matching_reason == "ambiguous":
+        return 0.25
+    return 0.2
+
+
+def _current_evidence_reliability_component(verification: Any) -> float:
+    if not bool(getattr(verification, "shared_gate_success", False)):
+        return 0.15
+    oracle_pixels = int(getattr(verification, "oracle_target_pixels", 0) or 0)
+    detector_pixels = int(getattr(verification, "detector_pixels", 0) or 0)
+    visible_pixels = max(oracle_pixels, detector_pixels)
+    if visible_pixels >= 4096:
+        return 0.98
+    if visible_pixels >= 512:
+        return 0.9
+    if visible_pixels >= 24:
+        return 0.72
+    return 0.62
+
+
+def _transform_covariance_reliability_component(transform: FrameTransform2D) -> float:
+    variance = max(
+        0.0,
+        float(transform.covariance[0][0]) + float(transform.covariance[1][1]),
+    )
+    return _clamp01(1.0 / (1.0 + variance))
+
+
+def _category_reliability_component(category: str) -> float:
+    category_priors = {
+        "chair": 0.82,
+        "toilet": 0.78,
+        "bed": 0.76,
+        "sofa": 0.74,
+        "tv_monitor": 0.68,
+        "plant": 0.62,
+    }
+    return category_priors.get(category, 0.7)
+
+
+def _repeat_reliability_component(repeat_index: int) -> float:
+    return _clamp01(1.0 - 0.08 * max(0, int(repeat_index)))
+
+
+def _clamp01(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
 
 
 def _memory_decision_for_row(

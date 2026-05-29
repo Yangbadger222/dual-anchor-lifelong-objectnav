@@ -48,6 +48,10 @@ Implemented foundation:
   `memory_guided` can defer from an accepted memory to frontier when expected
   action cost prefers frontier-first; `naive_count` remains the always-reuse
   accepted-memory baseline.
+- Evidence-derived memory reliability mode via
+  `--memory-reliability-mode evidence`; default remains `fixed`. Evidence mode
+  records a row-level reliability trace and uses it as the expected-utility
+  memory-valid probability.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
@@ -184,6 +188,10 @@ Passed locally before this handoff update:
   selected frontier for chair/plant, memory for toilet, and succeeded in all 3
   episodes. `frontier_only` failed on toilet; `naive_count` remained shorter in
   aggregate because chair memory was cheaper than the sampled frontier route.
+- Local closed-loop Habitat/CLI tests after evidence reliability mode:
+  `29` passed.
+- Full local core tests after evidence reliability mode: `215` passed.
+- `git diff --check` passed after evidence reliability mode.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -254,13 +262,15 @@ Passed locally before this handoff update:
   blunt: it keeps the toilet win where frontier fails, but gives up cheap valid
   chair memory. Treat this as evidence for learning/estimating memory
   reliability, not as a reason to manually tune the prior.
+- Evidence reliability mode is implemented locally and verified with unit tests,
+  but it still needs a Linux Habitat smoke before interpreting behavior. It is
+  a transparent heuristic estimator, not yet learned calibration.
 
 ## Next Recommended Step
 
-1. Add an evidence-derived memory reliability estimator using current evidence,
-   dual-anchor covariance, object class, session age, and recent verification
-   outcomes; keep `memory_valid_prior` as the fallback/default.
-2. Rerun balanced navmesh smokes after the estimator and report per-case
+1. Pull evidence reliability mode on Linux and rerun balanced3 navmesh smoke
+   with `--memory-reliability-mode evidence`.
+2. Report per-case
    decision buckets: memory win, frontier win, harmful memory avoided, and
    valid memory wrongly deferred.
 3. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only

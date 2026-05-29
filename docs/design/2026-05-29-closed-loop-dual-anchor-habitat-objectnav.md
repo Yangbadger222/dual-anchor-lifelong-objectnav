@@ -198,6 +198,11 @@ Local implementation status:
   if the expected memory-first action cost is higher than frontier-first,
   it should defer to frontier while `naive_count` remains the always-reuse
   memory baseline.
+- Fixed `memory_valid_prior` is only the reproducibility baseline. The next
+  policy mode should estimate per-memory reliability from current detector or
+  oracle evidence, dual-anchor matching quality, transform covariance,
+  category-level priors, and recent verification outcomes, and record the
+  reliability trace in every row.
 
 Scope for this slice:
 

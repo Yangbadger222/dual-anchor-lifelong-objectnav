@@ -89,6 +89,21 @@ def test_habitat_closed_loop_preflight_records_navmesh_frontier_config(tmp_path)
     assert summary["frontier_probe_heading_count"] == 8
 
 
+def test_habitat_closed_loop_preflight_records_memory_reliability_mode(
+    tmp_path,
+) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        memory_reliability_mode="evidence",
+    )
+
+    assert summary["memory_reliability_mode"] == "evidence"
+
+
 def test_select_balanced_groups_prefers_category_coverage_before_duplicates() -> None:
     from types import SimpleNamespace
 
@@ -358,6 +373,37 @@ def test_memory_guided_row_selects_frontier_when_expected_utility_prefers_it() -
     assert row["success"] is True
 
 
+def test_option_row_records_memory_reliability_trace() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="g1",
+            category="plant",
+            policy="memory_guided",
+            memory_action_count=100,
+            memory_executed_distance_m=12.0,
+            fallback_action_count=140,
+            fallback_executed_distance_m=20.0,
+            fallback_from_memory_action_count=50,
+            fallback_from_memory_executed_distance_m=6.0,
+            matching_reason="accepted",
+            memory_verified=True,
+            fallback_verified=True,
+            memory_valid_prior=0.91,
+            memory_reliability_mode="evidence",
+            memory_reliability={
+                "mode": "evidence",
+                "value": 0.91,
+                "components": {"current_evidence": 0.98},
+                "reason": "evidence_weighted",
+            },
+        )
+    )
+
+    assert row["memory_valid_prior"] == 0.91
+    assert row["memory_reliability_mode"] == "evidence"
+    assert row["memory_reliability"]["components"]["current_evidence"] == 0.98
+
+
 def test_naive_count_row_reuses_accepted_memory_even_when_frontier_is_cheaper() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
@@ -409,6 +455,53 @@ def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> Non
         )
         == "memory_first"
     )
+
+
+def test_evidence_reliability_boosts_strong_current_positive_memory() -> None:
+    estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=closed_loop._OracleVisible(
+            target_visible=True,
+            oracle_target_pixels=74268,
+        ),
+        category="chair",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert estimate.value > 0.85
+    assert estimate.components["current_evidence"] > 0.9
+    assert estimate.components["matching"] == 1.0
+
+
+def test_evidence_reliability_rejects_nonpositive_or_ambiguous_memory() -> None:
+    missed = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="accepted",
+        verification=closed_loop._OracleVisible(target_visible=False),
+        category="chair",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+    ambiguous = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="evidence",
+        matching_reason="ambiguous",
+        verification=closed_loop._OracleVisible(
+            target_visible=True,
+            oracle_target_pixels=74268,
+        ),
+        category="chair",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    assert missed.value < 0.35
+    assert ambiguous.value < 0.35
+    assert ambiguous.components["matching"] < 0.5
 
 
 def test_shared_detector_gate_controls_memory_verification_for_all_memory_policies() -> None:
