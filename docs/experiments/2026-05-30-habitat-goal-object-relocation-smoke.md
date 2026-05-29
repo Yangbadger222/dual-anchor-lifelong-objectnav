@@ -206,3 +206,103 @@ not yet changed a decision.
 - Investigate whether detector confirmation events should contribute to
   memory-validity reliability when the context is fallback discovery of the new
   instance, or whether that should remain excluded.
+
+## Ranked Selector Follow-Up
+
+Commit `d8db80d` changed automatic relocation selection so generated pairs are
+ranked by old-memory to new-query pose separation before balanced category
+selection. It also records `relocation_pair_distance_m` in rows and mined
+candidates.
+
+Commands:
+
+```bash
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+PYTHONPATH=src/objectnav_core \
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_closed_loop_dual_anchor/oracle_goal_object_relocation_ranked_navmesh_balanced6_20260530_v1 \
+  --target-categories bed,chair,plant,sofa,toilet,tv_monitor \
+  --max-groups 6 \
+  --sensor-width 640 \
+  --sensor-height 360 \
+  --challenge goal_object_relocation \
+  --query-repeats 1 \
+  --memory-valid-prior 0.5 \
+  --memory-reliability-mode evidence \
+  --frontier-mode navmesh_frontier \
+  --frontier-probe-count 3 \
+  --frontier-probe-heading-count 2
+
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+PYTHONPATH=src/objectnav_core \
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_closed_loop_dual_anchor/grounding_dino_goal_object_relocation_ranked_navmesh_event_posterior_balanced6_20260530_v1 \
+  --target-categories bed,chair,plant,sofa,toilet,tv_monitor \
+  --max-groups 6 \
+  --sensor-width 640 \
+  --sensor-height 360 \
+  --challenge goal_object_relocation \
+  --query-repeats 1 \
+  --memory-valid-prior 0.5 \
+  --memory-reliability-mode event_posterior \
+  --frontier-mode navmesh_frontier \
+  --frontier-probe-count 3 \
+  --frontier-probe-heading-count 2 \
+  --detector grounding_dino \
+  --detector-weights IDEA-Research/grounding-dino-tiny \
+  --detector-conf 0.25 \
+  --grounding-dino-text-threshold 0.25 \
+  --grounding-dino-max-image-side 384 \
+  --rgb-noise-profile configs/noise/rgb_published_v1.yaml \
+  --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml \
+  --noise-level clean \
+  --min-target-pixels 24 \
+  --min-detector-pixels 20 \
+  --max-detection-area-ratio 0.7 \
+  --detector-prompt-mode target \
+  --detector-confirmation-mode multiview
+```
+
+Ranked oracle selected six rows with larger separation:
+
+| Category | Pair | Distance (m) | `memory_guided` bucket |
+|---|---|---:|---|
+| `chair` | `goal_object:13->goal_object:483` | 19.552565 | `harmful_memory_reuse_avoided` |
+| `tv_monitor` | `goal_object:435->goal_object:57` | 19.551887 | `memory_attempt_failed` |
+| `bed` | `goal_object:194->goal_object:698` | 19.418095 | `harmful_memory_reuse_avoided` |
+| `toilet` | `goal_object:260->goal_object:714` | 11.087852 | `harmful_memory_reuse_avoided` |
+| `sofa` | `goal_object:220->goal_object:341` | 6.690030 | `memory_missed_then_frontier_repaired` |
+| `chair` | `goal_object:483->goal_object:13` | 19.552565 | `harmful_memory_reuse_avoided` |
+
+Ranked oracle policy summary:
+
+| Policy | Success | Actions | Main buckets |
+|---|---:|---:|---|
+| `memory_guided` | 2/6 | 1314 | 4 avoided stale reuse, 1 failed memory attempt, 1 repaired |
+| `frontier_only` | 2/6 | 1801 | 6 frontier-only |
+| `naive_count` | 1/6 | 1006 | 5 stale memory reuse, 1 other |
+
+Ranked mining:
+
+| Run | Reliability-sensitive rows | Best near-boundary row | Counterfactual flips |
+|---|---:|---|---:|
+| Oracle ranked balanced6 | 2 | `toilet`, boundary 0.309783, reliability 0.287500, gap 0.022283 | 0 |
+| Grounding-DINO ranked balanced6 | 4 | `toilet`, boundary 0.335897, reliability 0.287500, gap 0.048397 | 0 |
+
+Interpretation:
+
+- The separation-ranked selector improved experiment geometry: it selected
+  farther old/new pairs and found a much closer reliability boundary than the
+  first two-group smoke.
+- The `toilet` row is the current best target for follow-up because fixed
+  reliability would choose memory first while evidence/event-posterior chooses
+  frontier first.
+- Grounding-DINO still produced `0` counterfactual flips. Runtime confirmation
+  events were present, but mined memory-validity event counts remained `0`,
+  because the useful detections occurred in fallback or fallback-from-memory
+  contexts rather than pre-decision memory validation.

@@ -154,6 +154,21 @@ relocation sweep produces a true mined flip. Next sweep should use the
 separation-ranked selector and inspect `relocation_pair_distance_m` in rows and
 mined candidates.
 
+The separation-ranked Linux sweeps are now complete:
+
+- Oracle ranked balanced6:
+  `runs/habitat_closed_loop_dual_anchor/oracle_goal_object_relocation_ranked_navmesh_balanced6_20260530_v1`
+- Grounding-DINO ranked balanced6:
+  `runs/habitat_closed_loop_dual_anchor/grounding_dino_goal_object_relocation_ranked_navmesh_event_posterior_balanced6_20260530_v1`
+- Best mined row so far: `toilet goal_object:260->goal_object:714`, with
+  oracle boundary gap `0.022283` and Grounding-DINO boundary gap `0.048397`.
+- Still `0` counterfactual flips. Detector events occurred in fallback
+  contexts, while memory-validity event counts remained `0`.
+
+Next recommended action: design a pre-decision memory-validity evidence step
+or learned validity model for near-boundary relocation rows, rather than
+continuing blind category sweeps.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
