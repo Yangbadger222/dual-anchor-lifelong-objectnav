@@ -2,7 +2,7 @@
 
 Date: 2026-05-29
 Owner: Codex
-Status: Completed diagnostic, not benchmark evidence
+Status: Completed diagnostic and control verification, not benchmark evidence
 
 ## Question
 
@@ -160,6 +160,51 @@ one-group explicit replay, it is evaluated first. Therefore the selected replay
 changed the target-agnostic frontier probes while trying to isolate only the
 group selection.
 
+## Stable Replay-Control Rerun
+
+The runner was updated in commit `d963151` so navmesh frontier seeds are derived
+from `group_id` plus route context, and detector frame-index bases are derived
+from `group_id`.
+
+Two Linux reruns then verified the fix:
+
+| Artifact | Purpose |
+|---|---|
+| `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_tv_monitor_event_posterior_selected_group_stable_replay_controls_v1/summary.json` | One-group `tv_monitor` replay under stable controls |
+| `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_tv_monitor_selected_group_stable_replay_controls_v1/report.json` | One-group mined decision report |
+| `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_sofa_tv_monitor_event_posterior_selected_groups_stable_replay_controls_v1/summary.json` | Two-group `sofa,tv_monitor` replay under stable controls |
+| `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_sofa_tv_monitor_selected_groups_stable_replay_controls_v1/report.json` | Two-group mined decision report |
+
+The stable one-group replay now reproduces the broad-row route accounting:
+
+| Run | `memory_action_count` | `fallback_action_count` | Fallback source |
+|---|---:|---:|---|
+| Balanced6 broad source | 24 | 24 | `navmesh_frontier_probe:0:step:23` |
+| Stable one-group replay | 24 | 24 | `navmesh_frontier_probe:0:step:23` |
+| Stable `sofa,tv_monitor` replay | 24 | 24 | `navmesh_frontier_probe:0:step:23` |
+
+The mined `tv_monitor` row is therefore a confirmed boundary-edge negative:
+
+| Metric | Stable Value |
+|---|---:|
+| `memory_action_count` | 24 |
+| `fallback_action_count` | 24 |
+| `fallback_from_memory_action_count` | 2 |
+| `event_posterior_reliability` | 0.607800 |
+| `detector_event_count` | 4 |
+| `reliability_delta` | 0.352200 |
+| `decision_boundary_reliability_raw` | 1.000000 |
+| `decision_boundary_region` | `frontier_requires_perfect_memory` |
+| `boundary_reliability_interval_gap` | 0.040000 |
+| `evidence_decision` | `frontier_first` |
+| `event_posterior_decision` | `frontier_first` |
+| `counterfactual_decision_flip` | false |
+
+The two-group stable replay also reproduced the `sofa` negative:
+`memory_action_count=63`, `fallback_action_count=63`,
+`fallback_from_memory_action_count=2`, and
+`decision_boundary_reliability_raw=1.0`.
+
 ## Interpretation
 
 The `tv_monitor` replay confirms detector-event signal:
@@ -168,17 +213,17 @@ The `tv_monitor` replay confirms detector-event signal:
 - The runtime event history included confirmed and suppressed detector
   confirmations.
 
-It does not provide policy-improvement evidence. In the isolated run, memory is
-so much shorter than frontier that both evidence and event-posterior reliability
-choose memory. More importantly, the replay exposed that row-order-derived
-frontier seeds can invalidate exact targeted replay comparisons.
+It does not provide policy-improvement evidence. Under stable replay controls,
+the row is a `frontier_requires_perfect_memory` boundary edge: evidence and
+event-posterior reliability both choose frontier, and neither can flip the
+policy without perfect reliability.
 
 ## Conclusion
 
 The immediate result is a reproducibility/control finding, not a policy result:
 
 - `tv_monitor` did not demonstrate an event-posterior policy flip;
-- the old broad `tv_monitor` boundary row should not be treated as replayed
-  until frontier seeds are made stable by group identity;
-- targeted replay needs stable per-group replay controls before further
-  boundary-slice conclusions are trustworthy.
+- stable replay controls now reproduce the mined route accounting in one-group
+  and two-group selected replays;
+- the currently tested `sofa` and `tv_monitor` rows both have event signal but
+  sit on the `boundary=1.0` edge, so they are not flippable posterior cases.

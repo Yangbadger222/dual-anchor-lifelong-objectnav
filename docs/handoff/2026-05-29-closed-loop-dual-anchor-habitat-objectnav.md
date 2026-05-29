@@ -826,9 +826,40 @@ Verification already run locally for the fix:
 - `py_compile` passed for the runner and CLI module.
 - `git diff --check` passed.
 
+Additional Linux verification after commit `d963151`:
+
+- Linux fast-forwarded to `d963151`.
+- Focused closed-loop/CLI suite passed on Linux: `65` tests.
+- Stable one-group replay:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_tv_monitor_event_posterior_selected_group_stable_replay_controls_v1/summary.json`
+- Stable one-group mining:
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_tv_monitor_selected_group_stable_replay_controls_v1/report.json`
+- Stable two-group replay:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_sofa_tv_monitor_event_posterior_selected_groups_stable_replay_controls_v1/summary.json`
+- Stable two-group mining:
+  `runs/habitat_closed_loop_dual_anchor/decision_sensitivity_sofa_tv_monitor_selected_groups_stable_replay_controls_v1/report.json`
+
+Stable-control result:
+
+- The one-group and two-group stable replays both produce the same
+  `tv_monitor` route accounting:
+  `memory_action_count=24`, `fallback_action_count=24`,
+  `fallback_from_memory_action_count=2`, and fallback source
+  `navmesh_frontier_probe:0:step:23`.
+- This matches the original balanced6 broad row and confirms that selected
+  replay no longer changes the `tv_monitor` frontier probes by row order.
+- The mined result is still negative for policy flips:
+  `decision_boundary_reliability_raw=1.0`,
+  `decision_boundary_region=frontier_requires_perfect_memory`,
+  `event_posterior_reliability=0.6078`, and
+  `counterfactual_decision_flip=false`.
+- The two-group run also reproduced the `sofa` boundary-edge negative:
+  `memory_action_count=63`, `fallback_action_count=63`,
+  `fallback_from_memory_action_count=2`, and boundary raw `1.0`.
+
 Next step:
 
-- Commit and push the replay-control fix.
-- Pull it on Linux and rerun focused tests.
-- Regenerate the relevant broad/selected artifacts under stable replay controls
-  before treating any interval-gap candidate as replayed.
+- Use the interval-gap miner to search beyond the current `sofa` and
+  `tv_monitor` edge cases, or change experiment construction to create rows
+  where the reliability boundary lies inside the evidence/event-posterior
+  interval.
