@@ -32,19 +32,23 @@ Implemented foundation:
   non-identity frame restart, ambiguity rejection, and stale repair.
 - Habitat closed-loop smoke entry:
   `python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output <dir>`
-  has preflight and an oracle/action-level HM3D smoke path. It reuses existing
-  Habitat episode/group selection and GreedyGeodesic route execution. It now
-  supports `--challenge stable|ambiguous|stale_proxy`.
+  has preflight plus oracle and Grounding-DINO candidate-gate HM3D smoke paths.
+  It reuses existing Habitat episode/group selection and GreedyGeodesic route
+  execution. It now supports `--challenge stable|ambiguous|stale_proxy` and
+  `--detector oracle_semantic_visibility|grounding_dino`.
 - Repaired-memory direct route accounting for repeated stale queries.
 - Expected-utility memory-vs-frontier decisions using `--memory-valid-prior`.
 - Category-balanced group selection before duplicate categories when
   `--max-groups` is set.
 - A Markdown and Chinese HTML experiment report for the latest Habitat
   oracle/action smoke.
+- A Markdown experiment report for the Grounding-DINO candidate-gate smoke:
+  `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`.
 
 Not implemented yet:
 
-- Grounding-DINO per-step Habitat closed-loop perception.
+- Grounding-DINO per-step Habitat closed-loop perception. The current detector
+  path verifies selected memory/fallback candidate views only.
 - True Habitat frontier mapping/exploration policy.
 - Natural object relocation/removal in Habitat.
 - SPL-like action-level ObjectNav metrics for memory-vs-frontier decisions.
@@ -55,6 +59,7 @@ Not implemented yet:
 - `docs/devlog/2026-05.md`
 - `docs/experiments/2026-05-29-dual-anchor-pressure-smoke.md`
 - `docs/experiments/2026-05-29-closed-loop-dual-anchor-grid-smoke.md`
+- `docs/experiments/2026-05-29-habitat-closed-loop-grounding-dino-candidate-gate.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.md`
 - `docs/experiments/2026-05-29-habitat-closed-loop-dual-anchor-oracle-action-smoke.zh.html`
 - `docs/handoff/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -92,6 +97,7 @@ PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_closed_loop_dual_
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
 PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_dual_anchor_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --preflight-only
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests -q
+PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --output /tmp/habitat_closed_loop_grounding_dino_preflight --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --target-categories plant,toilet --max-groups 2 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.2 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level mild --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --preflight-only
 ```
 
 Linux commands run:
@@ -104,6 +110,8 @@ conda activate habitat
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_stale_proxy_repeats2_balanced6_eu_p05_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stale_proxy --query-repeats 2 --memory-valid-prior 0.5
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/oracle_action_stable_balanced6_eu_p05_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/grounding_dino_candidate_gate_6cat_stale_repeats2_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --challenge stale_proxy --query-repeats 2
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True /home/badger/anaconda3/bin/conda run -n habitat env PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/grounding_dino_candidate_gate_6cat_stable_v1 --target-categories bed,chair,plant,sofa,toilet,tv_monitor --max-groups 6 --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target --challenge stable --query-repeats 1
 ```
 
 ## Verification
@@ -130,7 +138,14 @@ Passed locally before this handoff update:
 - Full local core tests after expected-utility decisions: `195` passed.
 - Full local core tests after decision-trace cleanup: `196` passed.
 - Full local core tests after balanced group selection: `197` passed.
+- Full local core tests after Grounding-DINO candidate-gate support: `200`
+  passed.
+- Full local core tests after stale-proxy evidence correction: `201` passed.
 - Linux focused Habitat tests after the expected-utility CLI update: `9` passed.
+- Linux focused Habitat tests after Grounding-DINO candidate-gate support:
+  `14` passed.
+- Linux focused Habitat tests after stale-proxy evidence correction: `15`
+  passed.
 - Linux stable balanced6 oracle/action smoke:
   `memory_guided=575` actions, `naive_count=575`,
   `frontier_only=1311`.
@@ -138,14 +153,23 @@ Passed locally before this handoff update:
   `--query-repeats 2 --memory-valid-prior 0.5`:
   `memory_guided=2020` actions, `frontier_only=3074`,
   `naive_count=4148`.
+- Linux stable balanced6 Grounding-DINO candidate-gate smoke:
+  `memory_guided=575` actions, `naive_count=575`,
+  `frontier_only=1313`, with all selected memory and fallback gates positive.
+- Linux stale balanced6 Grounding-DINO candidate-gate smoke:
+  `memory_guided=2018` actions, `frontier_only=3072`,
+  `naive_count=4144`. Old stale memory evidence is
+  `non_confirmation/shared_gate_success=false`; fallback/repaired anchors are
+  detector-positive for all six selected categories.
 
 ## Known Risks
 
 - The current pressure runner is deterministic synthetic math, not Habitat.
 - The closed-loop grid harness is option-level and config-truth, not Habitat.
-- The Habitat closed-loop runner is currently oracle/action-level. It executes
-  real Habitat GreedyGeodesic routes, but it does not yet run Grounding-DINO
-  per-step perception or true frontier mapping.
+- The Habitat closed-loop runner is currently option-level. It executes real
+  Habitat GreedyGeodesic routes and can use Grounding-DINO at selected
+  memory/fallback candidate views, but it does not yet run per-action perception
+  or true frontier mapping.
 - Early Linux smokes exposed invalid frontier accounting, partial challenge
   semantics, repaired-memory route mischarging, and stale-risk overprobing.
   These are fixed in the current branch and documented in the experiment
@@ -164,10 +188,10 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Replace oracle visibility in the closed-loop runner with Grounding-DINO
-   observations and keep the same shared gate.
-2. Add a true occupancy/frontier exploration policy; the current frontier is a
+1. Add a true occupancy/frontier exploration policy; the current frontier is a
    deterministic search proxy.
+2. Move Grounding-DINO from selected candidate-view verification to per-action
+   observation and stopping decisions.
 3. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
 4. Scale the balanced runs beyond six groups and report confidence intervals.

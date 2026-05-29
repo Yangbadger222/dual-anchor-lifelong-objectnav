@@ -124,11 +124,11 @@ run statistics are added.
 
 ## Grounding-DINO Detector Slice
 
-The next implementation slice replaces oracle semantic visibility in the
+The second implementation slice replaces oracle semantic visibility in the
 closed-loop action runner with detector-backed candidate verification while
 keeping the action-route and search-proxy structure fixed. This is still an
 option-level closed-loop smoke, not official ObjectNav SPL, but it removes the
-largest privileged-perception shortcut from the current runner.
+largest privileged-perception shortcut from the previous oracle runner.
 
 Scope for this slice:
 
@@ -153,6 +153,20 @@ Non-scope for this slice:
 This keeps the comparison honest: if Grounding-DINO cannot produce usable
 evidence for a category, the run should expose that as detector-limited rather
 than silently falling back to Habitat ground truth.
+
+Latest Grounding-DINO candidate-gate smoke:
+
+| Scenario | `memory_guided` | `frontier_only` | `naive_count` | Notes |
+|---|---:|---:|---:|---|
+| stable balanced6 | 575 actions | 1313 actions | 575 actions | Memory-guided ties naive when every memory is valid |
+| stale balanced6, 2 repeats | 2018 actions | 3072 actions | 4144 actions | Memory-guided repairs once, then reuses the repaired anchor |
+
+All six selected categories produced positive Grounding-DINO fallback evidence
+at `1280x720` in the clean run. In `stale_proxy`, old memory evidence is
+reported as explicit `non_confirmation/shared_gate_success=false`; only the
+rediscovered fallback/repaired anchor becomes detector-positive. This is stronger
+than the oracle/action smoke, but it remains a proxy because the detector is not
+run at every action step and frontier is still search-proxy based.
 
 ## Data Flow
 
