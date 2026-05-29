@@ -171,6 +171,8 @@ ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source 
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
 ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_trace_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_oracle_navmesh_trace_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && git pull --ff-only origin codex/habitat-memory-lifecycle && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core python -m pytest src/objectnav_core/tests/test_habitat_action_follower.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q'
+ssh badger@100.88.131.52 'cd ~/Desktop/dual-anchor-lifelong-objectnav && source ~/anaconda3/etc/profile.d/conda.sh && conda activate habitat && rm -rf runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_audit_1group_v1 && HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=src/objectnav_core python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val --scene-root datasets/habitat/scene_datasets/hm3d --output runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_audit_1group_v1 --target-categories plant,toilet --max-groups 1 --sensor-width 1280 --sensor-height 720 --challenge stable --query-repeats 1 --memory-valid-prior 0.5 --memory-reliability-mode evidence --frontier-mode navmesh_frontier --frontier-probe-count 5 --frontier-probe-heading-count 4 --route-observation-mode per_action --detector grounding_dino --detector-weights IDEA-Research/grounding-dino-tiny --detector-conf 0.25 --grounding-dino-text-threshold 0.25 --grounding-dino-max-image-side 384 --rgb-noise-profile configs/noise/rgb_published_v1.yaml --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml --noise-level clean --min-target-pixels 24 --min-detector-pixels 20 --max-detection-area-ratio 0.7 --detector-prompt-mode target'
 ```
 
 Linux commands run:
@@ -370,6 +372,13 @@ Passed locally before this handoff update:
   `detector_false_confirmation` row fields and summary counts. Focused Habitat
   route/CLI tests produced `51` passed; full local core tests produced `234`
   passed.
+- Linux focused Habitat route/CLI tests after pulling commit `46d94d5`:
+  `51` passed.
+- Linux 1-group Grounding-DINO per-action audit smoke after commit `46d94d5`
+  completed successfully and confirmed the runtime summary fields. All three
+  policies reported `detector_false_confirmation_counts={'memory': 1}` for the
+  selected `plant` group; the row-level memory evidence had
+  `detector_overlap_success=false` and `detector_false_confirmation=true`.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -412,11 +421,10 @@ Passed locally before this handoff update:
   that replans after each frame and it still lacks true frontier mapping.
 - `navmesh_frontier` is target-agnostic with respect to sampled route goals, but
   it is still a navmesh probe approximation, not an occupancy frontier built
-  from depth observations. It has only been verified locally with unit tests and
-  still needs a passing Linux Habitat rerun after heading-scan support. The
-  first smoke exposed reachable probe/follower brittleness; skipped route errors
-  and scan-action counts should be audited so a weak frontier does not silently
-  become an empty or free-sensing search.
+  from depth observations. It now has local tests and several Linux Habitat
+  smokes, but skipped route errors and scan-action counts should keep being
+  audited so a weak frontier does not silently become an empty or free-sensing
+  search.
 - Early Linux smokes exposed invalid frontier accounting, partial challenge
   semantics, repaired-memory route mischarging, and stale-risk overprobing.
   These are fixed in the current branch and documented in the experiment
@@ -466,23 +474,21 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Push the detector false-confirmation audit fields and rerun a small Linux
-   detector smoke to confirm summary counts in runtime artifacts.
-2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+1. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-3. Continue calibrating the reliability estimator against bucket counts and
+2. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-4. Replace oracle/candidate-view reliability evidence with detector/per-action
+3. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+4. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-6. Move Grounding-DINO from selected candidate-view verification to larger
+5. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-7. Implement natural Habitat object relocation/removal or a clearly labeled
+6. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-8. Scale the balanced runs beyond six groups and report confidence intervals.
-9. Convert the smoke metrics into SPL-like metrics only after per-action
+7. Scale the balanced runs beyond six groups and report confidence intervals.
+8. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
