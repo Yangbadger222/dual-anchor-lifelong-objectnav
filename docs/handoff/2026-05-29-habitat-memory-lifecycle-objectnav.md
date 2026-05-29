@@ -59,6 +59,7 @@ Recent code also adds:
 
 - `--detector-prompt-mode`
 - `--anchor-strategy`
+- `--anchor-candidate-limit` with default `4`
 - trace fields for `memory_anchor_source` and evidence reasons
 
 ## Commands Run
@@ -146,8 +147,8 @@ Passed on Linux:
 ## Next Recommended Step
 
 1. Pull the latest branch on Linux and run the full-val six-category clean
-   Grounding-DINO smoke with `--anchor-strategy detector_positive` and default
-   `--detector-prompt-mode target`.
+   Grounding-DINO smoke with `--anchor-strategy detector_positive`, default
+   `--detector-prompt-mode target`, and default `--anchor-candidate-limit 4`.
 2. Inspect `summary.json["episode_selection"]` and trace rows for remaining
    failures, especially `chair` and `tv_monitor`.
 3. Export PNGs for failed detector-qualified anchors before tuning thresholds.

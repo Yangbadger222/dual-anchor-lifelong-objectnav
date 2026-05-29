@@ -178,6 +178,11 @@ The lifecycle runner now supports an anchor strategy:
   when available; otherwise it falls back to the most visible candidate and
   records the failed evidence in the trace.
 
+To keep Grounding-DINO experiments tractable, discovery candidates are sorted by
+Habitat semantic target pixels and capped by `--anchor-candidate-limit` before
+detector verification. The default is `4`, which preserves the most visible
+candidate views without turning small smoke tests into full viewpoint scans.
+
 This makes the protocol closer to the intended robot system boundary: memory is
 created by perception-confirmed experience, not by privileged Habitat goal
 metadata. It also keeps failures attributable: if no detector-positive anchor

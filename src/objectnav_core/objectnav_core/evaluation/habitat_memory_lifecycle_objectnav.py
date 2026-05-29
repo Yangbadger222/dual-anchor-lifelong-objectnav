@@ -46,6 +46,7 @@ DEFAULT_MAX_DETECTION_AREA_RATIO = 0.7
 DEFAULT_SEARCH_PROXY_WAYPOINTS = 3
 DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS = 48
 DEFAULT_DETECTOR_PROMPT_MODE = "target"
+DEFAULT_ANCHOR_CANDIDATE_LIMIT = 4
 SUPPORTED_ANCHOR_STRATEGIES: tuple[str, ...] = (
     "first_goal_viewpoint",
     "most_visible",
@@ -265,6 +266,7 @@ def run_habitat_memory_lifecycle_preflight(
     grounding_dino_max_image_side: int | None = 384,
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
+    anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
 ) -> dict[str, Any]:
@@ -283,6 +285,7 @@ def run_habitat_memory_lifecycle_preflight(
         min_detector_pixels=min_detector_pixels,
         detector_prompt_mode=detector_prompt_mode,
         anchor_strategy=anchor_strategy,
+        anchor_candidate_limit=anchor_candidate_limit,
     )
     summary: dict[str, Any] = {
         "task": "habitat_memory_lifecycle_objectnav_preflight",
@@ -299,6 +302,7 @@ def run_habitat_memory_lifecycle_preflight(
         "grounding_dino_max_image_side": grounding_dino_max_image_side,
         "detector_prompt_mode": detector_prompt_mode,
         "anchor_strategy": anchor_strategy,
+        "anchor_candidate_limit": anchor_candidate_limit,
         "modes": list(modes),
         "target_categories": list(target_categories),
         "episodes_per_category": episodes_per_category,
@@ -347,6 +351,7 @@ def run_habitat_memory_lifecycle_objectnav(
     grounding_dino_max_image_side: int | None = 384,
     detector_prompt_mode: str = DEFAULT_DETECTOR_PROMPT_MODE,
     anchor_strategy: str = DEFAULT_ANCHOR_STRATEGY,
+    anchor_candidate_limit: int | None = DEFAULT_ANCHOR_CANDIDATE_LIMIT,
     min_target_pixels: int = 24,
     min_detector_pixels: int = 20,
     structured_min_goal_viewpoints: int = DEFAULT_STRUCTURED_MIN_GOAL_VIEWPOINTS,
@@ -378,6 +383,7 @@ def run_habitat_memory_lifecycle_objectnav(
         grounding_dino_max_image_side=grounding_dino_max_image_side,
         detector_prompt_mode=detector_prompt_mode,
         anchor_strategy=anchor_strategy,
+        anchor_candidate_limit=anchor_candidate_limit,
         min_target_pixels=min_target_pixels,
         min_detector_pixels=min_detector_pixels,
     )
@@ -536,6 +542,10 @@ def run_habitat_memory_lifecycle_objectnav(
                         episode=group.discovery_episode,
                         target_semantic_ids=target_semantic_ids,
                     )
+                    discovery_candidates = _rank_lifecycle_anchor_candidates(
+                        discovery_candidates,
+                        limit=anchor_candidate_limit,
+                    )
                     memory_verifications = {
                         candidate.source: _verify_lifecycle_view(
                             sim=sim,
@@ -655,6 +665,7 @@ def run_habitat_memory_lifecycle_objectnav(
             "query_repeats": int(query_repeats),
             "detector_prompt_mode": detector_prompt_mode,
             "anchor_strategy": anchor_strategy,
+            "anchor_candidate_limit": anchor_candidate_limit,
             "max_groups": max_groups,
             "groups_completed": len(groups),
             "episode_selection": {
@@ -801,6 +812,25 @@ def _limit_groups_per_category(
         selected.append(group)
         counts[group.category] = count + 1
     return selected
+
+
+def _rank_lifecycle_anchor_candidates(
+    candidates: Sequence[Any],
+    *,
+    limit: int | None,
+) -> tuple[Any, ...]:
+    if limit is not None and limit <= 0:
+        raise ValueError("anchor_candidate_limit must be positive when provided")
+    ranked = tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: int(getattr(candidate, "target_pixels", 0) or 0),
+            reverse=True,
+        )
+    )
+    if limit is None:
+        return ranked
+    return ranked[:limit]
 
 
 def _choose_lifecycle_anchor_candidate(
@@ -1319,6 +1349,7 @@ def _validate_preflight_inputs(
     min_detector_pixels: int,
     detector_prompt_mode: str,
     anchor_strategy: str,
+    anchor_candidate_limit: int | None,
 ) -> None:
     if not noise_levels:
         raise ValueError("At least one noise level is required")
@@ -1356,6 +1387,8 @@ def _validate_preflight_inputs(
         raise ValueError(
             "anchor_strategy must be one of: " + ", ".join(SUPPORTED_ANCHOR_STRATEGIES)
         )
+    if anchor_candidate_limit is not None and anchor_candidate_limit <= 0:
+        raise ValueError("anchor_candidate_limit must be positive when provided")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
     _choose_lifecycle_anchor_candidate,
+    _rank_lifecycle_anchor_candidates,
     _lifecycle_row,
     plan_lifecycle_query,
     plan_lifecycle_sequence,
@@ -240,6 +241,19 @@ def test_detector_qualified_anchor_falls_back_to_most_visible_viewpoint() -> Non
     )
 
     assert selected is better_visible
+
+
+def test_anchor_candidate_ranking_keeps_top_visible_candidates() -> None:
+    low = SimpleNamespace(source="goal_viewpoint:0", target_pixels=10)
+    high = SimpleNamespace(source="goal_viewpoint:1", target_pixels=1200)
+    middle = SimpleNamespace(source="goal_viewpoint:2", target_pixels=500)
+
+    selected = _rank_lifecycle_anchor_candidates(
+        candidates=(low, high, middle),
+        limit=2,
+    )
+
+    assert selected == (high, middle)
 
 
 def test_summarize_lifecycle_results_reports_mode_comparison() -> None:

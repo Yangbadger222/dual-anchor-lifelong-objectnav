@@ -311,3 +311,9 @@ The runner now records `detector_prompt_mode`, `anchor_strategy`,
 detector-backed verification before treating it as memory. This aligns the
 simulation with the intended robot memory system: no object is remembered unless
 the robot saw and confirmed it.
+
+An attempted full candidate scan was interrupted after several minutes because
+Grounding-DINO and connected-component mask scoring over every discovery
+viewpoint was too slow for iterative smoke testing. The runner now sorts
+discovery viewpoints by Habitat target pixels and verifies only the top
+`--anchor-candidate-limit` candidates by default (`4`).

@@ -13,6 +13,7 @@ from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     DEFAULT_STRUCTURED_MIN_PATH_COMPLEXITY_RATIO,
     DEFAULT_DETECTOR_PROMPT_MODE,
     DEFAULT_ANCHOR_STRATEGY,
+    DEFAULT_ANCHOR_CANDIDATE_LIMIT,
     SUPPORTED_ANCHOR_STRATEGIES,
     SUPPORTED_LIFECYCLE_DETECTORS,
     SUPPORTED_LIFECYCLE_MODES,
@@ -90,6 +91,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Memory anchor policy. detector_positive selects a discovery viewpoint "
             "that actually passes detector-backed verification before storing memory."
+        ),
+    )
+    parser.add_argument(
+        "--anchor-candidate-limit",
+        type=int,
+        default=DEFAULT_ANCHOR_CANDIDATE_LIMIT,
+        help=(
+            "Maximum number of discovery viewpoints to detector-verify per group/noise "
+            "cell, after sorting by Habitat target pixels."
         ),
     )
     parser.add_argument(
@@ -196,6 +206,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         grounding_dino_max_image_side=args.grounding_dino_max_image_side,
         detector_prompt_mode=args.detector_prompt_mode,
         anchor_strategy=args.anchor_strategy,
+        anchor_candidate_limit=args.anchor_candidate_limit,
         min_target_pixels=args.min_target_pixels,
         min_detector_pixels=args.min_detector_pixels,
     )
