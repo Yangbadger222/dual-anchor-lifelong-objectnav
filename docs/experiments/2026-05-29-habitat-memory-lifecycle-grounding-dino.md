@@ -646,3 +646,16 @@ Critical interpretation:
   and `24.89%` versus `no_memory`.
 - This is still not official Habitat SPL. It remains a geodesic/search-proxy
   lifecycle benchmark and needs action-level validation before paper claims.
+
+### Action-Metrics Caveat
+
+An initial oracle `--action-metrics` smoke was useful as a systems check but not
+as a reportable result. It exposed that the action route meter was measuring
+direct follower routes to fallback, while the geodesic lifecycle protocol
+charged fallback through deterministic search-proxy waypoints. That mismatch
+can make fallback-heavy modes look artificially cheap in action counts.
+
+The code now routes action metrics through the same waypoint sequence used by
+`fallback_path_cost_m` and `fallback_from_memory_path_cost_m`. Rerun action
+smokes after the search-proxy-aligned action-metrics commit before reporting any
+action-count comparison.

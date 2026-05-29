@@ -272,3 +272,27 @@ rows also include `action_count`, `executed_distance_m`, and
 `action_route_reached_stop`, and mode summaries aggregate total/mean action
 counts and executed distance. These are still follower-based action metrics, not
 official Habitat Challenge SPL.
+
+## 2026-05-29 Update: Search-Proxy-Aligned Action Metrics
+
+A first oracle smoke with `--action-metrics` exposed a semantic mismatch: the
+geodesic protocol charged fallback through deterministic search-proxy
+waypoints, but the action metrics sent the Habitat follower directly from the
+start pose to the fallback candidate. That made `action_count` and
+`executed_distance_m` incomparable with `path_length_m`, and it particularly
+understated `no_memory` and fallback legs.
+
+The action route meter now supports ordered goal sequences. Lifecycle fallback
+action routes reuse the same route goals that produce geodesic/search-proxy
+costs:
+
+- direct memory verification: query start to memory anchor;
+- no-memory fallback: query start through the sampled search-proxy waypoints to
+  the fallback anchor;
+- stale memory repair: query start to stale memory anchor, then from that memory
+  pose through the sampled search-proxy waypoints to the fallback anchor;
+- repaired repeat: query start directly to the repaired fallback anchor.
+
+The metrics remain route-accounting probes, not official Habitat SPL. Detector
+verification still uses fixed candidate views, but the optional action counts
+now measure the same waypoint semantics as the geodesic lifecycle trace.

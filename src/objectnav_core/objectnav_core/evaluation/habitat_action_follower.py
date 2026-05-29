@@ -12,6 +12,7 @@ class HabitatActionRoute:
     reached_stop: bool
     final_position: tuple[float, float, float]
     executed_distance_m: float
+    final_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
 
     @property
     def action_count(self) -> int:
@@ -68,6 +69,54 @@ def follow_greedy_geodesic_route(
         reached_stop=reached_stop,
         final_position=tuple(float(value) for value in previous_position),
         executed_distance_m=round(executed_distance, 6),
+        final_rotation=_agent_rotation(agent),
+    )
+
+
+def follow_greedy_geodesic_route_sequence(
+    *,
+    habitat_sim: Any,
+    sim: Any,
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    goal_positions: Sequence[Sequence[float]],
+    max_steps_per_goal: int,
+    goal_radius: float,
+    agent_id: int = 0,
+) -> HabitatActionRoute:
+    if not goal_positions:
+        raise ValueError("goal_positions must contain at least one goal")
+    actions: list[str] = []
+    executed_distance = 0.0
+    reached_stop = True
+    current_position = tuple(float(value) for value in start_position)
+    current_rotation = tuple(float(value) for value in start_rotation)
+
+    for goal_position in goal_positions:
+        segment = follow_greedy_geodesic_route(
+            habitat_sim=habitat_sim,
+            sim=sim,
+            start_position=current_position,
+            start_rotation=current_rotation,
+            goal_position=goal_position,
+            max_steps=max_steps_per_goal,
+            goal_radius=goal_radius,
+            agent_id=agent_id,
+        )
+        actions.extend(segment.actions)
+        executed_distance += float(segment.executed_distance_m)
+        reached_stop = reached_stop and bool(segment.reached_stop)
+        current_position = segment.final_position
+        current_rotation = segment.final_rotation
+        if not segment.reached_stop:
+            break
+
+    return HabitatActionRoute(
+        actions=tuple(actions),
+        reached_stop=reached_stop,
+        final_position=current_position,
+        executed_distance_m=round(executed_distance, 6),
+        final_rotation=current_rotation,
     )
 
 
@@ -85,6 +134,19 @@ def _set_agent_pose(
 
 def _agent_position(agent: Any) -> np.ndarray:
     return np.asarray(agent.get_state().position, dtype=float)
+
+
+def _agent_rotation(agent: Any) -> tuple[float, float, float, float]:
+    rotation = agent.get_state().rotation
+    try:
+        return tuple(float(value) for value in rotation)
+    except TypeError:
+        vector = getattr(rotation, "vector", None)
+        scalar = getattr(rotation, "scalar", None)
+        if vector is not None and scalar is not None:
+            values = list(vector) + [scalar]
+            return tuple(float(value) for value in values)
+        raise
 
 
 def _distance3(first: np.ndarray, second: np.ndarray) -> float:

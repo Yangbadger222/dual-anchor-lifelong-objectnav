@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
     LifecycleVerification,
+    _cached_action_route_sequence,
     _choose_lifecycle_anchor_candidate,
     _choose_lifecycle_fallback_candidate,
     _rank_lifecycle_anchor_candidates,
@@ -451,6 +452,48 @@ def test_summary_aggregates_optional_action_metrics() -> None:
     assert summary["mode_metrics"]["memory_guided"]["total_action_count"] == 42
     assert summary["mode_metrics"]["memory_guided"]["mean_action_count"] == 21.0
     assert summary["mode_metrics"]["memory_guided"]["total_executed_distance_m"] == 10.5
+
+
+def test_cached_action_route_sequence_preserves_all_route_goals(monkeypatch) -> None:
+    calls: list[tuple[tuple[float, float, float], ...]] = []
+
+    def fake_follow_sequence(**kwargs):
+        calls.append(tuple(kwargs["goal_positions"]))
+        return SimpleNamespace(
+            action_count=7,
+            executed_distance_m=3.5,
+            reached_stop=True,
+        )
+
+    from objectnav_core.evaluation import habitat_action_follower
+
+    monkeypatch.setattr(
+        habitat_action_follower,
+        "follow_greedy_geodesic_route_sequence",
+        fake_follow_sequence,
+    )
+    cache = {}
+
+    route = _cached_action_route_sequence(
+        cache=cache,
+        habitat_sim=object(),
+        sim=SimpleNamespace(),
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        route_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+    )
+    cached_route = _cached_action_route_sequence(
+        cache=cache,
+        habitat_sim=object(),
+        sim=SimpleNamespace(),
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        route_goals=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0)),
+    )
+
+    assert route is cached_route
+    assert route.action_count == 7
+    assert calls == [((1.0, 0.0, 0.0), (2.0, 0.0, 0.0))]
 
 
 def test_search_proxy_rows_keep_oracle_goal_lower_bound() -> None:

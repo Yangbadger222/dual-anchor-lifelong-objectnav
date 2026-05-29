@@ -7,6 +7,7 @@ import numpy as np
 from objectnav_core.evaluation.habitat_action_follower import (
     HabitatActionRoute,
     follow_greedy_geodesic_route,
+    follow_greedy_geodesic_route_sequence,
 )
 
 
@@ -81,3 +82,22 @@ def test_follow_greedy_geodesic_route_steps_until_stop() -> None:
     assert route.action_count == 2
     assert route.executed_distance_m == 0.5
     assert sim.stepped_actions == ["move_forward", "turn_left"]
+
+
+def test_follow_greedy_geodesic_route_sequence_preserves_waypoint_costs() -> None:
+    sim = _FakeSim()
+
+    route = follow_greedy_geodesic_route_sequence(
+        habitat_sim=_FakeHabitatSim(),
+        sim=sim,
+        start_position=(1.0, 0.0, 2.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        goal_positions=((2.0, 0.0, 2.0), (3.0, 0.0, 2.0)),
+        max_steps_per_goal=10,
+        goal_radius=0.2,
+    )
+
+    assert route.reached_stop is True
+    assert route.actions == ("move_forward", "turn_left", "move_forward", "turn_left")
+    assert route.action_count == 4
+    assert route.executed_distance_m == 1.0

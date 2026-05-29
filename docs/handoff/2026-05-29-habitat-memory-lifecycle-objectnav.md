@@ -202,6 +202,10 @@ Passed on Linux:
   `runs/habitat_usability/action_follower_probe_v1/summary.json` recorded
   `action_count=33`, `executed_distance_m=4.260707`, `reached_stop=true` for a
   real HM3D `toilet` route.
+- Optional action-metrics integration found and fixed a route-semantics bug:
+  fallback action routes now follow the same search-proxy waypoint sequence
+  used for geodesic `fallback_path_cost_m` and
+  `fallback_from_memory_path_cost_m`.
 
 ## Known Risks
 
@@ -228,14 +232,19 @@ Passed on Linux:
 - Debug PNGs for `tv_monitor` noise failures have been exported under the matrix
   run's `debug_tv_monitor_failures/` directory and synced to the local Mac run
   directory.
+- The first oracle `--action-metrics` smoke before this fix should not be used
+  as evidence: it measured direct fallback action routes while path metrics used
+  search-proxy routes.
 
 ## Next Recommended Step
 
-1. Replace teleport-to-viewpoint with an action-level Habitat follower and
-   report SPL-like metrics.
-2. Scale the stale-relocation matrix beyond 12 groups after detector robustness
+1. Pull the search-proxy-aligned action-metrics fix on Linux and rerun the
+   oracle action smoke, then a small Grounding-DINO smoke.
+2. Replace teleport-to-viewpoint with fuller action-level Habitat follower
+   evaluation and report SPL-like metrics.
+3. Scale the stale-relocation matrix beyond 12 groups after detector robustness
    is better understood.
-3. Only after those pass, compare against stronger semantic-map and frontier
+4. Only after those pass, compare against stronger semantic-map and frontier
    baselines.
 
 ## Context for Next Contributor

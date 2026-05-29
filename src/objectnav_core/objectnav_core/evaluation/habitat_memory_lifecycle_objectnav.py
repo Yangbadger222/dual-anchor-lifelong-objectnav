@@ -498,7 +498,12 @@ def run_habitat_memory_lifecycle_objectnav(
     detector_cache: dict[tuple[str, tuple[str, ...]], Any] = {}
     habitat_sim = _load_habitat_sim()
     action_route_cache: dict[
-        tuple[str, tuple[float, float, float], tuple[float, float, float], tuple[float, float, float, float]],
+        tuple[
+            str,
+            tuple[float, float, float],
+            tuple[tuple[float, float, float], ...],
+            tuple[float, float, float, float],
+        ],
         Any,
     ] = {}
     trace_rows: list[dict[str, Any]] = []
@@ -632,15 +637,19 @@ def run_habitat_memory_lifecycle_objectnav(
                             end=fallback_candidate.position,
                         )
                     )
-                    (
-                        fallback_path_cost,
-                        search_proxy_waypoint_count,
-                    ) = _search_proxy_path_distance(
+                    fallback_route_goals, search_proxy_waypoint_count = (
+                        _search_proxy_route_goals(
+                            sim=sim,
+                            start=group.query_episode.start_position,
+                            goal=fallback_candidate.position,
+                            seed=seed + scene_index * 1000 + group_index,
+                            waypoint_count=search_proxy_waypoints,
+                        )
+                    )
+                    fallback_path_cost = _path_distance_for_route_goals(
                         sim=sim,
                         start=group.query_episode.start_position,
-                        goal=fallback_candidate.position,
-                        seed=seed + scene_index * 1000 + group_index,
-                        waypoint_count=search_proxy_waypoints,
+                        route_goals=fallback_route_goals,
                     )
                     memory_verification = memory_verifications[memory_candidate.source]
                     if lifecycle_challenge == "synthetic_stale_relocation":
@@ -655,42 +664,56 @@ def run_habitat_memory_lifecycle_objectnav(
                         )
                     )
                     (
-                        fallback_from_memory_path_cost,
+                        fallback_from_memory_route_goals,
                         fallback_from_memory_waypoint_count,
-                    ) = _search_proxy_path_distance(
+                    ) = _search_proxy_route_goals(
                         sim=sim,
                         start=memory_candidate.position,
                         goal=fallback_candidate.position,
                         seed=seed + scene_index * 1000 + group_index + 500000,
                         waypoint_count=search_proxy_waypoints,
                     )
+                    fallback_from_memory_path_cost = _path_distance_for_route_goals(
+                        sim=sim,
+                        start=memory_candidate.position,
+                        route_goals=fallback_from_memory_route_goals,
+                    )
                     memory_action_route = None
+                    repaired_memory_action_route = None
                     fallback_action_route = None
                     fallback_from_memory_action_route = None
                     if action_metrics:
-                        memory_action_route = _cached_action_route(
+                        memory_action_route = _cached_action_route_sequence(
                             cache=action_route_cache,
                             habitat_sim=habitat_sim,
                             sim=sim,
                             start_position=group.query_episode.start_position,
                             start_rotation=group.query_episode.start_rotation,
-                            goal_position=memory_candidate.position,
+                            route_goals=(memory_candidate.position,),
                         )
-                        fallback_action_route = _cached_action_route(
+                        repaired_memory_action_route = _cached_action_route_sequence(
                             cache=action_route_cache,
                             habitat_sim=habitat_sim,
                             sim=sim,
                             start_position=group.query_episode.start_position,
                             start_rotation=group.query_episode.start_rotation,
-                            goal_position=fallback_candidate.position,
+                            route_goals=(fallback_candidate.position,),
                         )
-                        fallback_from_memory_action_route = _cached_action_route(
+                        fallback_action_route = _cached_action_route_sequence(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=group.query_episode.start_position,
+                            start_rotation=group.query_episode.start_rotation,
+                            route_goals=fallback_route_goals,
+                        )
+                        fallback_from_memory_action_route = _cached_action_route_sequence(
                             cache=action_route_cache,
                             habitat_sim=habitat_sim,
                             sim=sim,
                             start_position=memory_candidate.position,
                             start_rotation=memory_candidate.rotation,
-                            goal_position=fallback_candidate.position,
+                            route_goals=fallback_from_memory_route_goals,
                         )
                     for mode in modes:
                         repaired = False
@@ -716,7 +739,7 @@ def run_habitat_memory_lifecycle_objectnav(
                             action_metric_values = _route_action_metrics(
                                 result_route=result.route,
                                 memory_route=(
-                                    fallback_action_route
+                                    repaired_memory_action_route
                                     if mode == "memory_guided" and repaired
                                     else memory_action_route
                                 ),
@@ -1041,13 +1064,13 @@ def _stale_memory_verification(
     )
 
 
-def _cached_action_route(
+def _cached_action_route_sequence(
     *,
     cache: dict[
         tuple[
             str,
             tuple[float, float, float],
-            tuple[float, float, float],
+            tuple[tuple[float, float, float], ...],
             tuple[float, float, float, float],
         ],
         Any,
@@ -1056,26 +1079,29 @@ def _cached_action_route(
     sim: Any,
     start_position: Sequence[float],
     start_rotation: Sequence[float],
-    goal_position: Sequence[float],
+    route_goals: Sequence[Sequence[float]],
 ) -> Any:
     from objectnav_core.evaluation.habitat_action_follower import (
-        follow_greedy_geodesic_route,
+        follow_greedy_geodesic_route_sequence,
     )
 
     start = _tuple3(start_position)
-    goal = _tuple3(goal_position)
     rotation = _tuple4(start_rotation)
-    if start is None or goal is None or rotation is None:
+    raw_goals = tuple(route_goals)
+    goals = tuple(goal for goal in (_tuple3(goal) for goal in raw_goals) if goal is not None)
+    if start is None or rotation is None or not goals:
         raise ValueError("Action metrics require valid start pose and goal position")
-    key = ("greedy", start, goal, rotation)
+    if len(goals) != len(raw_goals):
+        raise ValueError("Action metrics require valid route goal positions")
+    key = ("greedy_sequence", start, goals, rotation)
     if key not in cache:
-        cache[key] = follow_greedy_geodesic_route(
+        cache[key] = follow_greedy_geodesic_route_sequence(
             habitat_sim=habitat_sim,
             sim=sim,
             start_position=start,
             start_rotation=rotation,
-            goal_position=goal,
-            max_steps=240,
+            goal_positions=goals,
+            max_steps_per_goal=240,
             goal_radius=0.2,
         )
     return cache[key]
@@ -1318,6 +1344,26 @@ def _path_distance(points: Sequence[tuple[float, float, float]]) -> float:
     )
 
 
+def _path_distance_for_route_goals(
+    *,
+    sim: Any,
+    start: tuple[float, float, float],
+    route_goals: Sequence[tuple[float, float, float]],
+) -> float:
+    from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+        _shortest_path_points,
+    )
+
+    current = start
+    total = 0.0
+    for route_goal in route_goals:
+        total += _path_distance(
+            _shortest_path_points(sim=sim, start=current, end=route_goal)
+        )
+        current = route_goal
+    return round(total, 6)
+
+
 def _search_proxy_path_distance(
     *,
     sim: Any,
@@ -1326,12 +1372,29 @@ def _search_proxy_path_distance(
     seed: int,
     waypoint_count: int,
 ) -> tuple[float, int]:
-    from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
-        _shortest_path_points,
+    route_goals, used = _search_proxy_route_goals(
+        sim=sim,
+        start=start,
+        goal=goal,
+        seed=seed,
+        waypoint_count=waypoint_count,
+    )
+    return (
+        _path_distance_for_route_goals(sim=sim, start=start, route_goals=route_goals),
+        used,
     )
 
+
+def _search_proxy_route_goals(
+    *,
+    sim: Any,
+    start: tuple[float, float, float],
+    goal: tuple[float, float, float],
+    seed: int,
+    waypoint_count: int,
+) -> tuple[tuple[tuple[float, float, float], ...], int]:
     if waypoint_count <= 0:
-        return _path_distance(_shortest_path_points(sim=sim, start=start, end=goal)), 0
+        return (goal,), 0
     rng = np.random.default_rng(seed)
     waypoints = _sample_search_proxy_waypoints(
         sim=sim,
@@ -1339,20 +1402,23 @@ def _search_proxy_path_distance(
         waypoint_count=waypoint_count,
         attempts=DEFAULT_SEARCH_PROXY_SAMPLE_ATTEMPTS,
     )
+    from objectnav_core.evaluation.habitat_objectnav_rgb_noise_stress import (
+        _shortest_path_points,
+    )
+
     current = start
-    total = 0.0
+    route_goals: list[tuple[float, float, float]] = []
     used = 0
     for waypoint in waypoints:
         try:
-            total += _path_distance(
-                _shortest_path_points(sim=sim, start=current, end=waypoint)
-            )
+            _shortest_path_points(sim=sim, start=current, end=waypoint)
         except ValueError:
             continue
+        route_goals.append(waypoint)
         current = waypoint
         used += 1
-    total += _path_distance(_shortest_path_points(sim=sim, start=current, end=goal))
-    return round(total, 6), used
+    route_goals.append(goal)
+    return tuple(route_goals), used
 
 
 def _sample_search_proxy_waypoints(
