@@ -192,6 +192,14 @@ Passed locally before this handoff update:
   `29` passed.
 - Full local core tests after evidence reliability mode: `215` passed.
 - `git diff --check` passed after evidence reliability mode.
+- Linux focused Habitat/CLI tests after pulling evidence reliability mode:
+  `29` passed.
+- Linux balanced3 evidence-reliability oracle navmesh smoke completed
+  successfully. It produced `memory_guided=373`, `frontier_only=708`, and
+  `naive_count=387` actions. `memory_guided` selected memory for chair/toilet,
+  frontier for plant, and succeeded in all 3 episodes. This is the first
+  navmesh smoke in this slice where memory-guided beats both frontier-only and
+  naive-count, but it is still only a 3-group oracle smoke.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -262,17 +270,18 @@ Passed locally before this handoff update:
   blunt: it keeps the toilet win where frontier fails, but gives up cheap valid
   chair memory. Treat this as evidence for learning/estimating memory
   reliability, not as a reason to manually tune the prior.
-- Evidence reliability mode is implemented locally and verified with unit tests,
-  but it still needs a Linux Habitat smoke before interpreting behavior. It is
-  a transparent heuristic estimator, not yet learned calibration.
+- Evidence reliability mode now has a Linux balanced3 smoke. It improves this
+  tiny oracle run, but it uses oracle/Grounding-DINO candidate-view evidence
+  rather than per-action perception and remains a transparent heuristic, not
+  learned calibration.
 
 ## Next Recommended Step
 
-1. Pull evidence reliability mode on Linux and rerun balanced3 navmesh smoke
-   with `--memory-reliability-mode evidence`.
-2. Report per-case
+1. Run a larger balanced evidence-mode navmesh smoke and report per-case
    decision buckets: memory win, frontier win, harmful memory avoided, and
    valid memory wrongly deferred.
+2. Replace oracle/candidate-view reliability evidence with detector/per-action
+   evidence before making benchmark claims.
 3. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
 4. Move Grounding-DINO from selected candidate-view verification to per-action
