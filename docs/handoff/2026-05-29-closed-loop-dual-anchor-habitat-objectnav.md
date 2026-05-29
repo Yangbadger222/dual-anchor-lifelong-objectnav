@@ -521,10 +521,17 @@ Passed locally before this handoff update:
   do not become the selected row evidence. This is diagnostic-only and should
   be treated as training/calibration signal for reliability, not as an oracle
   policy gate.
+- The targeted 1-group Grounding-DINO multiview event probe has now verified
+  those runtime event counts in an actual Habitat artifact:
+  `runs/habitat_closed_loop_dual_anchor/per_action_grounding_dino_navmesh_event_probe_1group_v1/summary.json`.
+  Each policy summary reported
+  `detector_confirmation_event_counts={'confirmed': 8, 'suppressed': 8}` with
+  suppressed events in `memory`, `fallback`, and `fallback_from_memory`
+  contexts. Treat this as diagnostic coverage, not a benchmark result.
 - Detector-backed reliability no longer borrows oracle semantic pixel counts.
   The current stable/stale detector smokes are unchanged in aggregate because
-  selected memory detector masks are strong, but weak positive detections still
-  need targeted coverage.
+  selected memory detector masks are strong, but broader weak-positive
+  calibration still needs coverage beyond the 1-group event probe.
 - The strong-positive floor is a hand-designed guardrail from hindsight-regret
   diagnostics. It should be treated as a calibration baseline, not the final
   algorithm, until it is validated on held-out scenes and replaced or supported
@@ -532,25 +539,23 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Run a targeted weak-positive detector smoke so the new runtime event counts
-   are observed in `summary.json`, not just unit tests.
-2. Design an adaptive or learned detector reliability model that can trade off
+1. Design an adaptive or learned detector reliability model that can trade off
    multiview precision against frontier recall instead of using one global gate.
-3. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
+2. Add weak-evidence and stale-memory Grounding-DINO calibration cases so the
    strong-positive floor does not mask harmful memory reuse.
-4. Continue calibrating the reliability estimator against bucket counts and
+3. Continue calibrating the reliability estimator against bucket counts and
    regret, especially valid memories wrongly deferred versus harmful memory
    reuse avoided.
-5. Replace oracle/candidate-view reliability evidence with detector/per-action
+4. Replace oracle/candidate-view reliability evidence with detector/per-action
    evidence before making benchmark claims.
-6. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
+5. Add a true occupancy/frontier exploration policy; `navmesh_frontier` is only
    an intermediate target-agnostic probe baseline.
-7. Move Grounding-DINO from selected candidate-view verification to larger
+6. Move Grounding-DINO from selected candidate-view verification to larger
    per-action observation and stopping experiments.
-8. Implement natural Habitat object relocation/removal or a clearly labeled
+7. Implement natural Habitat object relocation/removal or a clearly labeled
    semantic-object hide/replace protocol.
-9. Scale the balanced runs beyond six groups and report confidence intervals.
-10. Convert the smoke metrics into SPL-like metrics only after per-action
+8. Scale the balanced runs beyond six groups and report confidence intervals.
+9. Convert the smoke metrics into SPL-like metrics only after per-action
    perception and a real frontier policy are in place.
 
 ## Context for Next Contributor
