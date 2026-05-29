@@ -5,7 +5,10 @@ from objectnav_core.evaluation.lifelong_objectnav_benchmark import (
 )
 from objectnav_core.mapping.fixtures import build_multiroom_grid
 from objectnav_core.models import Pose2D, make_default_multiroom_lifelong_scene
-from objectnav_core.planning.memory_guided import select_memory_guided_candidate
+from objectnav_core.planning.memory_guided import (
+    MemoryMatchEvidence,
+    select_memory_guided_candidate,
+)
 
 
 def test_multiroom_lifelong_grid_has_reachable_target_room() -> None:
@@ -73,3 +76,50 @@ def test_memory_guided_candidate_prefers_reusable_memory_over_frontier() -> None
 
     assert candidate.candidate_type == "memory"
     assert candidate.object_id == target.object_id
+
+
+def test_memory_guided_candidate_defers_ambiguous_dual_anchor_memory_to_frontier() -> None:
+    scene = make_default_multiroom_lifelong_scene()
+    grid = build_multiroom_grid(scene, reveal_all=True)
+    target = scene.objects[0]
+
+    from objectnav_core.mapping.frontiers import FrontierCluster
+    from objectnav_core.models import (
+        AnchorType,
+        MemoryObject,
+        MemoryState,
+    )
+
+    memory = MemoryObject(
+        object_id=target.object_id,
+        class_name=target.class_name,
+        state=MemoryState.REUSABLE,
+        pose=target.pose_map,
+        anchor_id=scene.anchor.anchor_id,
+        anchor_type=AnchorType.INDOOR_MAP,
+        frame_id=scene.anchor.frame_id,
+        confidence=0.95,
+        detector_name="test",
+        verification_viewpoint=Pose2D(x=12.0, y=7.0, yaw=1.5708),
+    )
+    frontier = FrontierCluster(
+        cells=((4, 4), (4, 5), (4, 6), (5, 4), (5, 5), (5, 6)),
+        centroid=Pose2D(x=4.5, y=5.0),
+    )
+
+    candidate = select_memory_guided_candidate(
+        grid=grid,
+        start_pose=Pose2D(x=2.0, y=5.0, yaw=0.0),
+        target_class=target.class_name,
+        memories=[memory],
+        frontiers=[frontier],
+        memory_match_evidence={
+            target.object_id: MemoryMatchEvidence(
+                accepted=False,
+                reason="ambiguous",
+                mahalanobis_distance=0.1,
+            )
+        },
+    )
+
+    assert candidate.candidate_type == "frontier"

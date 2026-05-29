@@ -27,6 +27,13 @@ class NavigationCandidate:
     frontier_cells: tuple[tuple[int, int], ...] = ()
 
 
+@dataclass(frozen=True)
+class MemoryMatchEvidence:
+    accepted: bool
+    reason: str
+    mahalanobis_distance: float | None = None
+
+
 def select_memory_guided_candidate(
     *,
     grid: OccupancyGrid,
@@ -36,12 +43,20 @@ def select_memory_guided_candidate(
     frontiers: list[FrontierCluster],
     visited_frontier_cells: set[tuple[int, int]] | None = None,
     memory_grid: OccupancyGrid | None = None,
+    memory_match_evidence: dict[str, MemoryMatchEvidence] | None = None,
 ) -> NavigationCandidate:
     visited = visited_frontier_cells or set()
     memory_reachability_grid = memory_grid or grid
     candidates: list[NavigationCandidate] = []
     candidates.extend(
-        _memory_candidate(memory_reachability_grid, start_pose, memory)
+        _memory_candidate(
+            memory_reachability_grid,
+            start_pose,
+            memory,
+            match_evidence=(
+                memory_match_evidence or {}
+            ).get(memory.object_id),
+        )
         for memory in memories
         if memory.class_name == target_class and memory.verification_viewpoint is not None
     )
@@ -79,6 +94,8 @@ def _memory_candidate(
     grid: OccupancyGrid,
     start_pose: Pose2D,
     memory: MemoryObject,
+    *,
+    match_evidence: MemoryMatchEvidence | None = None,
 ) -> NavigationCandidate:
     assert memory.verification_viewpoint is not None
     path_cost = estimate_astar_path_cost_m(
@@ -86,9 +103,11 @@ def _memory_candidate(
         start_pose=start_pose,
         goal_pose=memory.verification_viewpoint,
     )
-    expected_success = _memory_expected_success(memory)
+    expected_success = _memory_expected_success(memory, match_evidence=match_evidence)
     verification_cost = 1.0
     stale_penalty = 1.5 if memory.state.value == "suspect_missing" else 0.0
+    if match_evidence is not None and not match_evidence.accepted:
+        stale_penalty += 6.0
     if path_cost is None:
         path_cost = float("inf")
     score = (
@@ -152,7 +171,13 @@ def _frontier_candidate(
     )
 
 
-def _memory_expected_success(memory: MemoryObject) -> float:
+def _memory_expected_success(
+    memory: MemoryObject,
+    *,
+    match_evidence: MemoryMatchEvidence | None = None,
+) -> float:
+    if match_evidence is not None and not match_evidence.accepted:
+        return 0.05
     if memory.state.value == "reusable":
         return max(0.2, min(0.98, memory.confidence))
     if memory.state.value == "verified":
