@@ -226,6 +226,12 @@ Passed locally before this handoff update:
   `34` passed.
 - Full local core tests after hindsight regret diagnostics: `220` passed.
 - `git diff --check` passed after hindsight regret diagnostics.
+- Linux focused Habitat/CLI tests after pulling hindsight regret diagnostics:
+  `34` passed.
+- Linux balanced3 evidence-mode navmesh smoke with hindsight regret diagnostics
+  produced `memory_guided=373`, `frontier_only=708`, and `naive_count=387`
+  actions. `memory_guided` had `total_hindsight_action_regret=0`; `naive_count`
+  had `14` action regret.
 - Linux focused Habitat tests after pulling navmesh frontier commit: `19`
   passed.
 - First Linux `navmesh_frontier` oracle smoke failed in
@@ -306,7 +312,8 @@ Passed locally before this handoff update:
 
 ## Next Recommended Step
 
-1. Pull hindsight regret diagnostics on Linux and run focused tests.
+1. Run hindsight regret diagnostics on larger balanced runs and use nonzero
+   regret rows as calibration cases.
 2. Calibrate the reliability estimator against bucket counts and regret,
    especially valid memories wrongly deferred versus harmful memory reuse
    avoided.
