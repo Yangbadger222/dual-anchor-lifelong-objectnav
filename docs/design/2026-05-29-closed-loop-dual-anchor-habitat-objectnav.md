@@ -472,10 +472,13 @@ event-posterior per-action baseline. The learned-validity hook is therefore a
 real policy mechanism under `option_end`, while per-action route observation is
 the current source of success improvement.
 
-Open diagnostic from this matrix: the stable `bed` row has positive memory
-evidence, but expected utility selects a zero-action failed frontier option.
-Before paper-scale claims, the option scorer must handle failed/degenerate
-frontier options or move to online replanning after an option fails.
+The first diagnostic from this matrix was the stable `bed` row: memory evidence
+was positive, but expected utility selected a zero-action failed frontier
+option. Commit `033c8b8` fixed the targeted decision bug by treating failed
+zero-action frontier options as unavailable. Selected-group verification now
+chooses memory and succeeds in `32` actions for both event-posterior and learned
+validity. The full balanced6 matrix still needs to be rerun after that fix
+before aggregate numbers are updated.
 
 ## Research Relevance
 

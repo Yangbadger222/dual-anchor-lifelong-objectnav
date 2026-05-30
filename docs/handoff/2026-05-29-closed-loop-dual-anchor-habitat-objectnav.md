@@ -1224,3 +1224,46 @@ Next recommended action:
 3. After fixing the degenerate frontier option and designing the local-search
    policy, rerun the same current-code per-action matrix before scaling beyond
    balanced6.
+
+## 2026-05-30 Unavailable Frontier Decision Fix
+
+Commit `033c8b8` fixes the first diagnostic from the per-action matrix:
+`memory_guided` could select `navmesh_frontier_probe:none` because the failed
+frontier route had `fallback_action_count=0`. The decision helper now accepts a
+`fallback_available` flag, and the Habitat runner sets it to false when the
+fallback route has zero actions and no positive verification.
+
+Verification already run:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core \
+python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py -q -k unavailable_frontier
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core \
+python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py -q
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core \
+python -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+
+python -m py_compile \
+  src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/objectnav_core \
+python -m pytest src/objectnav_core/tests -q
+```
+
+Linux verification:
+
+- Focused closed-loop/CLI tests: `75` passed.
+- Event-posterior selected stable `bed` replay:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1/summary.json`
+  now chooses `memory_first`, succeeds, and uses `32` actions.
+- Learned selected stable `bed` replay:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1/summary.json`
+  now chooses `memory_first`, succeeds, and uses `32` actions.
+
+Important caveat:
+
+- The full stable/relocation per-action balanced6 matrix documented above was
+  run before `033c8b8`. Do not update aggregate matrix numbers from the selected
+  `bed` replay alone; rerun the full matrix first.

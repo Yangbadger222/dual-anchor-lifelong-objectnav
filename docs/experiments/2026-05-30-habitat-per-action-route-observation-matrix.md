@@ -161,3 +161,20 @@ matched per-action matrix does not show an additional learned-policy gain.
 - Scale beyond balanced6 with confidence intervals and scene/category holdouts.
 - Replace deterministic navmesh probes with an occupancy/depth frontier policy
   before claiming benchmark-level ObjectNav performance.
+
+## Targeted Bed Follow-Up
+
+After this matrix, the zero-action failed-frontier diagnostic was fixed in
+commit `033c8b8`. The decision helper now treats a failed zero-action frontier
+as unavailable rather than as a free option.
+
+Targeted selected-group verification on Linux:
+
+| Run | Artifact | Decision | Success | Actions |
+|---|---|---|---:|---:|
+| Event posterior | `runs/habitat_closed_loop_dual_anchor/event_posterior_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1` | `memory_first` | `1/1` | `32` |
+| Learned | `runs/habitat_closed_loop_dual_anchor/learned_validity_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1` | `memory_first` | `1/1` | `32` |
+
+The balanced6 matrix table above is still the pre-fix matrix and should not be
+silently edited. Rerun the stable and relocation per-action balanced6 matrix on
+`033c8b8` or later before reporting updated aggregate numbers.
