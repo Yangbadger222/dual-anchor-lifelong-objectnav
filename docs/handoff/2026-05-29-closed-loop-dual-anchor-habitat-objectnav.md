@@ -1144,9 +1144,9 @@ Artifacts:
 - Selected sofa learned per-action:
   `runs/habitat_closed_loop_dual_anchor/learned_validity_sofa_relocation_evidence_only_per_action_selected_20260530_v1/summary.json`
 - Stable balanced6 event-posterior per-action:
-  `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_current_20260530_v2/summary.json`
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_unavailable_frontier_fix_20260530_v1/summary.json`
 - Stable balanced6 learned per-action:
-  `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_20260530_v1/summary.json`
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_unavailable_frontier_fix_20260530_v1/summary.json`
 - Relocation balanced6 event-posterior per-action:
   `runs/habitat_closed_loop_dual_anchor/event_posterior_goal_object_relocation_balanced6_per_action_current_20260530_v1/summary.json`
 - Relocation balanced6 learned per-action:
@@ -1163,9 +1163,10 @@ Result:
   - The win comes from post-memory local frontier confirmation at
     `navmesh_frontier_probe:2:step:0`, not from the learned model.
 - Stable balanced6:
-  - `option_end` event-posterior memory-guided: `4/6`, `528` actions.
-  - `per_action` event-posterior memory-guided: `5/6`, `441` actions.
-  - `per_action` learned memory-guided: `5/6`, `441` actions.
+  - `option_end` event-posterior memory-guided: `5/6`, `573` actions.
+  - `option_end` learned memory-guided: `5/6`, `840` actions.
+  - `per_action` event-posterior memory-guided: `6/6`, `473` actions.
+  - `per_action` learned memory-guided: `6/6`, `473` actions.
 - Relocation balanced6:
   - `option_end` event-posterior memory-guided: `0/6`, `1446` actions.
   - `per_action` event-posterior memory-guided: `3/6`, `1176` actions.
@@ -1264,6 +1265,19 @@ Linux verification:
 
 Important caveat:
 
-- The full stable/relocation per-action balanced6 matrix documented above was
-  run before `033c8b8`. Do not update aggregate matrix numbers from the selected
-  `bed` replay alone; rerun the full matrix first.
+- The stable balanced6 matrix was rerun after `033c8b8`.
+- Updated stable aggregates:
+  - `option_end` event-posterior: `5/6`, `573` actions.
+  - `option_end` learned: `5/6`, `840` actions.
+  - `per_action` event-posterior: `6/6`, `473` actions.
+  - `per_action` learned: `6/6`, `473` actions.
+- Relocation per-action artifacts were not rerun after `033c8b8`, but the
+  recorded relocation memory-guided rows did not contain a zero-action
+  query-start frontier option.
+
+Additional post-fix stable artifacts:
+
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_option_end_unavailable_frontier_fix_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_option_end_unavailable_frontier_fix_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_unavailable_frontier_fix_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_unavailable_frontier_fix_20260530_v1/summary.json`

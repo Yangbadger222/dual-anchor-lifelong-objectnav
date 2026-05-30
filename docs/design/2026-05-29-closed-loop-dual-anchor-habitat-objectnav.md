@@ -455,8 +455,8 @@ Compared with matched `option_end` runs, route-level observation improved:
 
 | Slice | Route observation | Memory-guided success | Memory-guided actions | Frontier-only success |
 |---|---|---:|---:|---:|
-| Stable balanced6 | `option_end` | `4/6` | `528` | `0/6` |
-| Stable balanced6 | `per_action` | `5/6` | `441` | `3/6` |
+| Stable balanced6 | `option_end` | `5/6` | `573` | `0/6` |
+| Stable balanced6 | `per_action` | `6/6` | `473` | `3/6` |
 | Relocation balanced6 | `option_end` | `0/6` | `1446` | `0/6` |
 | Relocation balanced6 | `per_action` | `3/6` | `1176` | `2/6` |
 
@@ -475,10 +475,9 @@ the current source of success improvement.
 The first diagnostic from this matrix was the stable `bed` row: memory evidence
 was positive, but expected utility selected a zero-action failed frontier
 option. Commit `033c8b8` fixed the targeted decision bug by treating failed
-zero-action frontier options as unavailable. Selected-group verification now
-chooses memory and succeeds in `32` actions for both event-posterior and learned
-validity. The full balanced6 matrix still needs to be rerun after that fix
-before aggregate numbers are updated.
+zero-action frontier options as unavailable. Selected-group verification chose
+memory and succeeded in `32` actions for both event-posterior and learned
+validity; post-fix stable balanced6 replays now reach `6/6` under `per_action`.
 
 ## Research Relevance
 

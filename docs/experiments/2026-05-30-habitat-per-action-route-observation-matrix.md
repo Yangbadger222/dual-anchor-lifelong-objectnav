@@ -34,7 +34,7 @@ learned probability may become neutral rather than producing a decision gain.
 
 ## Commands
 
-The stable per-action baseline used:
+The post-fix stable per-action baseline used:
 
 ```bash
 HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
@@ -43,7 +43,7 @@ PYTHONPATH=src/objectnav_core \
 python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
   --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
   --scene-root datasets/habitat/scene_datasets/hm3d \
-  --output runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_current_20260530_v2 \
+  --output runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_unavailable_frontier_fix_20260530_v1 \
   --target-categories bed,chair,plant,sofa,toilet,tv_monitor \
   --max-groups 6 \
   --sensor-width 1280 \
@@ -85,7 +85,7 @@ Relocation per-action used the same command with:
 The learned per-action replays used the same commands with
 `--memory-validity-model` set to the model listed above and output directories:
 
-- `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_20260530_v1`
+- `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_unavailable_frontier_fix_20260530_v1`
 - `runs/habitat_closed_loop_dual_anchor/learned_validity_goal_object_relocation_balanced6_evidence_only_per_action_20260530_v1`
 
 Reference `option_end` artifacts are from the matched current-code matrix in
@@ -95,17 +95,20 @@ Reference `option_end` artifacts are from the matched current-code matrix in
 
 | Slice | Route observation | Validity | Memory-guided success | Memory-guided actions | Frontier-only success | Frontier-only actions | Naive success | Naive actions |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| Stable balanced6 | `option_end` | event posterior | `4/6` | `528` | `0/6` | `2089` | `5/6` | `573` |
-| Stable balanced6 | `option_end` | learned | `4/6` | `795` | `0/6` | `2089` | `5/6` | `573` |
-| Stable balanced6 | `per_action` | event posterior | `5/6` | `441` | `3/6` | `831` | `6/6` | `473` |
-| Stable balanced6 | `per_action` | learned | `5/6` | `441` | `3/6` | `831` | `6/6` | `473` |
+| Stable balanced6 | `option_end` | event posterior | `5/6` | `573` | `0/6` | `2089` | `5/6` | `573` |
+| Stable balanced6 | `option_end` | learned | `5/6` | `840` | `0/6` | `2089` | `5/6` | `573` |
+| Stable balanced6 | `per_action` | event posterior | `6/6` | `473` | `3/6` | `831` | `6/6` | `473` |
+| Stable balanced6 | `per_action` | learned | `6/6` | `473` | `3/6` | `831` | `6/6` | `473` |
 | Relocation balanced6 | `option_end` | event posterior | `0/6` | `1446` | `0/6` | `2039` | `0/6` | `910` |
 | Relocation balanced6 | `option_end` | learned | `0/6` | `1643` | `0/6` | `2039` | `0/6` | `910` |
 | Relocation balanced6 | `per_action` | event posterior | `3/6` | `1176` | `2/6` | `1647` | `3/6` | `1254` |
 | Relocation balanced6 | `per_action` | learned | `3/6` | `1176` | `2/6` | `1647` | `3/6` | `1254` |
 
-The matched event-posterior and learned per-action rows had zero decision,
-success, or action-count differences in both stable and relocation slices.
+The matched event-posterior and learned `per_action` rows had zero decision,
+success, or action-count differences in both stable and relocation slices. The
+stable `option_end` learned run still flips `tv_monitor` from memory-first to
+frontier-first; it remains a failure and raises memory-guided actions from
+`573` to `840`.
 
 ## Selected Sofa Check
 
@@ -133,12 +136,9 @@ was short enough that expected utility still selected `memory_first`.
   before local post-memory frontier search.
 - Learned validity is neutral once per-action route observation is enabled on
   this matrix. It changes probabilities, but not decisions or outcomes.
-- Stable also improves under per-action route observation:
-  memory-guided `4/6 -> 5/6`, and actions drop from `528` to `441`.
-- The stable `bed` row remains a diagnostic failure: memory evidence is
-  positive, but expected utility selects a zero-action frontier option that
-  fails. This is an evaluation/policy limitation to investigate before any
-  paper claim.
+- Stable also improves under per-action route observation after the unavailable
+  frontier fix: memory-guided `5/6 -> 6/6`, and actions drop from `573` to
+  `473`.
 - These results are not official ObjectNav SPL. The runner still uses
   deterministic navmesh probes, counterfactual route accounting, and
   simulator-side target overlap for audit.
@@ -154,8 +154,9 @@ matched per-action matrix does not show an additional learned-policy gain.
 
 ## Follow-up
 
-- Fix or redesign the expected-utility handling for zero-action failed frontier
-  options, using the stable `bed` row as the first regression target.
+- Rerun relocation on `033c8b8` or later only if later code touches frontier
+  availability; the recorded relocation rows had no zero-action failed
+  query-start frontier options.
 - Promote route-level active confirmation into the next algorithmic design:
   memory should be a spatial prior for local search, not only a terminal goal.
 - Scale beyond balanced6 with confidence intervals and scene/category holdouts.
@@ -164,7 +165,7 @@ matched per-action matrix does not show an additional learned-policy gain.
 
 ## Targeted Bed Follow-Up
 
-After this matrix, the zero-action failed-frontier diagnostic was fixed in
+During this matrix, the zero-action failed-frontier diagnostic was fixed in
 commit `033c8b8`. The decision helper now treats a failed zero-action frontier
 as unavailable rather than as a free option.
 
@@ -175,6 +176,15 @@ Targeted selected-group verification on Linux:
 | Event posterior | `runs/habitat_closed_loop_dual_anchor/event_posterior_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1` | `memory_first` | `1/1` | `32` |
 | Learned | `runs/habitat_closed_loop_dual_anchor/learned_validity_bed_stable_per_action_selected_unavailable_frontier_fix_20260530_v1` | `memory_first` | `1/1` | `32` |
 
-The balanced6 matrix table above is still the pre-fix matrix and should not be
-silently edited. Rerun the stable and relocation per-action balanced6 matrix on
-`033c8b8` or later before reporting updated aggregate numbers.
+Post-fix stable balanced6 verification also completed:
+
+| Stable run | Artifact | Memory-guided success | Memory-guided actions |
+|---|---|---:|---:|
+| `option_end`, event posterior | `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_option_end_unavailable_frontier_fix_20260530_v1` | `5/6` | `573` |
+| `option_end`, learned | `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_option_end_unavailable_frontier_fix_20260530_v1` | `5/6` | `840` |
+| `per_action`, event posterior | `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_unavailable_frontier_fix_20260530_v1` | `6/6` | `473` |
+| `per_action`, learned | `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_unavailable_frontier_fix_20260530_v1` | `6/6` | `473` |
+
+The relocation rows in this report are still the pre-fix artifacts, but none of
+their memory-guided query-start frontier options had the unavailable
+zero-action pattern that triggered the stable `bed` fix.
