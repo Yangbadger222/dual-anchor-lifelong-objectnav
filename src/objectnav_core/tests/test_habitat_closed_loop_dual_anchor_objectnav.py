@@ -1072,6 +1072,19 @@ def test_expected_utility_skips_memory_when_stale_probe_is_not_worth_it() -> Non
     )
 
 
+def test_expected_utility_ignores_unavailable_frontier_option() -> None:
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=32,
+            fallback_from_memory_action_count=2,
+            fallback_action_count=0,
+            memory_valid_prior=0.589418,
+            fallback_available=False,
+        )
+        == "memory_first"
+    )
+
+
 def test_calibrated_memory_decision_keeps_strong_shorter_memory() -> None:
     estimate = closed_loop._estimate_memory_valid_prior(
         base_prior=0.5,

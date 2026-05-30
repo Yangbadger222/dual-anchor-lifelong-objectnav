@@ -1159,6 +1159,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             ),
                             memory_valid_prior=reliability_estimate.value,
                         )
+                        fallback_available = (
+                            int(fallback_route.action_count) > 0
+                            or bool(fallback_verification.shared_gate_success)
+                        )
                         expected_frontier_first = float(fallback_route.action_count)
                         memory_decision = _memory_first_decision(
                             memory_action_count=active_memory_route.action_count,
@@ -1167,6 +1171,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             ),
                             fallback_action_count=fallback_route.action_count,
                             memory_valid_prior=reliability_estimate.value,
+                            fallback_available=fallback_available,
                         )
                         if (
                             policy == "memory_guided"
@@ -2360,7 +2365,10 @@ def _memory_first_decision(
     fallback_from_memory_action_count: int,
     fallback_action_count: int,
     memory_valid_prior: float,
+    fallback_available: bool = True,
 ) -> str:
+    if not fallback_available:
+        return "memory_first"
     expected_memory = _expected_memory_first_action_count(
         memory_action_count=memory_action_count,
         fallback_from_memory_action_count=fallback_from_memory_action_count,
