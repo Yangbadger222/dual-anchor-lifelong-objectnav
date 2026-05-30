@@ -22,7 +22,7 @@ learned probability may become neutral rather than producing a decision gain.
 
 | Item | Value |
 |---|---|
-| Branch / commit | `codex/habitat-memory-lifecycle` / `3ac6ab7` |
+| Branch / commits | `codex/habitat-memory-lifecycle`; relocation artifacts from `3ac6ab7`, stable post-fix artifacts from `bf4dbeb` with code fix `033c8b8` |
 | Machine | `badger-linux` |
 | Dataset / scene | HM3D ObjectNav `val` |
 | Simulator / detector | Habitat-Sim, Grounding-DINO tiny |
