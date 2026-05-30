@@ -466,6 +466,13 @@ multiview-confirmed detector positive along the route. This suggests the next
 algorithm should treat memory as a spatial prior for active confirmation and
 local search, not only as a stop-point.
 
+Targeted high-budget relocation probes add a second useful constraint. Raising
+the navmesh probe budget to `8x4` recovers `tv_monitor` and one reverse `chair`
+relocation, but `toilet` still fails and the recovered rows are expensive
+(`684` memory-guided actions for `tv_monitor`, `190` for the reverse `chair`).
+The next design should therefore improve search direction, not merely increase
+random probe count.
+
 The matched learned-validity per-action runs were neutral: learned probabilities
 changed, but decisions, success, and action counts were identical to the
 event-posterior per-action baseline. The learned-validity hook is therefore a

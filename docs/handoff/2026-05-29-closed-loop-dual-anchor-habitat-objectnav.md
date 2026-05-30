@@ -1281,3 +1281,36 @@ Additional post-fix stable artifacts:
 - `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_option_end_unavailable_frontier_fix_20260530_v1/summary.json`
 - `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_unavailable_frontier_fix_20260530_v1/summary.json`
 - `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_unavailable_frontier_fix_20260530_v1/summary.json`
+
+## 2026-05-30 High-Budget Relocation Probe
+
+I probed the remaining relocation failures with a larger random navmesh budget:
+`frontier_probe_count=8`, `frontier_probe_heading_count=4`,
+`route_observation_mode=per_action`.
+
+Artifacts:
+
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_tv_monitor_relocation_per_action_probe8_heading4_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/learned_validity_tv_monitor_relocation_per_action_probe8_heading4_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_relocation_remaining_failures_per_action_probe8_heading4_20260530_v1/summary.json`
+
+Result:
+
+- `tv_monitor` relocation:
+  - event-posterior and learned both choose `memory_first`, succeed, and use
+    `684` memory-guided actions.
+  - frontier-only succeeds too, but needs `998` actions.
+  - learned validity lowers probability to `0.006685`, yet post-memory search
+    remains cheaper than query-start frontier.
+- Reverse `chair` relocation:
+  - event-posterior succeeds in `190` actions via query-start frontier.
+- `toilet` relocation:
+  - event-posterior still fails after `803` actions.
+
+Interpretation:
+
+- More random navmesh budget can recover some failures, but it is inefficient
+  and incomplete.
+- The next useful design is memory-conditioned local active search: use the
+  memory anchor and route evidence to direct where the robot looks, instead of
+  only increasing random probe count.

@@ -188,3 +188,34 @@ Post-fix stable balanced6 verification also completed:
 The relocation rows in this report are still the pre-fix artifacts, but none of
 their memory-guided query-start frontier options had the unavailable
 zero-action pattern that triggered the stable `bed` fix.
+
+## High-Budget Relocation Probe
+
+To separate search-budget limits from policy-design limits, three relocation
+failures were replayed with `frontier_probe_count=8` and
+`frontier_probe_heading_count=4`.
+
+Artifacts:
+
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_tv_monitor_relocation_per_action_probe8_heading4_20260530_v1`
+- `runs/habitat_closed_loop_dual_anchor/learned_validity_tv_monitor_relocation_per_action_probe8_heading4_20260530_v1`
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_relocation_remaining_failures_per_action_probe8_heading4_20260530_v1`
+
+| Row | Validity | Decision | Success | Memory-guided actions | Frontier-only actions | Notes |
+|---|---|---|---:|---:|---:|---|
+| `tv_monitor` relocation | event posterior | `memory_first` | `1/1` | `684` | `998` | Post-memory frontier confirms at `navmesh_frontier_probe:3:step:183`. |
+| `tv_monitor` relocation | learned | `memory_first` | `1/1` | `684` | `998` | Learned probability drops to `0.006685`, but post-memory search remains cheaper than query-start frontier. |
+| `chair` relocation, reverse pair | event posterior | `frontier_first` | `1/1` | `190` | `190` | Query-start frontier confirms at `navmesh_frontier_probe:3:step:83`. |
+| `toilet` relocation | event posterior | `frontier_first` | `0/1` | `803` | `803` | Still fails after `8x4` probes. |
+
+Interpretation:
+
+- Extra random navmesh budget can recover two of the three remaining relocation
+  failures, but at high action cost.
+- The `tv_monitor` result strengthens the memory-as-local-prior story:
+  memory-guided post-memory search is `314` actions cheaper than query-start
+  frontier under the same high budget.
+- The failed `toilet` row shows that simply increasing random probe count is not
+  enough. The next algorithm needs a more directed active-search policy that
+  uses memory, route observations, geometry, and detector evidence to choose
+  where to look.
