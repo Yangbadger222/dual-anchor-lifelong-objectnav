@@ -84,12 +84,12 @@ Run the focused CLI test and the helper test.
 Run focused Habitat/CLI tests, model/pipeline tests, `py_compile`, full core
 tests, and `git diff --check`.
 
-- [ ] **Step 2: Push and rerun on Linux**
+- [x] **Step 2: Push and rerun on Linux**
 
 Pull the branch on Linux and run the selected relocated `sofa` group with
 `--memory-validity-model` pointing at the evidence-only pipeline model.
 
-- [ ] **Step 3: Document result**
+- [x] **Step 3: Document result**
 
 Record whether the learned online run changes `memory_decision` from
 `memory_first` to `frontier_first`, plus all limitations.

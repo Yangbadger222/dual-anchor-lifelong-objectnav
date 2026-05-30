@@ -276,6 +276,56 @@ and decision-sensitivity tests produced `21` passed, `py_compile` passed for
 the pipeline API and CLI, the full local core suite produced `279` passed, and
 `git diff --check` was clean.
 
+Online learned validity replay is now implemented:
+
+- Design:
+  `docs/design/2026-05-30-habitat-learned-memory-validity-online.md`
+- Experiment:
+  `docs/experiments/2026-05-30-habitat-learned-memory-validity-online-replay.md`
+- CLI hook:
+  `python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav ... --memory-validity-model <model.json>`
+
+Linux pulled commit `6162b8a`, and the focused Habitat runner/CLI suite passed
+with `74` tests. The mixed stable-plus-relocation evidence-only learning
+pipeline used:
+
+- Stable input:
+  `runs/habitat_closed_loop_dual_anchor/navmesh_frontier_grounding_dino_smoke_balanced6_event_posterior_option_end_v2`
+- Relocation input:
+  `runs/habitat_closed_loop_dual_anchor/grounding_dino_goal_object_relocation_ranked_navmesh_event_posterior_balanced6_20260530_v1`
+- Output:
+  `runs/habitat_closed_loop_dual_anchor/memory_validity_learning_grounding_dino_stable_relocation_balanced6_evidence_only_20260530_v1`
+
+That pipeline produced `12` examples (`5` valid, `7` invalid), trained on `10`
+non-toilet examples, held out `2` toilet examples, reported one learned
+decision flip, and still found `0` fixed/evidence/event-posterior heuristic
+flips in the bundled decision-sensitivity output.
+
+The first online replay of the flipped relocated `sofa` row is complete:
+
+- Baseline:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_sofa_relocation_baseline_online_20260530_v1`
+- Learned:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_sofa_relocation_evidence_only_online_20260530_v1`
+- Group:
+  `hm3d/val/00820-mL8ThkuaVTM/mL8ThkuaVTM.basis.glb|sofa|relocated:goal_object:220->goal_object:341`
+
+Matched A/B result:
+
+- Baseline event-posterior reliability: `0.2875`
+- Baseline decision: `memory_first`
+- Learned probability: `0.006685`
+- Learned decision: `frontier_first`
+- Learned decision bucket: `harmful_memory_reuse_avoided`
+- Memory evidence label: invalid (`shared_gate_success=false`,
+  `detector_precision=0.0`)
+- Success: `0/1` for both baseline and learned replay
+
+This finally demonstrates a detector-backed learned pre-decision validity signal
+causing an online Habitat memory-vs-frontier policy flip. It is not yet a
+benchmark win because the selected relocation row still fails after choosing
+frontier.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -835,6 +885,9 @@ Passed locally before this handoff update:
   expected-utility arithmetic. It is useful for selecting targeted follow-up
   rows, but mined rows are not policy results until rerun in Habitat with the
   chosen detector/frontier configuration.
+- The first learned-validity online replay is now a policy result, but only a
+  one-row mechanism result. It should not be presented as broad ObjectNav
+  performance evidence.
 - The first balanced3 mining smoke found no counterfactual decision flips.
   This reinforces that the existing balanced3 slices are still too stable for
   policy-gain claims.
