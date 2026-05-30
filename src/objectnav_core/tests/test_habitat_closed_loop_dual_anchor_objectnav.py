@@ -130,6 +130,29 @@ def test_habitat_closed_loop_preflight_records_navmesh_frontier_config(tmp_path)
     assert summary["frontier_probe_heading_count"] == 8
 
 
+def test_habitat_closed_loop_preflight_records_memory_local_search_config(
+    tmp_path,
+) -> None:
+    summary = run_habitat_closed_loop_dual_anchor_preflight(
+        tmp_path,
+        dataset_dir="datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+        scene_root="datasets/habitat/scene_datasets/hm3d",
+        target_categories=("plant", "toilet"),
+        max_groups=2,
+        post_memory_search_mode="memory_local_active",
+        local_search_radii_m=(1.0, 2.0, 4.0),
+        local_search_probe_count=6,
+        local_search_heading_count=8,
+        local_search_score_mode="belief_gain",
+    )
+
+    assert summary["post_memory_search_mode"] == "memory_local_active"
+    assert summary["local_search_radii_m"] == [1.0, 2.0, 4.0]
+    assert summary["local_search_probe_count"] == 6
+    assert summary["local_search_heading_count"] == 8
+    assert summary["local_search_score_mode"] == "belief_gain"
+
+
 def test_habitat_closed_loop_preflight_records_memory_reliability_mode(
     tmp_path,
 ) -> None:
@@ -143,6 +166,23 @@ def test_habitat_closed_loop_preflight_records_memory_reliability_mode(
     )
 
     assert summary["memory_reliability_mode"] == "evidence"
+
+
+def test_post_memory_search_mode_defaults_to_frontier_mode() -> None:
+    assert (
+        closed_loop._effective_post_memory_search_mode(
+            frontier_mode="search_proxy",
+            post_memory_search_mode="frontier_mode",
+        )
+        == "search_proxy"
+    )
+    assert (
+        closed_loop._effective_post_memory_search_mode(
+            frontier_mode="navmesh_frontier",
+            post_memory_search_mode="memory_local_active",
+        )
+        == "memory_local_active"
+    )
 
 
 def test_habitat_closed_loop_preflight_records_route_observation_mode(
@@ -1110,6 +1150,31 @@ def test_calibrated_memory_decision_keeps_strong_shorter_memory() -> None:
     )
 
 
+def test_expected_utility_ignores_unavailable_post_memory_repair() -> None:
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=40,
+            fallback_from_memory_action_count=0,
+            fallback_action_count=120,
+            memory_valid_prior=0.25,
+            fallback_available=True,
+            fallback_from_memory_available=False,
+        )
+        == "frontier_first"
+    )
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=40,
+            fallback_from_memory_action_count=0,
+            fallback_action_count=120,
+            memory_valid_prior=0.25,
+            fallback_available=False,
+            fallback_from_memory_available=False,
+        )
+        == "memory_first"
+    )
+
+
 def test_calibrated_memory_decision_still_uses_frontier_when_frontier_is_shorter() -> None:
     estimate = closed_loop._estimate_memory_valid_prior(
         base_prior=0.5,
@@ -1785,6 +1850,43 @@ def test_navmesh_frontier_probe_goals_are_seeded_and_target_agnostic() -> None:
     assert goals_a == ((5.0, 0.0, 0.0), (7.0, 0.0, 0.0), (2.0, 0.0, 0.0))
 
 
+def test_memory_local_probe_goals_expand_around_memory_anchor() -> None:
+    class PathFinder:
+        def snap_point(self, point):
+            return point
+
+        def is_navigable(self, point) -> bool:
+            return True
+
+    class Sim:
+        pathfinder = PathFinder()
+
+    goals = closed_loop._memory_local_probe_goals(
+        sim=Sim(),
+        memory_anchor=(10.0, 0.0, 20.0),
+        start=(10.0, 0.0, 20.0),
+        seed=313,
+        radii_m=(1.0, 2.0),
+        probe_count=4,
+        angle_count=4,
+        score_mode="distance_prior",
+        min_separation_m=0.1,
+    )
+
+    assert [goal.position for goal in goals] == [
+        (11.0, 0.0, 20.0),
+        (10.0, 0.0, 21.0),
+        (9.0, 0.0, 20.0),
+        (10.0, 0.0, 19.0),
+    ]
+    assert [goal.source for goal in goals] == [
+        "memory_local_active_probe:0",
+        "memory_local_active_probe:1",
+        "memory_local_active_probe:2",
+        "memory_local_active_probe:3",
+    ]
+
+
 def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
     from types import SimpleNamespace
 
@@ -1826,6 +1928,99 @@ def test_navmesh_frontier_route_stops_at_first_positive_probe() -> None:
     assert result.selected_verification.shared_gate_success is True
     assert result.route.action_count == 2
     assert result.route.executed_distance_m == 3.0
+
+
+def test_probe_route_uses_custom_source_prefix() -> None:
+    from types import SimpleNamespace
+
+    visited_sources: list[str] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        return SimpleNamespace(
+            actions=(f"move_to_{goal_position[0]}",),
+            action_count=1,
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 0.0, 0.0, 1.0),
+            executed_distance_m=float(goal_position[0]),
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position, rotation, probe_index
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(target_visible=True)
+
+    result = closed_loop._run_navmesh_frontier_probe_route(
+        start_position=(0.0, 0.0, 0.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        probe_goals=((1.0, 0.0, 0.0),),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        probe_heading_count=1,
+        source_prefix="memory_local_active_probe",
+    )
+
+    assert visited_sources == ["memory_local_active_probe:0:heading:0"]
+    assert result.selected_probe_source == "memory_local_active_probe:0:heading:0"
+
+
+def test_memory_local_active_result_stops_at_first_positive_probe() -> None:
+    from types import SimpleNamespace
+
+    class PathFinder:
+        def snap_point(self, point):
+            return point
+
+        def is_navigable(self, point) -> bool:
+            return True
+
+    class Sim:
+        pathfinder = PathFinder()
+
+    visited_sources: list[str] = []
+
+    def route_segment(*, start_position, start_rotation, goal_position):
+        del start_position, start_rotation
+        return SimpleNamespace(
+            actions=(f"move_to_{goal_position[0]}_{goal_position[2]}",),
+            action_count=1,
+            reached_stop=True,
+            final_position=goal_position,
+            final_rotation=(0.0, 0.0, 0.0, 1.0),
+            executed_distance_m=1.0,
+        )
+
+    def verify_probe(*, source, position, rotation, probe_index):
+        del position, rotation, probe_index
+        visited_sources.append(source)
+        return closed_loop._OracleVisible(
+            target_visible=source == "memory_local_active_probe:1:heading:0"
+        )
+
+    result = closed_loop._memory_local_active_result(
+        sim=Sim(),
+        start_position=(10.0, 0.0, 20.0),
+        start_rotation=(0.0, 0.0, 0.0, 1.0),
+        memory_anchor=(10.0, 0.0, 20.0),
+        seed=313,
+        radii_m=(1.0,),
+        probe_count=2,
+        angle_count=4,
+        score_mode="distance_prior",
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        probe_heading_count=1,
+    )
+
+    assert visited_sources == [
+        "memory_local_active_probe:0:heading:0",
+        "memory_local_active_probe:1:heading:0",
+    ]
+    assert result.selected_probe_source == "memory_local_active_probe:1:heading:0"
+    assert result.selected_probe_position == (10.0, 0.0, 21.0)
+    assert result.selected_verification.shared_gate_success is True
+    assert result.route.action_count == 2
 
 
 def test_navmesh_frontier_route_skips_unreachable_probe_segment() -> None:

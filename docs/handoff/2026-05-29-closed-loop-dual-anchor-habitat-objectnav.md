@@ -1314,3 +1314,116 @@ Interpretation:
 - The next useful design is memory-conditioned local active search: use the
   memory anchor and route evidence to direct where the robot looks, instead of
   only increasing random probe count.
+
+## 2026-05-30 Memory-Conditioned Local Active Search Design
+
+New design doc:
+
+- `docs/design/2026-05-30-memory-conditioned-local-active-search.md`
+
+Design summary:
+
+- Add a post-memory search mode that treats memory as a spatial prior even when
+  it is not valid enough to be a stop target.
+- Generate reachable local probes around the transformed memory anchor with
+  expanding radii.
+- Score probes by expected information gain per action, using distance to
+  memory, route novelty, detector confirmation/suppression history, and route
+  cost.
+- Keep oracle target pixels audit-only; do not use relocated target pose or
+  semantic id to choose probes.
+
+Recommended next step:
+
+1. Write tests for deterministic local probe generation and zero-action
+   candidate rejection.
+2. Implement the `memory_local_active` mode behind a CLI flag without replacing
+   existing `navmesh_frontier`.
+3. Run selected `sofa`, `tv_monitor`, and `toilet` relocation replays before
+   another balanced6 matrix.
+
+## 2026-05-30 Memory-Conditioned Local Active Search Implementation
+
+Implemented locally:
+
+- `--post-memory-search-mode memory_local_active` changes only the post-memory
+  repair route. Query-start frontier remains controlled by `--frontier-mode`.
+- `--post-memory-search-mode frontier_mode` is the default and preserves prior
+  behavior.
+- Local active search generates deterministic radial probes around the memory
+  anchor, labels them as `memory_local_active_probe:*`, and executes them
+  through the same route follower and detector-confirmation code path as
+  `navmesh_frontier`.
+- Expected-utility selection now rejects unavailable zero-action post-memory
+  repair routes as free options.
+
+Local verification:
+
+```bash
+python3 -m pytest \
+  src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py \
+  src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q
+
+python3 -m py_compile \
+  src/objectnav_core/objectnav_core/evaluation/habitat_closed_loop_dual_anchor_objectnav.py \
+  src/objectnav_core/objectnav_core/cli/run_habitat_closed_loop_dual_anchor_objectnav.py
+
+git diff --check
+```
+
+Focused Linux replay template:
+
+```bash
+HABITAT_SIM_LOG=quiet MAGNUM_LOG=quiet \
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+PYTHONPATH=src/objectnav_core \
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav \
+  --dataset-dir datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --output runs/habitat_closed_loop_dual_anchor/<run_name> \
+  --target-categories sofa,tv_monitor,chair,toilet \
+  --selected-group-ids '<comma-separated selected relocation group ids>' \
+  --sensor-width 640 \
+  --sensor-height 360 \
+  --challenge goal_object_relocation \
+  --query-repeats 1 \
+  --memory-valid-prior 0.5 \
+  --memory-reliability-mode event_posterior \
+  --frontier-mode navmesh_frontier \
+  --frontier-probe-count 3 \
+  --frontier-probe-heading-count 2 \
+  --post-memory-search-mode memory_local_active \
+  --local-search-radii-m 1.0,2.0,4.0 \
+  --local-search-probe-count 8 \
+  --local-search-heading-count 4 \
+  --local-search-score-mode distance_prior \
+  --route-observation-mode per_action \
+  --detector-confirmation-mode multiview \
+  --detector grounding_dino \
+  --detector-weights IDEA-Research/grounding-dino-tiny \
+  --detector-conf 0.25 \
+  --grounding-dino-text-threshold 0.25 \
+  --grounding-dino-max-image-side 384 \
+  --rgb-noise-profile configs/noise/rgb_published_v1.yaml \
+  --depth-noise-profile configs/noise/depth_realsense_d435_v1.yaml \
+  --noise-level clean \
+  --min-target-pixels 24 \
+  --min-detector-pixels 20 \
+  --max-detection-area-ratio 0.7 \
+  --detector-prompt-mode target
+```
+
+Priority rows:
+
+- `hm3d/val/00820-mL8ThkuaVTM/mL8ThkuaVTM.basis.glb|sofa|relocated:goal_object:220->goal_object:341`
+- the high-budget `tv_monitor` relocation row that previously needed `684`
+  memory-guided actions;
+- the reverse `chair` relocation row that recovered in `190` actions;
+- the `toilet` relocation row that still failed after `8x4` probes.
+
+Risk:
+
+- The first implementation is not yet a learned active-search policy and does
+  not persist the full candidate-score trace. Treat it as the first Habitat
+  testbed for memory-conditioned search, not as a paper result until selected
+  and balanced6 replays prove a material improvement.

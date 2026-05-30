@@ -38,6 +38,20 @@ DEFAULT_FRONTIER_PROBE_COUNT = 8
 DEFAULT_FRONTIER_PROBE_HEADING_COUNT = 4
 DEFAULT_NAVMESH_FRONTIER_SAMPLE_ATTEMPTS = 64
 DEFAULT_NAVMESH_FRONTIER_MIN_DISTANCE_M = 1.5
+SUPPORTED_POST_MEMORY_SEARCH_MODES: tuple[str, ...] = (
+    "frontier_mode",
+    "navmesh_frontier",
+    "memory_local_active",
+)
+DEFAULT_POST_MEMORY_SEARCH_MODE = "frontier_mode"
+DEFAULT_LOCAL_SEARCH_RADII_M: tuple[float, ...] = (1.0, 2.0, 4.0)
+DEFAULT_LOCAL_SEARCH_PROBE_COUNT = 8
+DEFAULT_LOCAL_SEARCH_HEADING_COUNT = 4
+SUPPORTED_LOCAL_SEARCH_SCORE_MODES: tuple[str, ...] = (
+    "distance_prior",
+    "belief_gain",
+)
+DEFAULT_LOCAL_SEARCH_SCORE_MODE = "distance_prior"
 DEFAULT_REPLAY_SEED_BASE = 313
 _REPLAY_SEED_MODULUS = 2_000_000_000
 _REPLAY_FRAME_INDEX_MODULUS = 1_000_000
@@ -178,6 +192,23 @@ class NavmeshFrontierRouteResult:
 
 
 @dataclass(frozen=True)
+class LocalSearchCandidate:
+    source: str
+    position: tuple[float, float, float]
+    radius_m: float
+    angle_index: int
+    score: float
+
+
+@dataclass(frozen=True)
+class MemoryLocalSearchConfig:
+    radii_m: tuple[float, ...] = DEFAULT_LOCAL_SEARCH_RADII_M
+    probe_count: int = DEFAULT_LOCAL_SEARCH_PROBE_COUNT
+    heading_count: int = DEFAULT_LOCAL_SEARCH_HEADING_COUNT
+    score_mode: str = DEFAULT_LOCAL_SEARCH_SCORE_MODE
+
+
+@dataclass(frozen=True)
 class DetectorConfirmationConfig:
     frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES
     min_translation_m: float = DEFAULT_DETECTOR_CONFIRMATION_MIN_TRANSLATION_M
@@ -306,6 +337,11 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     frontier_mode: str = DEFAULT_FRONTIER_MODE,
     frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
     frontier_probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
+    post_memory_search_mode: str = DEFAULT_POST_MEMORY_SEARCH_MODE,
+    local_search_radii_m: Sequence[float] = DEFAULT_LOCAL_SEARCH_RADII_M,
+    local_search_probe_count: int = DEFAULT_LOCAL_SEARCH_PROBE_COUNT,
+    local_search_heading_count: int = DEFAULT_LOCAL_SEARCH_HEADING_COUNT,
+    local_search_score_mode: str = DEFAULT_LOCAL_SEARCH_SCORE_MODE,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -351,6 +387,11 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
         frontier_probe_heading_count=frontier_probe_heading_count,
+        post_memory_search_mode=post_memory_search_mode,
+        local_search_radii_m=local_search_radii_m,
+        local_search_probe_count=local_search_probe_count,
+        local_search_heading_count=local_search_heading_count,
+        local_search_score_mode=local_search_score_mode,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -391,6 +432,11 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
         frontier_probe_heading_count=frontier_probe_heading_count,
+        post_memory_search_mode=post_memory_search_mode,
+        local_search_radii_m=local_search_radii_m,
+        local_search_probe_count=local_search_probe_count,
+        local_search_heading_count=local_search_heading_count,
+        local_search_score_mode=local_search_score_mode,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -438,6 +484,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     frontier_mode: str = DEFAULT_FRONTIER_MODE,
     frontier_probe_count: int = DEFAULT_FRONTIER_PROBE_COUNT,
     frontier_probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
+    post_memory_search_mode: str = DEFAULT_POST_MEMORY_SEARCH_MODE,
+    local_search_radii_m: Sequence[float] = DEFAULT_LOCAL_SEARCH_RADII_M,
+    local_search_probe_count: int = DEFAULT_LOCAL_SEARCH_PROBE_COUNT,
+    local_search_heading_count: int = DEFAULT_LOCAL_SEARCH_HEADING_COUNT,
+    local_search_score_mode: str = DEFAULT_LOCAL_SEARCH_SCORE_MODE,
     challenge: str = DEFAULT_CHALLENGE,
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
@@ -483,6 +534,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
         frontier_probe_heading_count=frontier_probe_heading_count,
+        post_memory_search_mode=post_memory_search_mode,
+        local_search_radii_m=local_search_radii_m,
+        local_search_probe_count=local_search_probe_count,
+        local_search_heading_count=local_search_heading_count,
+        local_search_score_mode=local_search_score_mode,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -856,6 +912,10 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                 fallback_from_memory_verification = fallback_verification
                 fallback_from_memory_anchor_source = fallback_candidate.source
                 fallback_from_memory_evidence_source = fallback_verification
+                post_memory_effective_mode = _effective_post_memory_search_mode(
+                    frontier_mode=frontier_mode,
+                    post_memory_search_mode=post_memory_search_mode,
+                )
                 if frontier_mode == "search_proxy":
                     fallback_route = _cached_action_route_sequence(
                         cache=action_route_cache,
@@ -869,24 +929,6 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             goal=fallback_candidate.position,
                             seed=fallback_seed,
                             waypoint_count=frontier_proxy_waypoints,
-                        )[0],
-                    )
-                    fallback_from_memory_route = _cached_action_route_sequence(
-                        cache=action_route_cache,
-                        habitat_sim=habitat_sim,
-                        sim=sim,
-                        start_position=memory_candidate.position,
-                        start_rotation=memory_candidate.rotation,
-                        route_goals=_search_proxy_route_goals(
-                            sim=sim,
-                            start=memory_candidate.position,
-                            goal=fallback_candidate.position,
-                            seed=fallback_from_memory_seed,
-                            waypoint_count=(
-                                frontier_proxy_waypoints
-                                if challenge == "stale_proxy"
-                                else 0
-                            ),
                         )[0],
                     )
                     if route_observation_mode == "per_action":
@@ -926,6 +968,68 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             position=tuple(fallback_route.final_position),
                             rotation=tuple(fallback_route.final_rotation),
                         )
+                else:
+                    fallback_result = _navmesh_frontier_result(
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        detector_confirmation_mode=detector_confirmation_mode,
+                        detector_confirmation=detector_confirmation,
+                        helpers=helper_bundle,
+                        detector_confirmation_events=detector_confirmation_events,
+                        detector_confirmation_context="fallback",
+                        start_position=group.query_episode.start_position,
+                        start_rotation=group.query_episode.start_rotation,
+                        seed=fallback_seed,
+                        probe_count=frontier_probe_count,
+                        probe_heading_count=frontier_probe_heading_count,
+                        route_observation_mode=route_observation_mode,
+                        frame_index_base=base_frame_index + 300,
+                    )
+                    fallback_route = fallback_result.route
+                    fallback_verification = fallback_result.selected_verification
+                    fallback_route_observation = _route_observation_from_navmesh_result(
+                        fallback_result
+                    )
+                    fallback_candidate = _replace_candidate_pose(
+                        fallback_candidate,
+                        source=fallback_result.selected_probe_source,
+                        position=(
+                            fallback_result.selected_probe_position
+                            or fallback_candidate.position
+                        ),
+                        rotation=tuple(fallback_route.final_rotation),
+                    )
+                if post_memory_effective_mode == "search_proxy":
+                    fallback_from_memory_route = _cached_action_route_sequence(
+                        cache=action_route_cache,
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        start_position=memory_candidate.position,
+                        start_rotation=memory_candidate.rotation,
+                        route_goals=_search_proxy_route_goals(
+                            sim=sim,
+                            start=memory_candidate.position,
+                            goal=fallback_candidate.position,
+                            seed=fallback_from_memory_seed,
+                            waypoint_count=(
+                                frontier_proxy_waypoints
+                                if challenge == "stale_proxy"
+                                else 0
+                            ),
+                        )[0],
+                    )
+                    if route_observation_mode == "per_action":
                         fallback_from_memory_observation = (
                             _observe_route_until_positive(
                                 route=fallback_from_memory_route,
@@ -971,48 +1075,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         fallback_from_memory_evidence_source = (
                             fallback_from_memory_observation.selected_verification
                         )
-                else:
-                    fallback_result = _navmesh_frontier_result(
-                        habitat_sim=habitat_sim,
-                        sim=sim,
-                        target_semantic_ids=target_semantic_ids,
-                        target_category=group.category,
-                        detector=detector,
-                        detector_adapter=detector_adapter,
-                        accepted_detection_labels=accepted_labels,
-                        noise_level=noise_level,
-                        rgb_noise=rgb_noise,
-                        depth_noise=depth_noise,
-                        min_target_pixels=min_target_pixels,
-                        min_detector_pixels=min_detector_pixels,
-                        max_detection_area_ratio=max_detection_area_ratio,
-                        detector_confirmation_mode=detector_confirmation_mode,
-                        detector_confirmation=detector_confirmation,
-                        helpers=helper_bundle,
-                        detector_confirmation_events=detector_confirmation_events,
-                        detector_confirmation_context="fallback",
-                        start_position=group.query_episode.start_position,
-                        start_rotation=group.query_episode.start_rotation,
-                        seed=fallback_seed,
-                        probe_count=frontier_probe_count,
-                        probe_heading_count=frontier_probe_heading_count,
-                        route_observation_mode=route_observation_mode,
-                        frame_index_base=base_frame_index + 300,
-                    )
-                    fallback_route = fallback_result.route
-                    fallback_verification = fallback_result.selected_verification
-                    fallback_route_observation = _route_observation_from_navmesh_result(
-                        fallback_result
-                    )
-                    fallback_candidate = _replace_candidate_pose(
-                        fallback_candidate,
-                        source=fallback_result.selected_probe_source,
-                        position=(
-                            fallback_result.selected_probe_position
-                            or fallback_candidate.position
-                        ),
-                        rotation=tuple(fallback_route.final_rotation),
-                    )
+                elif post_memory_effective_mode == "navmesh_frontier":
                     fallback_from_memory_result = _navmesh_frontier_result(
                         habitat_sim=habitat_sim,
                         sim=sim,
@@ -1037,6 +1100,64 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                         seed=fallback_from_memory_seed,
                         probe_count=frontier_probe_count,
                         probe_heading_count=frontier_probe_heading_count,
+                        route_observation_mode=route_observation_mode,
+                        frame_index_base=base_frame_index + 400,
+                    )
+                    fallback_from_memory_route = fallback_from_memory_result.route
+                    fallback_from_memory_verification = (
+                        fallback_from_memory_result.selected_verification
+                    )
+                    fallback_from_memory_observation = (
+                        _route_observation_from_navmesh_result(
+                            fallback_from_memory_result
+                        )
+                    )
+                    fallback_from_memory_anchor_source = (
+                        fallback_from_memory_result.selected_probe_source
+                    )
+                    fallback_from_memory_evidence_source = (
+                        fallback_from_memory_result.selected_verification
+                    )
+                    if fallback_from_memory_result.selected_probe_position is not None:
+                        repaired_memory_route = _cached_action_route_sequence(
+                            cache=action_route_cache,
+                            habitat_sim=habitat_sim,
+                            sim=sim,
+                            start_position=group.query_episode.start_position,
+                            start_rotation=group.query_episode.start_rotation,
+                            route_goals=(
+                                fallback_from_memory_result.selected_probe_position,
+                            ),
+                        )
+                else:
+                    fallback_from_memory_result = _habitat_memory_local_active_result(
+                        habitat_sim=habitat_sim,
+                        sim=sim,
+                        target_semantic_ids=target_semantic_ids,
+                        target_category=group.category,
+                        detector=detector,
+                        detector_adapter=detector_adapter,
+                        accepted_detection_labels=accepted_labels,
+                        noise_level=noise_level,
+                        rgb_noise=rgb_noise,
+                        depth_noise=depth_noise,
+                        min_target_pixels=min_target_pixels,
+                        min_detector_pixels=min_detector_pixels,
+                        max_detection_area_ratio=max_detection_area_ratio,
+                        detector_confirmation_mode=detector_confirmation_mode,
+                        detector_confirmation=detector_confirmation,
+                        helpers=helper_bundle,
+                        detector_confirmation_events=detector_confirmation_events,
+                        detector_confirmation_context="fallback_from_memory",
+                        start_position=memory_candidate.position,
+                        start_rotation=memory_candidate.rotation,
+                        memory_anchor=memory_candidate.position,
+                        seed=fallback_from_memory_seed,
+                        radii_m=local_search_radii_m,
+                        probe_count=local_search_probe_count,
+                        angle_count=local_search_probe_count,
+                        score_mode=local_search_score_mode,
+                        probe_heading_count=local_search_heading_count,
                         route_observation_mode=route_observation_mode,
                         frame_index_base=base_frame_index + 400,
                     )
@@ -1152,16 +1273,29 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                     memory_evidence=active_memory_evidence_payload,
                                 )
                             )
-                        expected_memory_first = _expected_memory_first_action_count(
-                            memory_action_count=active_memory_route.action_count,
-                            fallback_from_memory_action_count=(
-                                fallback_from_memory_route.action_count
-                            ),
-                            memory_valid_prior=reliability_estimate.value,
-                        )
                         fallback_available = (
                             int(fallback_route.action_count) > 0
                             or bool(fallback_verification.shared_gate_success)
+                        )
+                        fallback_from_memory_available = (
+                            int(fallback_from_memory_route.action_count) > 0
+                            or bool(
+                                fallback_from_memory_verification.shared_gate_success
+                            )
+                        )
+                        expected_memory_first = (
+                            _expected_memory_first_action_count(
+                                memory_action_count=active_memory_route.action_count,
+                                fallback_from_memory_action_count=(
+                                    fallback_from_memory_route.action_count
+                                ),
+                                memory_valid_prior=reliability_estimate.value,
+                            )
+                            if (
+                                fallback_from_memory_available
+                                or reliability_estimate.value >= 1.0
+                            )
+                            else None
                         )
                         expected_frontier_first = float(fallback_route.action_count)
                         memory_decision = _memory_first_decision(
@@ -1172,6 +1306,9 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                             fallback_action_count=fallback_route.action_count,
                             memory_valid_prior=reliability_estimate.value,
                             fallback_available=fallback_available,
+                            fallback_from_memory_available=(
+                                fallback_from_memory_available
+                            ),
                         )
                         if (
                             policy == "memory_guided"
@@ -1339,6 +1476,11 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         frontier_mode=frontier_mode,
         frontier_probe_count=frontier_probe_count,
         frontier_probe_heading_count=frontier_probe_heading_count,
+        post_memory_search_mode=post_memory_search_mode,
+        local_search_radii_m=local_search_radii_m,
+        local_search_probe_count=local_search_probe_count,
+        local_search_heading_count=local_search_heading_count,
+        local_search_score_mode=local_search_score_mode,
         challenge=challenge,
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
@@ -1778,6 +1920,11 @@ def _base_summary(
     frontier_mode: str,
     frontier_probe_count: int,
     frontier_probe_heading_count: int,
+    post_memory_search_mode: str,
+    local_search_radii_m: Sequence[float],
+    local_search_probe_count: int,
+    local_search_heading_count: int,
+    local_search_score_mode: str,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -1817,6 +1964,13 @@ def _base_summary(
         "frontier_mode": frontier_mode,
         "frontier_probe_count": int(frontier_probe_count),
         "frontier_probe_heading_count": int(frontier_probe_heading_count),
+        "post_memory_search_mode": post_memory_search_mode,
+        "local_search_radii_m": [
+            round(float(radius), 6) for radius in local_search_radii_m
+        ],
+        "local_search_probe_count": int(local_search_probe_count),
+        "local_search_heading_count": int(local_search_heading_count),
+        "local_search_score_mode": local_search_score_mode,
         "challenge": challenge,
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
@@ -1901,6 +2055,16 @@ def _load_memory_validity_model(
     return payload
 
 
+def _effective_post_memory_search_mode(
+    *,
+    frontier_mode: str,
+    post_memory_search_mode: str,
+) -> str:
+    if post_memory_search_mode == "frontier_mode":
+        return frontier_mode
+    return post_memory_search_mode
+
+
 def _validate_common(
     *,
     target_categories: Sequence[str],
@@ -1915,6 +2079,11 @@ def _validate_common(
     frontier_mode: str,
     frontier_probe_count: int,
     frontier_probe_heading_count: int,
+    post_memory_search_mode: str,
+    local_search_radii_m: Sequence[float],
+    local_search_probe_count: int,
+    local_search_heading_count: int,
+    local_search_score_mode: str,
     challenge: str,
     query_repeats: int,
     memory_valid_prior: float,
@@ -1977,6 +2146,23 @@ def _validate_common(
         raise ValueError("frontier_probe_count must be positive")
     if frontier_probe_heading_count <= 0:
         raise ValueError("frontier_probe_heading_count must be positive")
+    if post_memory_search_mode not in SUPPORTED_POST_MEMORY_SEARCH_MODES:
+        raise ValueError(
+            "post_memory_search_mode must be one of: "
+            + ", ".join(SUPPORTED_POST_MEMORY_SEARCH_MODES)
+        )
+    local_radii = tuple(float(radius) for radius in local_search_radii_m)
+    if not local_radii or any(radius <= 0.0 for radius in local_radii):
+        raise ValueError("local_search_radii_m must contain positive radii")
+    if local_search_probe_count <= 0:
+        raise ValueError("local_search_probe_count must be positive")
+    if local_search_heading_count <= 0:
+        raise ValueError("local_search_heading_count must be positive")
+    if local_search_score_mode not in SUPPORTED_LOCAL_SEARCH_SCORE_MODES:
+        raise ValueError(
+            "local_search_score_mode must be one of: "
+            + ", ".join(SUPPORTED_LOCAL_SEARCH_SCORE_MODES)
+        )
     if challenge not in SUPPORTED_CHALLENGES:
         raise ValueError(
             "challenge must be one of: " + ", ".join(SUPPORTED_CHALLENGES)
@@ -2366,9 +2552,12 @@ def _memory_first_decision(
     fallback_action_count: int,
     memory_valid_prior: float,
     fallback_available: bool = True,
+    fallback_from_memory_available: bool = True,
 ) -> str:
     if not fallback_available:
         return "memory_first"
+    if not fallback_from_memory_available and memory_valid_prior < 1.0:
+        return "frontier_first"
     expected_memory = _expected_memory_first_action_count(
         memory_action_count=memory_action_count,
         fallback_from_memory_action_count=fallback_from_memory_action_count,
@@ -3050,6 +3239,81 @@ def _navmesh_frontier_probe_goals(
     return tuple(goals)
 
 
+def _memory_local_probe_goals(
+    *,
+    sim: Any,
+    memory_anchor: Sequence[float],
+    start: Sequence[float],
+    seed: int,
+    radii_m: Sequence[float],
+    probe_count: int,
+    angle_count: int,
+    score_mode: str,
+    min_separation_m: float = 0.25,
+) -> tuple[LocalSearchCandidate, ...]:
+    del seed
+    if probe_count <= 0:
+        raise ValueError("probe_count must be positive")
+    if angle_count <= 0:
+        raise ValueError("angle_count must be positive")
+    if min_separation_m < 0.0:
+        raise ValueError("min_separation_m must be non-negative")
+    if score_mode not in {"distance_prior", "belief_gain"}:
+        raise ValueError("score_mode must be distance_prior or belief_gain")
+    anchor = _tuple3(memory_anchor)
+    start_tuple = _tuple3(start)
+    if anchor is None or start_tuple is None:
+        raise ValueError("memory_anchor and start must be valid 3D positions")
+    radii = tuple(float(radius) for radius in radii_m)
+    if not radii or any(radius <= 0.0 for radius in radii):
+        raise ValueError("radii_m must contain positive radii")
+
+    pathfinder = sim.pathfinder
+    max_radius = max(radii)
+    candidates: list[LocalSearchCandidate] = []
+    for radius in radii:
+        for angle_index in range(angle_count):
+            if len(candidates) >= probe_count:
+                break
+            theta = (2.0 * math.pi * angle_index) / float(angle_count)
+            raw_point = (
+                round(anchor[0] + math.cos(theta) * radius, 6),
+                round(anchor[1], 6),
+                round(anchor[2] + math.sin(theta) * radius, 6),
+            )
+            point = raw_point
+            if hasattr(pathfinder, "snap_point"):
+                snapped = _tuple3(pathfinder.snap_point(raw_point))
+                if snapped is None:
+                    continue
+                point = tuple(round(float(value), 6) for value in snapped)
+            if hasattr(pathfinder, "is_navigable") and not bool(
+                pathfinder.is_navigable(point)
+            ):
+                continue
+            if any(
+                _distance3(point, existing.position) < min_separation_m
+                for existing in candidates
+            ):
+                continue
+            cost_proxy = max(_distance3(start_tuple, point), 1.0)
+            distance_prior = math.exp(-radius / max(max_radius, 1e-6))
+            if score_mode == "belief_gain":
+                distance_prior *= 1.0 + (radius / max(max_radius, 1e-6))
+            candidates.append(
+                LocalSearchCandidate(
+                    source=f"memory_local_active_probe:{len(candidates)}",
+                    position=point,
+                    radius_m=round(radius, 6),
+                    angle_index=angle_index,
+                    score=round(distance_prior / cost_proxy, 6),
+                )
+            )
+        if len(candidates) >= probe_count:
+            break
+    return tuple(candidates)
+
+
 def _observe_route_until_positive(
     *,
     route: Any,
@@ -3186,9 +3450,12 @@ def _run_navmesh_frontier_probe_route(
     route_error_types: tuple[type[BaseException], ...] = (),
     probe_heading_count: int = DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
     route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
+    source_prefix: str = "navmesh_frontier_probe",
 ) -> NavmeshFrontierRouteResult:
     if probe_heading_count <= 0:
         raise ValueError("probe_heading_count must be positive")
+    if not source_prefix:
+        raise ValueError("source_prefix must be non-empty")
     if route_observation_mode not in SUPPORTED_ROUTE_OBSERVATION_MODES:
         raise ValueError(
             "route_observation_mode must be one of: "
@@ -3203,7 +3470,7 @@ def _run_navmesh_frontier_probe_route(
     executed_distance_m = 0.0
     reached_stop = bool(probe_goals)
     selected_verification: Any | None = None
-    selected_source = "navmesh_frontier_probe:none"
+    selected_source = f"{source_prefix}:none"
     selected_position: tuple[float, float, float] | None = None
     verification_count = 0
 
@@ -3223,7 +3490,7 @@ def _run_navmesh_frontier_probe_route(
         if route_observation_mode == "per_action":
             for observation in tuple(getattr(segment, "observations", ()) or ()):
                 step_index = int(getattr(observation, "action_index", 0))
-                selected_source = f"navmesh_frontier_probe:{probe_index}:step:{step_index}"
+                selected_source = f"{source_prefix}:{probe_index}:step:{step_index}"
                 verification_count += 1
                 selected_verification = verify_probe(
                     source=selected_source,
@@ -3277,7 +3544,7 @@ def _run_navmesh_frontier_probe_route(
             if heading_index > 0:
                 actions.append(f"scan_heading:{probe_index}:{heading_index}")
             selected_source = (
-                f"navmesh_frontier_probe:{probe_index}:heading:{heading_index}"
+                f"{source_prefix}:{probe_index}:heading:{heading_index}"
             )
             verification_count += 1
             selected_verification = verify_probe(
@@ -3314,7 +3581,47 @@ def _run_navmesh_frontier_probe_route(
     )
 
 
-def _navmesh_frontier_result(
+def _memory_local_active_result(
+    *,
+    sim: Any,
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    memory_anchor: Sequence[float],
+    seed: int,
+    radii_m: Sequence[float],
+    probe_count: int,
+    angle_count: int,
+    score_mode: str,
+    route_segment: Any,
+    verify_probe: Any,
+    route_error_types: tuple[type[BaseException], ...] = (),
+    probe_heading_count: int = DEFAULT_LOCAL_SEARCH_HEADING_COUNT,
+    route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
+) -> NavmeshFrontierRouteResult:
+    candidates = _memory_local_probe_goals(
+        sim=sim,
+        memory_anchor=memory_anchor,
+        start=start_position,
+        seed=seed,
+        radii_m=radii_m,
+        probe_count=probe_count,
+        angle_count=angle_count,
+        score_mode=score_mode,
+    )
+    return _run_navmesh_frontier_probe_route(
+        start_position=start_position,
+        start_rotation=start_rotation,
+        probe_goals=tuple(candidate.position for candidate in candidates),
+        route_segment=route_segment,
+        verify_probe=verify_probe,
+        route_error_types=route_error_types,
+        probe_heading_count=probe_heading_count,
+        route_observation_mode=route_observation_mode,
+        source_prefix="memory_local_active_probe",
+    )
+
+
+def _habitat_probe_route_result(
     *,
     habitat_sim: Any,
     sim: Any,
@@ -3336,11 +3643,11 @@ def _navmesh_frontier_result(
     detector_confirmation_context: str = "",
     start_position: Sequence[float],
     start_rotation: Sequence[float],
-    seed: int,
-    probe_count: int,
+    probe_goals: Sequence[Sequence[float]],
     probe_heading_count: int,
     route_observation_mode: str,
     frame_index_base: int,
+    source_prefix: str = "navmesh_frontier_probe",
 ) -> NavmeshFrontierRouteResult:
     from objectnav_core.evaluation.habitat_action_follower import (
         follow_greedy_geodesic_route,
@@ -3354,12 +3661,6 @@ def _navmesh_frontier_result(
     except ModuleNotFoundError:
         GreedyFollowerError = RuntimeError
 
-    probe_goals = _navmesh_frontier_probe_goals(
-        sim=sim,
-        start=start_position,
-        seed=seed,
-        probe_count=probe_count,
-    )
     confirmation_state = DetectorConfirmationState()
 
     def route_segment(
@@ -3434,6 +3735,140 @@ def _navmesh_frontier_result(
         route_error_types=(GreedyFollowerError,),
         probe_heading_count=probe_heading_count,
         route_observation_mode=route_observation_mode,
+        source_prefix=source_prefix,
+    )
+
+
+def _navmesh_frontier_result(
+    *,
+    habitat_sim: Any,
+    sim: Any,
+    target_semantic_ids: Sequence[int],
+    target_category: str,
+    detector: str,
+    detector_adapter: Any,
+    accepted_detection_labels: set[str],
+    noise_level: str,
+    rgb_noise: Any,
+    depth_noise: Any,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    detector_confirmation_mode: str,
+    detector_confirmation: DetectorConfirmationConfig,
+    helpers: dict[str, Any],
+    detector_confirmation_events: list[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "",
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    seed: int,
+    probe_count: int,
+    probe_heading_count: int,
+    route_observation_mode: str,
+    frame_index_base: int,
+) -> NavmeshFrontierRouteResult:
+    probe_goals = _navmesh_frontier_probe_goals(
+        sim=sim,
+        start=start_position,
+        seed=seed,
+        probe_count=probe_count,
+    )
+    return _habitat_probe_route_result(
+        habitat_sim=habitat_sim,
+        sim=sim,
+        target_semantic_ids=target_semantic_ids,
+        target_category=target_category,
+        detector=detector,
+        detector_adapter=detector_adapter,
+        accepted_detection_labels=accepted_detection_labels,
+        noise_level=noise_level,
+        rgb_noise=rgb_noise,
+        depth_noise=depth_noise,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation=detector_confirmation,
+        helpers=helpers,
+        detector_confirmation_events=detector_confirmation_events,
+        detector_confirmation_context=detector_confirmation_context,
+        start_position=start_position,
+        start_rotation=start_rotation,
+        probe_goals=probe_goals,
+        probe_heading_count=probe_heading_count,
+        route_observation_mode=route_observation_mode,
+        frame_index_base=frame_index_base,
+    )
+
+
+def _habitat_memory_local_active_result(
+    *,
+    habitat_sim: Any,
+    sim: Any,
+    target_semantic_ids: Sequence[int],
+    target_category: str,
+    detector: str,
+    detector_adapter: Any,
+    accepted_detection_labels: set[str],
+    noise_level: str,
+    rgb_noise: Any,
+    depth_noise: Any,
+    min_target_pixels: int,
+    min_detector_pixels: int,
+    max_detection_area_ratio: float | None,
+    detector_confirmation_mode: str,
+    detector_confirmation: DetectorConfirmationConfig,
+    helpers: dict[str, Any],
+    detector_confirmation_events: list[dict[str, Any]] | None = None,
+    detector_confirmation_context: str = "",
+    start_position: Sequence[float],
+    start_rotation: Sequence[float],
+    memory_anchor: Sequence[float],
+    seed: int,
+    radii_m: Sequence[float],
+    probe_count: int,
+    angle_count: int,
+    score_mode: str,
+    probe_heading_count: int,
+    route_observation_mode: str,
+    frame_index_base: int,
+) -> NavmeshFrontierRouteResult:
+    candidates = _memory_local_probe_goals(
+        sim=sim,
+        memory_anchor=memory_anchor,
+        start=start_position,
+        seed=seed,
+        radii_m=radii_m,
+        probe_count=probe_count,
+        angle_count=angle_count,
+        score_mode=score_mode,
+    )
+    return _habitat_probe_route_result(
+        habitat_sim=habitat_sim,
+        sim=sim,
+        target_semantic_ids=target_semantic_ids,
+        target_category=target_category,
+        detector=detector,
+        detector_adapter=detector_adapter,
+        accepted_detection_labels=accepted_detection_labels,
+        noise_level=noise_level,
+        rgb_noise=rgb_noise,
+        depth_noise=depth_noise,
+        min_target_pixels=min_target_pixels,
+        min_detector_pixels=min_detector_pixels,
+        max_detection_area_ratio=max_detection_area_ratio,
+        detector_confirmation_mode=detector_confirmation_mode,
+        detector_confirmation=detector_confirmation,
+        helpers=helpers,
+        detector_confirmation_events=detector_confirmation_events,
+        detector_confirmation_context=detector_confirmation_context,
+        start_position=start_position,
+        start_rotation=start_rotation,
+        probe_goals=tuple(candidate.position for candidate in candidates),
+        probe_heading_count=probe_heading_count,
+        route_observation_mode=route_observation_mode,
+        frame_index_base=frame_index_base,
+        source_prefix="memory_local_active_probe",
     )
 
 

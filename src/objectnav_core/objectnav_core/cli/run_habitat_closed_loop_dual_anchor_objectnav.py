@@ -22,6 +22,10 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_FRONTIER_PROXY_WAYPOINTS,
     DEFAULT_GROUNDING_DINO_MAX_IMAGE_SIDE,
     DEFAULT_GROUNDING_DINO_TEXT_THRESHOLD,
+    DEFAULT_LOCAL_SEARCH_HEADING_COUNT,
+    DEFAULT_LOCAL_SEARCH_PROBE_COUNT,
+    DEFAULT_LOCAL_SEARCH_RADII_M,
+    DEFAULT_LOCAL_SEARCH_SCORE_MODE,
     DEFAULT_MAX_DETECTION_AREA_RATIO,
     DEFAULT_MAX_GROUPS,
     DEFAULT_MEMORY_RELIABILITY_MODE,
@@ -29,6 +33,7 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     DEFAULT_MIN_DETECTOR_PIXELS,
     DEFAULT_MIN_TARGET_PIXELS,
     DEFAULT_NOISE_LEVEL,
+    DEFAULT_POST_MEMORY_SEARCH_MODE,
     DEFAULT_QUERY_REPEATS,
     DEFAULT_ROUTE_OBSERVATION_MODE,
     DEFAULT_RGB_NOISE_PROFILE,
@@ -41,8 +46,10 @@ from objectnav_core.evaluation.habitat_closed_loop_dual_anchor_objectnav import 
     SUPPORTED_DETECTOR_CONFIRMATION_MODES,
     SUPPORTED_DETECTOR_PROMPT_MODES,
     SUPPORTED_FRONTIER_MODES,
+    SUPPORTED_LOCAL_SEARCH_SCORE_MODES,
     SUPPORTED_MEMORY_RELIABILITY_MODES,
     SUPPORTED_NOISE_LEVELS,
+    SUPPORTED_POST_MEMORY_SEARCH_MODES,
     SUPPORTED_ROUTE_OBSERVATION_MODES,
     TARGET_CATEGORIES,
     run_habitat_closed_loop_dual_anchor_objectnav,
@@ -100,6 +107,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--frontier-probe-heading-count",
         type=int,
         default=DEFAULT_FRONTIER_PROBE_HEADING_COUNT,
+    )
+    parser.add_argument(
+        "--post-memory-search-mode",
+        default=DEFAULT_POST_MEMORY_SEARCH_MODE,
+        choices=SUPPORTED_POST_MEMORY_SEARCH_MODES,
+        help=(
+            "Search mode for the repair route after visiting memory. "
+            "'frontier_mode' preserves the selected frontier mode."
+        ),
+    )
+    parser.add_argument(
+        "--local-search-radii-m",
+        type=_split_float_csv,
+        default=DEFAULT_LOCAL_SEARCH_RADII_M,
+        help="CSV radii in meters for memory-conditioned local active search.",
+    )
+    parser.add_argument(
+        "--local-search-probe-count",
+        type=int,
+        default=DEFAULT_LOCAL_SEARCH_PROBE_COUNT,
+    )
+    parser.add_argument(
+        "--local-search-heading-count",
+        type=int,
+        default=DEFAULT_LOCAL_SEARCH_HEADING_COUNT,
+    )
+    parser.add_argument(
+        "--local-search-score-mode",
+        default=DEFAULT_LOCAL_SEARCH_SCORE_MODE,
+        choices=SUPPORTED_LOCAL_SEARCH_SCORE_MODES,
     )
     parser.add_argument("--query-repeats", type=int, default=DEFAULT_QUERY_REPEATS)
     parser.add_argument(
@@ -228,6 +265,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         frontier_mode=args.frontier_mode,
         frontier_probe_count=args.frontier_probe_count,
         frontier_probe_heading_count=args.frontier_probe_heading_count,
+        post_memory_search_mode=args.post_memory_search_mode,
+        local_search_radii_m=args.local_search_radii_m,
+        local_search_probe_count=args.local_search_probe_count,
+        local_search_heading_count=args.local_search_heading_count,
+        local_search_score_mode=args.local_search_score_mode,
         challenge=args.challenge,
         query_repeats=args.query_repeats,
         memory_valid_prior=args.memory_valid_prior,
@@ -261,6 +303,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _split_float_csv(value: str) -> tuple[float, ...]:
+    return tuple(float(item.strip()) for item in value.split(",") if item.strip())
 
 
 if __name__ == "__main__":

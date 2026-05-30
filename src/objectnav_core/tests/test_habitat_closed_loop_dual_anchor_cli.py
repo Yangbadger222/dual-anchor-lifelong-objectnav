@@ -128,6 +128,45 @@ def test_habitat_closed_loop_cli_preflight_accepts_navmesh_frontier_config(
     assert summary["frontier_probe_heading_count"] == 8
 
 
+def test_habitat_closed_loop_cli_preflight_accepts_memory_local_search_config(
+    tmp_path,
+) -> None:
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--target-categories",
+            "plant,toilet",
+            "--max-groups",
+            "2",
+            "--post-memory-search-mode",
+            "memory_local_active",
+            "--local-search-radii-m",
+            "1.0,2.0,4.0",
+            "--local-search-probe-count",
+            "6",
+            "--local-search-heading-count",
+            "8",
+            "--local-search-score-mode",
+            "belief_gain",
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert summary["post_memory_search_mode"] == "memory_local_active"
+    assert summary["local_search_radii_m"] == [1.0, 2.0, 4.0]
+    assert summary["local_search_probe_count"] == 6
+    assert summary["local_search_heading_count"] == 8
+    assert summary["local_search_score_mode"] == "belief_gain"
+
+
 def test_habitat_closed_loop_cli_preflight_accepts_memory_reliability_mode(
     tmp_path,
 ) -> None:
