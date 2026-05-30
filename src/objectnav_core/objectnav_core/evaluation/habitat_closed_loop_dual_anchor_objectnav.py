@@ -3,14 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
 from objectnav_core.geometry.dual_anchor import FrameTransform2D
+from objectnav_core.evaluation.habitat_memory_validity_model import (
+    predict_memory_validity,
+)
 
 
 POLICIES: tuple[str, ...] = ("memory_guided", "frontier_only", "naive_count")
@@ -306,6 +310,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
+    memory_validity_model_path: str | Path | None = None,
     route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
     detector_confirmation_mode: str = DEFAULT_DETECTOR_CONFIRMATION_MODE,
     detector_confirmation_frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
@@ -350,6 +355,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        memory_validity_model_path=memory_validity_model_path,
         route_observation_mode=route_observation_mode,
         detector_confirmation_mode=detector_confirmation_mode,
         detector_confirmation_frames=detector_confirmation_frames,
@@ -389,6 +395,7 @@ def run_habitat_closed_loop_dual_anchor_preflight(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        memory_validity_model_path=memory_validity_model_path,
         route_observation_mode=route_observation_mode,
         detector_confirmation_mode=detector_confirmation_mode,
         detector_confirmation_frames=detector_confirmation_frames,
@@ -435,6 +442,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
     query_repeats: int = DEFAULT_QUERY_REPEATS,
     memory_valid_prior: float = DEFAULT_MEMORY_VALID_PRIOR,
     memory_reliability_mode: str = DEFAULT_MEMORY_RELIABILITY_MODE,
+    memory_validity_model_path: str | Path | None = None,
     route_observation_mode: str = DEFAULT_ROUTE_OBSERVATION_MODE,
     detector_confirmation_mode: str = DEFAULT_DETECTOR_CONFIRMATION_MODE,
     detector_confirmation_frames: int = DEFAULT_DETECTOR_CONFIRMATION_FRAMES,
@@ -479,6 +487,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        memory_validity_model_path=memory_validity_model_path,
         route_observation_mode=route_observation_mode,
         detector_confirmation_mode=detector_confirmation_mode,
         detector_confirmation_frames=detector_confirmation_frames,
@@ -497,6 +506,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         max_detection_area_ratio=max_detection_area_ratio,
         detector_prompt_mode=detector_prompt_mode,
     )
+    memory_validity_model = _load_memory_validity_model(memory_validity_model_path)
 
     from objectnav_core.evaluation.habitat_memory_lifecycle_objectnav import (
         _verify_lifecycle_view,
@@ -1116,6 +1126,32 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                 )
                             ),
                         )
+                        active_memory_evidence_payload = _verification_payload(
+                            active_memory_verification
+                        )
+                        if memory_validity_model is not None:
+                            reliability_estimate = (
+                                _apply_learned_memory_validity_model(
+                                    model=memory_validity_model,
+                                    base_estimate=reliability_estimate,
+                                    memory_action_count=(
+                                        active_memory_route.action_count
+                                    ),
+                                    fallback_action_count=(
+                                        fallback_route.action_count
+                                    ),
+                                    fallback_from_memory_action_count=(
+                                        fallback_from_memory_route.action_count
+                                    ),
+                                    memory_valid_prior=memory_valid_prior,
+                                    relocation_pair_distance_m=getattr(
+                                        group,
+                                        "relocation_pair_distance_m",
+                                        None,
+                                    ),
+                                    memory_evidence=active_memory_evidence_payload,
+                                )
+                            )
                         expected_memory_first = _expected_memory_first_action_count(
                             memory_action_count=active_memory_route.action_count,
                             fallback_from_memory_action_count=(
@@ -1196,7 +1232,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         raw_memory_decision=memory_decision,
                                     ),
                                     memory_valid_prior=reliability_estimate.value,
-                                    memory_reliability_mode=memory_reliability_mode,
+                                    memory_reliability_mode=reliability_estimate.mode,
                                     memory_reliability=_memory_reliability_payload(
                                         reliability_estimate
                                     ),
@@ -1255,9 +1291,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
                                         fallback_from_memory_anchor_source
                                     ),
                                     memory_evidence=_audit_evidence_payload(
-                                        _verification_payload(
-                                            active_memory_verification
-                                        )
+                                        active_memory_evidence_payload
                                     ),
                                     fallback_evidence=_audit_evidence_payload(
                                         _verification_payload(fallback_verification)
@@ -1304,6 +1338,7 @@ def run_habitat_closed_loop_dual_anchor_objectnav(
         query_repeats=query_repeats,
         memory_valid_prior=memory_valid_prior,
         memory_reliability_mode=memory_reliability_mode,
+        memory_validity_model_path=memory_validity_model_path,
         route_observation_mode=route_observation_mode,
         detector_confirmation_mode=detector_confirmation_mode,
         detector_confirmation_frames=detector_confirmation_frames,
@@ -1742,6 +1777,7 @@ def _base_summary(
     query_repeats: int,
     memory_valid_prior: float,
     memory_reliability_mode: str,
+    memory_validity_model_path: str | Path | None,
     route_observation_mode: str,
     detector_confirmation_mode: str,
     detector_confirmation_frames: int,
@@ -1780,6 +1816,11 @@ def _base_summary(
         "query_repeats": int(query_repeats),
         "memory_valid_prior": round(float(memory_valid_prior), 6),
         "memory_reliability_mode": memory_reliability_mode,
+        "memory_validity_model": (
+            None
+            if memory_validity_model_path is None
+            else str(memory_validity_model_path)
+        ),
         "route_observation_mode": route_observation_mode,
         "detector_confirmation_mode": detector_confirmation_mode,
         "detector_confirmation": _detector_confirmation_config_payload(
@@ -1843,6 +1884,18 @@ def _base_summary(
     }
 
 
+def _load_memory_validity_model(
+    memory_validity_model_path: str | Path | None,
+) -> dict[str, Any] | None:
+    if memory_validity_model_path is None:
+        return None
+    model_path = Path(memory_validity_model_path)
+    payload = json.loads(model_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("memory validity model JSON must contain an object")
+    return payload
+
+
 def _validate_common(
     *,
     target_categories: Sequence[str],
@@ -1861,6 +1914,7 @@ def _validate_common(
     query_repeats: int,
     memory_valid_prior: float,
     memory_reliability_mode: str,
+    memory_validity_model_path: str | Path | None,
     route_observation_mode: str,
     detector_confirmation_mode: str,
     detector_confirmation_frames: int,
@@ -1930,6 +1984,12 @@ def _validate_common(
         raise ValueError(
             "memory_reliability_mode must be one of: "
             + ", ".join(SUPPORTED_MEMORY_RELIABILITY_MODES)
+        )
+    if memory_validity_model_path is not None and not Path(
+        memory_validity_model_path
+    ).is_file():
+        raise ValueError(
+            "memory_validity_model_path must point to an existing JSON file"
         )
     if route_observation_mode not in SUPPORTED_ROUTE_OBSERVATION_MODES:
         raise ValueError(
@@ -2442,6 +2502,112 @@ def _event_posterior_memory_reliability_estimate(
         components=components,
         reason=reason,
     )
+
+
+def _apply_learned_memory_validity_model(
+    *,
+    model: Mapping[str, Any],
+    base_estimate: MemoryReliabilityEstimate,
+    memory_action_count: int,
+    fallback_action_count: int,
+    fallback_from_memory_action_count: int,
+    memory_valid_prior: float,
+    relocation_pair_distance_m: float | None,
+    memory_evidence: Mapping[str, Any] | None,
+) -> MemoryReliabilityEstimate:
+    features = _learned_memory_validity_features(
+        base_estimate=base_estimate,
+        memory_action_count=memory_action_count,
+        fallback_action_count=fallback_action_count,
+        fallback_from_memory_action_count=fallback_from_memory_action_count,
+        memory_valid_prior=memory_valid_prior,
+        relocation_pair_distance_m=relocation_pair_distance_m,
+        memory_evidence=memory_evidence,
+    )
+    probability = predict_memory_validity(model, features)
+    feature_names = model.get("feature_names", ())
+    if not isinstance(feature_names, SequenceABC) or isinstance(feature_names, str):
+        feature_count = 0
+    else:
+        feature_count = len(feature_names)
+    components = {
+        "base_reliability_value": round(float(base_estimate.value), 6),
+        "model_feature_count": float(feature_count),
+    }
+    return MemoryReliabilityEstimate(
+        mode="learned_model",
+        value=round(_clamp01(probability), 6),
+        components=components,
+        reason="learned_memory_validity_model",
+    )
+
+
+def _learned_memory_validity_features(
+    *,
+    base_estimate: MemoryReliabilityEstimate,
+    memory_action_count: int,
+    fallback_action_count: int,
+    fallback_from_memory_action_count: int,
+    memory_valid_prior: float,
+    relocation_pair_distance_m: float | None,
+    memory_evidence: Mapping[str, Any] | None,
+) -> dict[str, float | None]:
+    evidence = memory_evidence or {}
+    features: dict[str, float | None] = {
+        "memory_action_count": float(memory_action_count),
+        "fallback_action_count": float(fallback_action_count),
+        "fallback_from_memory_action_count": float(fallback_from_memory_action_count),
+        "memory_valid_prior": float(memory_valid_prior),
+        "relocation_pair_distance_m": (
+            None
+            if relocation_pair_distance_m is None
+            else float(relocation_pair_distance_m)
+        ),
+        "memory_evidence_detector_pixels": _feature_float(
+            evidence.get("detector_pixels")
+        ),
+        "memory_evidence_overlap_pixels": _feature_float(
+            evidence.get("overlap_pixels")
+        ),
+        "memory_evidence_detector_precision": _feature_float(
+            evidence.get("detector_precision")
+        ),
+        "memory_evidence_oracle_recall": _feature_float(
+            evidence.get("oracle_recall")
+        ),
+    }
+    for component_name, component_value in base_estimate.components.items():
+        feature_name = _memory_reliability_feature_name(component_name)
+        if feature_name is not None:
+            features[feature_name] = _feature_float(component_value)
+    return features
+
+
+def _memory_reliability_feature_name(component_name: str) -> str | None:
+    if component_name in {
+        "base_prior",
+        "current_evidence",
+        "matching",
+        "transform_covariance",
+        "recency",
+    }:
+        return f"memory_reliability_{component_name}"
+    if component_name in {
+        "detector_event_count",
+        "detector_event_confirmed_weight",
+        "detector_event_suppressed_weight",
+        "detector_event_posterior",
+    }:
+        return f"memory_{component_name}"
+    return None
+
+
+def _feature_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        return float(value)
+    return None
 
 
 def _detector_confirmation_event_posterior_components(

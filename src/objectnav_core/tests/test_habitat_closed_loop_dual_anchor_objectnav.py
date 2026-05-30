@@ -1302,6 +1302,82 @@ def test_event_posterior_reliability_reduces_suppressed_dominant_memory() -> Non
     )
 
 
+def test_learned_memory_validity_model_overrides_base_reliability() -> None:
+    verification = DetectorVerification(
+        target_visible=False,
+        oracle_target_pixels=0,
+        detector_pixels=112_000,
+    )
+    base_estimate = closed_loop._estimate_memory_valid_prior(
+        base_prior=0.5,
+        mode="event_posterior",
+        matching_reason="accepted",
+        verification=verification,
+        category="sofa",
+        transform=closed_loop._session_restart_transform(),
+        repeat_index=0,
+    )
+
+    learned_estimate = closed_loop._apply_learned_memory_validity_model(
+        model={"feature_names": (), "weights": (), "bias": -10.0},
+        base_estimate=base_estimate,
+        memory_action_count=49,
+        fallback_action_count=246,
+        fallback_from_memory_action_count=211,
+        memory_valid_prior=0.5,
+        relocation_pair_distance_m=6.69003,
+        memory_evidence=closed_loop._verification_payload(verification),
+    )
+
+    assert learned_estimate.mode == "learned_model"
+    assert learned_estimate.reason == "learned_memory_validity_model"
+    assert learned_estimate.value < 0.001
+    assert learned_estimate.components["base_reliability_value"] == base_estimate.value
+    assert learned_estimate.components["model_feature_count"] == 0
+    assert (
+        closed_loop._memory_first_decision(
+            memory_action_count=49,
+            fallback_from_memory_action_count=211,
+            fallback_action_count=246,
+            memory_valid_prior=learned_estimate.value,
+        )
+        == "frontier_first"
+    )
+
+
+def test_learned_memory_validity_features_use_exporter_event_names() -> None:
+    estimate = closed_loop.MemoryReliabilityEstimate(
+        mode="event_posterior",
+        value=0.2875,
+        components={
+            "base_prior": 0.5,
+            "current_evidence": 0.15,
+            "detector_event_count": 2.0,
+            "detector_event_confirmed_weight": 1.5,
+            "detector_event_suppressed_weight": 3.0,
+            "detector_event_posterior": 0.33,
+        },
+        reason="event_posterior_weighted",
+    )
+
+    features = closed_loop._learned_memory_validity_features(
+        base_estimate=estimate,
+        memory_action_count=49,
+        fallback_action_count=246,
+        fallback_from_memory_action_count=211,
+        memory_valid_prior=0.5,
+        relocation_pair_distance_m=None,
+        memory_evidence={"detector_precision": 0.0},
+    )
+
+    assert features["memory_reliability_current_evidence"] == 0.15
+    assert features["memory_detector_event_count"] == 2.0
+    assert features["memory_detector_event_confirmed_weight"] == 1.5
+    assert features["memory_detector_event_suppressed_weight"] == 3.0
+    assert features["memory_detector_event_posterior"] == 0.33
+    assert "memory_reliability_detector_event_count" not in features
+
+
 def test_event_posterior_filters_events_by_active_memory_context() -> None:
     verification = DetectorVerification(
         target_visible=True,

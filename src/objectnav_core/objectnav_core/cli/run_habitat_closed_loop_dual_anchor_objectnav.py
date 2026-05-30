@@ -117,6 +117,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SUPPORTED_MEMORY_RELIABILITY_MODES,
     )
     parser.add_argument(
+        "--memory-validity-model",
+        default=None,
+        help=(
+            "Optional trained memory-validity model JSON. When supplied, the "
+            "runner uses the selected reliability mode as the base feature "
+            "context and replaces memory-valid probability with the learned "
+            "model prediction."
+        ),
+    )
+    parser.add_argument(
         "--route-observation-mode",
         default=DEFAULT_ROUTE_OBSERVATION_MODE,
         choices=SUPPORTED_ROUTE_OBSERVATION_MODES,
@@ -222,6 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         query_repeats=args.query_repeats,
         memory_valid_prior=args.memory_valid_prior,
         memory_reliability_mode=args.memory_reliability_mode,
+        memory_validity_model_path=args.memory_validity_model,
         route_observation_mode=args.route_observation_mode,
         detector_confirmation_mode=args.detector_confirmation_mode,
         detector_confirmation_frames=args.detector_confirmation_frames,

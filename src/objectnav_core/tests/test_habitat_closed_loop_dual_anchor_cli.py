@@ -174,6 +174,40 @@ def test_habitat_closed_loop_cli_preflight_accepts_event_posterior_reliability_m
     assert summary["memory_reliability_mode"] == "event_posterior"
 
 
+def test_habitat_closed_loop_cli_preflight_accepts_memory_validity_model(
+    tmp_path,
+) -> None:
+    model_path = tmp_path / "model.json"
+    model_path.write_text(
+        json.dumps({"feature_names": [], "weights": [], "bias": -10.0}),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--output",
+            str(tmp_path / "run"),
+            "--dataset-dir",
+            "datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val",
+            "--scene-root",
+            "datasets/habitat/scene_datasets/hm3d",
+            "--memory-reliability-mode",
+            "event_posterior",
+            "--memory-validity-model",
+            str(model_path),
+            "--preflight-only",
+        ]
+    )
+
+    summary = json.loads(
+        (tmp_path / "run" / "summary.json").read_text(encoding="utf-8")
+    )
+
+    assert exit_code == 0
+    assert summary["memory_reliability_mode"] == "event_posterior"
+    assert summary["memory_validity_model"] == str(model_path)
+
+
 def test_habitat_closed_loop_cli_preflight_accepts_route_observation_mode(
     tmp_path,
 ) -> None:
