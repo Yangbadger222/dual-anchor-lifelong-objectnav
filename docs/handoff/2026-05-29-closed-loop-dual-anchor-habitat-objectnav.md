@@ -326,6 +326,40 @@ causing an online Habitat memory-vs-frontier policy flip. It is not yet a
 benchmark win because the selected relocation row still fails after choosing
 frontier.
 
+Broader matched current-code learned replay is also complete:
+
+- Stable baseline:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_current_online_20260530_v1`
+- Stable learned:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_online_20260530_v1`
+- Relocation baseline:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_goal_object_relocation_balanced6_current_online_20260530_v1`
+- Relocation learned:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_goal_object_relocation_balanced6_evidence_only_online_20260530_v1`
+- Current-code learning pipeline:
+  `runs/habitat_closed_loop_dual_anchor/memory_validity_learning_grounding_dino_current_stable_relocation_balanced6_evidence_only_20260530_v1`
+
+Matched matrix result:
+
+- Stable memory-guided baseline: `4/6`, `528` actions.
+- Stable learned memory-guided: `4/6`, `795` actions.
+- Stable online learned flip: `tv_monitor`, `memory_first -> frontier_first`,
+  `0.242777 -> 0.015903`, still failed.
+- Relocation memory-guided baseline: `0/6`, `1446` actions.
+- Relocation learned memory-guided: `0/6`, `1643` actions.
+- Relocation online learned flip: `sofa`, `memory_first -> frontier_first`,
+  `0.2875 -> 0.006685`, still failed.
+
+The current-code evidence-only learning pipeline produced a model JSON
+identical to the earlier evidence-only model. The offline current-code scorer
+found two decision flips (`stable tv_monitor` and relocated `sofa`), while
+fixed/evidence/event-posterior heuristic mining still found `0` flips.
+
+Interpretation: learned validity is now a real online decision mechanism, but
+not yet an ObjectNav gain. The next bottleneck is the fallback side of the
+policy: when learned validity rejects stale or false-positive memory,
+`navmesh_frontier` often cannot recover the target.
+
 ## Files Touched
 
 - `docs/design/2026-05-29-closed-loop-dual-anchor-habitat-objectnav.md`
@@ -888,6 +922,9 @@ Passed locally before this handoff update:
 - The first learned-validity online replay is now a policy result, but only a
   one-row mechanism result. It should not be presented as broad ObjectNav
   performance evidence.
+- The balanced learned replay confirms multiple online flips but still no
+  success or action-count improvement. Do not promote learned validity as a
+  benchmark gain until frontier/search recovery improves.
 - The first balanced3 mining smoke found no counterfactual decision flips.
   This reinforces that the existing balanced3 slices are still too stable for
   policy-gain claims.

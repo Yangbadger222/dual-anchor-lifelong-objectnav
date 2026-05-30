@@ -116,3 +116,49 @@ yet establish ObjectNav benchmark superiority.
   into successful target recovery rather than only a decision flip.
 - Compare evidence-only, route-aware, and full audit-feature models without
   relying on relocation-specific metadata.
+
+## Balanced Matrix Follow-Up
+
+After the selected-row replay, the same evidence-only learned model was run on
+matched current-code balanced6 stable and relocation slices.
+
+Artifacts:
+
+- Stable baseline:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_current_online_20260530_v1`
+- Stable learned:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_online_20260530_v1`
+- Relocation baseline:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_goal_object_relocation_balanced6_current_online_20260530_v1`
+- Relocation learned:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_goal_object_relocation_balanced6_evidence_only_online_20260530_v1`
+- Current-code learning pipeline:
+  `runs/habitat_closed_loop_dual_anchor/memory_validity_learning_grounding_dino_current_stable_relocation_balanced6_evidence_only_20260530_v1`
+
+The current-code learning pipeline produced the same model JSON as the earlier
+evidence-only pipeline, but the current-code scorer found two offline flips
+because the matched stable baseline now includes a `tv_monitor` boundary row.
+
+| Slice | Baseline Success | Learned Success | Baseline Actions | Learned Actions | Online Decision Flips |
+|---|---:|---:|---:|---:|---:|
+| Stable balanced6 | `4/6` | `4/6` | `528` | `795` | `1` |
+| Goal-object relocation balanced6 | `0/6` | `0/6` | `1446` | `1643` | `1` |
+
+Online flipped rows:
+
+| Slice | Category | Baseline | Learned | Baseline p | Learned p | Outcome |
+|---|---|---|---|---:|---:|---|
+| Stable | `tv_monitor` | `memory_first` | `frontier_first` | `0.242777` | `0.015903` | Still fails. |
+| Relocation | `sofa` | `memory_first` | `frontier_first` | `0.2875` | `0.006685` | Still fails. |
+
+Interpretation:
+
+- The broader replay confirms that the learned validity hook can produce online
+  policy flips beyond a one-row selected replay.
+- It also shows the current learned model is not yet a performance improvement:
+  success does not increase, and action count gets worse because the
+  target-agnostic frontier/search fallback often fails after the learned model
+  avoids memory.
+- This shifts the next research bottleneck from "can learned validity flip a
+  decision?" to "can the frontier/search fallback recover the object when
+  learned validity rejects stale or false-positive memory?"
