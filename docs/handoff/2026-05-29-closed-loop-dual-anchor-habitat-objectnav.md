@@ -1427,3 +1427,37 @@ Risk:
   not persist the full candidate-score trace. Treat it as the first Habitat
   testbed for memory-conditioned search, not as a paper result until selected
   and balanced6 replays prove a material improvement.
+
+## 2026-05-30 Official Habitat Measure Alignment Gap
+
+User-raised issue:
+
+- Current lifecycle/closed-loop replay tests do not use official Habitat-Lab
+  measures, so their success/action tables cannot be reported as official
+  SR/SPL or compared directly with SOTA ObjectNav papers.
+
+Current environment check on Linux:
+
+- Habitat-Lab version: `0.3.3`
+- `habitat_baselines`: not installed
+- Registered relevant measures include:
+  - `Success`
+  - `SPL`
+  - `SoftSPL`
+  - `DistanceToGoal`
+  - `DistanceToGoalReward`
+
+New design doc:
+
+- `docs/design/2026-05-30-official-habitat-objectnav-measure-alignment.md`
+
+Recommended next implementation:
+
+1. Add an official-eval preflight CLI that imports Habitat-Lab, loads official
+   ObjectNav episode metadata, verifies scene availability, lists configured
+   measures, and writes a protocol manifest.
+2. Run one `val_mini` episode with a trivial policy and verify metrics come
+   from `env.get_metrics()`.
+3. Port `frontier_only` and `dual_anchor_memory` into that official action loop.
+4. Keep lifecycle relocation results separate from official single-episode
+   ObjectNav SR/SPL in paper tables.

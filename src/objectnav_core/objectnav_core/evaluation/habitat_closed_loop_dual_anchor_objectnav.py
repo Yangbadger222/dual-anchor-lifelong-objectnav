@@ -1577,6 +1577,19 @@ def make_habitat_closed_loop_option_row(
         )
         success = True
         memory_reused = False
+    elif (
+        plan.policy == "memory_guided"
+        and plan.memory_decision == "memory_first"
+        and int(plan.fallback_from_memory_action_count) > 0
+    ):
+        selected = ["memory", "frontier"]
+        action_count = plan.memory_action_count + plan.fallback_from_memory_action_count
+        distance = (
+            plan.memory_executed_distance_m
+            + plan.fallback_from_memory_executed_distance_m
+        )
+        success = False
+        memory_reused = False
     else:
         selected = ["memory"]
         action_count = plan.memory_action_count

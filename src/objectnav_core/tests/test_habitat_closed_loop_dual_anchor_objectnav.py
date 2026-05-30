@@ -1033,6 +1033,33 @@ def test_memory_guided_bucket_records_memory_rescue_when_frontier_fails() -> Non
     assert row["memory_decision_bucket"] == "memory_rescued_frontier_failure"
 
 
+def test_memory_guided_failed_post_memory_repair_counts_search_cost() -> None:
+    row = make_habitat_closed_loop_option_row(
+        HabitatClosedLoopOptionPlan(
+            group_id="scene|sofa|relocated",
+            category="sofa",
+            policy="memory_guided",
+            memory_action_count=49,
+            memory_executed_distance_m=7.0,
+            fallback_action_count=246,
+            fallback_executed_distance_m=40.0,
+            fallback_from_memory_action_count=100,
+            fallback_from_memory_executed_distance_m=18.0,
+            matching_reason="no_current_observation",
+            memory_verified=False,
+            fallback_verified=False,
+            fallback_from_memory_verified=False,
+            memory_decision="memory_first",
+        )
+    )
+
+    assert row["selected_candidate_types"] == ["memory", "frontier"]
+    assert row["success"] is False
+    assert row["action_count"] == 149
+    assert row["executed_distance_m"] == 25.0
+    assert row["memory_decision_bucket"] == "memory_then_frontier_failed"
+
+
 def test_memory_guided_bucket_records_valid_memory_wrongly_deferred() -> None:
     row = make_habitat_closed_loop_option_row(
         HabitatClosedLoopOptionPlan(
