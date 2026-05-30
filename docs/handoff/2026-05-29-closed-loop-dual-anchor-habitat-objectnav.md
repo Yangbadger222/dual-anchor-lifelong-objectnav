@@ -1129,3 +1129,98 @@ Next step:
   `tv_monitor` edge cases, or change experiment construction to create rows
   where the reliability boundary lies inside the evidence/event-posterior
   interval.
+
+## 2026-05-30 Per-Action Route Observation Matrix
+
+The learned-validity endpoint-only matrix exposed the next bottleneck: learned
+validity can flip decisions, but endpoint-only frontier/search often cannot
+recover the target. I picked up the interrupted relocated `sofa` per-action
+replay, then ran a matched per-action matrix on current code.
+
+Artifacts:
+
+- Selected sofa baseline per-action:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_sofa_relocation_baseline_per_action_selected_20260530_v1/summary.json`
+- Selected sofa learned per-action:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_sofa_relocation_evidence_only_per_action_selected_20260530_v1/summary.json`
+- Stable balanced6 event-posterior per-action:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_current_20260530_v2/summary.json`
+- Stable balanced6 learned per-action:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_stable_balanced6_evidence_only_per_action_20260530_v1/summary.json`
+- Relocation balanced6 event-posterior per-action:
+  `runs/habitat_closed_loop_dual_anchor/event_posterior_goal_object_relocation_balanced6_per_action_current_20260530_v1/summary.json`
+- Relocation balanced6 learned per-action:
+  `runs/habitat_closed_loop_dual_anchor/learned_validity_goal_object_relocation_balanced6_evidence_only_per_action_20260530_v1/summary.json`
+- Experiment report:
+  `docs/experiments/2026-05-30-habitat-per-action-route-observation-matrix.md`
+
+Result:
+
+- Selected relocated `sofa`:
+  - `option_end` baseline failed in `49` actions.
+  - `option_end` learned flipped to frontier and failed in `246` actions.
+  - `per_action` baseline and learned both succeeded in `171` actions.
+  - The win comes from post-memory local frontier confirmation at
+    `navmesh_frontier_probe:2:step:0`, not from the learned model.
+- Stable balanced6:
+  - `option_end` event-posterior memory-guided: `4/6`, `528` actions.
+  - `per_action` event-posterior memory-guided: `5/6`, `441` actions.
+  - `per_action` learned memory-guided: `5/6`, `441` actions.
+- Relocation balanced6:
+  - `option_end` event-posterior memory-guided: `0/6`, `1446` actions.
+  - `per_action` event-posterior memory-guided: `3/6`, `1176` actions.
+  - `per_action` learned memory-guided: `3/6`, `1176` actions.
+
+Interpretation:
+
+- The current success improvement comes from route-level active confirmation,
+  not from learned validity.
+- Learned validity is still a real online decision mechanism under
+  `option_end`, but in the per-action matrix it changes probabilities without
+  changing decisions or outcomes.
+- Memory remains valuable in relocation because it can seed local search after
+  stale verification. In the relocation balanced6 matrix, frontier-only reaches
+  `2/6`; memory-guided reaches `3/6` via the relocated `sofa` row.
+
+Commands already run:
+
+```bash
+# Failed immediately due to wrong depth-noise profile path:
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav ... \
+  --output runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_current_20260530_v1 \
+  --depth-noise-profile configs/noise_realsense_d435_v1.yaml
+
+# Corrected stable baseline used _v2:
+python -m objectnav_core.cli.run_habitat_closed_loop_dual_anchor_objectnav ... \
+  --output runs/habitat_closed_loop_dual_anchor/event_posterior_stable_balanced6_per_action_current_20260530_v2 \
+  --challenge stable \
+  --sensor-width 1280 \
+  --sensor-height 720 \
+  --frontier-probe-count 5 \
+  --frontier-probe-heading-count 4 \
+  --route-observation-mode per_action
+
+# Stable learned used the same settings plus:
+--memory-validity-model runs/habitat_closed_loop_dual_anchor/memory_validity_learning_grounding_dino_current_stable_relocation_balanced6_evidence_only_20260530_v1/model.json
+
+# Relocation baseline/learned used:
+--challenge goal_object_relocation
+--sensor-width 640
+--sensor-height 360
+--frontier-probe-count 3
+--frontier-probe-heading-count 2
+--route-observation-mode per_action
+```
+
+Next recommended action:
+
+1. Treat the stable `bed` row as the first diagnostic for the next policy
+   improvement. It has positive memory evidence, but expected utility selects a
+   zero-action failed frontier option, causing the only stable per-action
+   memory-guided failure.
+2. Design memory-conditioned local active search explicitly: memory should seed
+   a local frontier/confirmation policy after stale verification, instead of
+   being only a terminal waypoint.
+3. After fixing the degenerate frontier option and designing the local-search
+   policy, rerun the same current-code per-action matrix before scaling beyond
+   balanced6.

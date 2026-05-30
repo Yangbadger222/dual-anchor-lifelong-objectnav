@@ -447,6 +447,36 @@ comes from repaired memory versus a target-aware fallback.
 - Full clean/mild/heavy matrix with frontier-only, nearest-frontier, no-memory,
   naive-count, and memory-guided baselines.
 
+## Current Per-Action Matrix Finding
+
+The current-code balanced6 per-action matrix on 2026-05-30 validates the
+per-action observation slice as a real mechanism, not just a logging feature.
+Compared with matched `option_end` runs, route-level observation improved:
+
+| Slice | Route observation | Memory-guided success | Memory-guided actions | Frontier-only success |
+|---|---|---:|---:|---:|
+| Stable balanced6 | `option_end` | `4/6` | `528` | `0/6` |
+| Stable balanced6 | `per_action` | `5/6` | `441` | `3/6` |
+| Relocation balanced6 | `option_end` | `0/6` | `1446` | `0/6` |
+| Relocation balanced6 | `per_action` | `3/6` | `1176` | `2/6` |
+
+The key relocation result is the `sofa` row: query-start frontier remains a
+failure, but memory-first followed by local post-memory frontier search finds a
+multiview-confirmed detector positive along the route. This suggests the next
+algorithm should treat memory as a spatial prior for active confirmation and
+local search, not only as a stop-point.
+
+The matched learned-validity per-action runs were neutral: learned probabilities
+changed, but decisions, success, and action counts were identical to the
+event-posterior per-action baseline. The learned-validity hook is therefore a
+real policy mechanism under `option_end`, while per-action route observation is
+the current source of success improvement.
+
+Open diagnostic from this matrix: the stable `bed` row has positive memory
+evidence, but expected utility selects a zero-action failed frontier option.
+Before paper-scale claims, the option scorer must handle failed/degenerate
+frontier options or move to online replanning after an option fails.
+
 ## Research Relevance
 
 This design restores alignment between the implementation and the paper thesis.
