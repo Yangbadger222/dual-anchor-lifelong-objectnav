@@ -2,7 +2,7 @@
 
 Date: 2026-05-30
 Owner: Codex
-Status: Implemented locally; pending Habitat replay
+Status: First deterministic implementation tested; needs redesign
 
 ## Goal
 
@@ -163,6 +163,17 @@ Local verification completed on 2026-05-30:
 - CLI and preflight config recording;
 - unavailable post-memory repair does not act like a zero-cost option;
 - `python3 -m pytest src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_objectnav.py src/objectnav_core/tests/test_habitat_closed_loop_dual_anchor_cli.py -q`.
+
+Selected Habitat replay result on 2026-05-30:
+
+- `memory_local_active` radial search: `0/4` selected relocation successes,
+  `767` memory-guided actions.
+- Matched navmesh post-memory repair: `1/4` selected relocation successes,
+  `1195` memory-guided actions.
+- Conclusion: deterministic radial local search is cheaper on misses but
+  regresses the known `sofa` repair. The next design iteration should use
+  occupancy/depth visibility or learned candidate scoring rather than scaling
+  this radial policy.
 
 ## Research Relevance
 

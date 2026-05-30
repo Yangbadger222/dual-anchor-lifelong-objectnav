@@ -1461,3 +1461,35 @@ Recommended next implementation:
 3. Port `frontier_only` and `dual_anchor_memory` into that official action loop.
 4. Keep lifecycle relocation results separate from official single-episode
    ObjectNav SR/SPL in paper tables.
+
+## 2026-05-30 Selected Memory-Local Active Replay Result
+
+Experiment report:
+
+- `docs/experiments/2026-05-30-habitat-memory-local-active-selected-replay.md`
+
+Artifacts:
+
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_relocation_selected_memory_local_active_per_action_accounting_fix_20260530_v1/summary.json`
+- `runs/habitat_closed_loop_dual_anchor/event_posterior_relocation_selected_navmesh_per_action_accounting_fix_20260530_v1/summary.json`
+
+Matched selected-row result:
+
+| Post-memory search | Memory-guided success | Memory-guided actions | Frontier-only success | Frontier-only actions |
+|---|---:|---:|---:|---:|
+| `navmesh_frontier` via `frontier_mode` | `1/4` | `1195` | `0/4` | `1312` |
+| `memory_local_active` | `0/4` | `767` | `0/4` | `1312` |
+
+Interpretation:
+
+- Deterministic radial local-active search is not a paper-worthy improvement.
+- It is cheaper on failed rows, but it regresses the relocated `sofa` row that
+  navmesh post-memory search repairs.
+- Do not scale this exact policy to a broader matrix as a claimed improvement.
+- The next local-search version should use occupancy/depth visibility or a
+  learned candidate scorer with candidate trace logging.
+
+Additional accounting note:
+
+- Commit `74e63ab` fixed failed post-memory repair accounting. Old failed-row
+  action totals before this commit undercount attempted post-memory search.
