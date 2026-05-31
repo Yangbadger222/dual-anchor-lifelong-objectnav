@@ -88,6 +88,27 @@ class _FakeNewProcessor(_FakeProcessor):
         ]
 
 
+class _FakeTvProcessor(_FakeProcessor):
+    def post_process_grounded_object_detection(
+        self,
+        outputs: object,
+        input_ids: object,
+        box_threshold: float,
+        text_threshold: float,
+        target_sizes: list[tuple[int, int]],
+    ) -> list[dict[str, object]]:
+        assert box_threshold == 0.25
+        assert text_threshold == 0.2
+        assert target_sizes == [(8, 8)]
+        return [
+            {
+                "boxes": _FakeTensor([[1.0, 2.0, 5.0, 6.0]]),
+                "scores": _FakeTensor([0.88]),
+                "labels": ["tv monitor"],
+            }
+        ]
+
+
 class _FakeModel:
     def __init__(self) -> None:
         self.device: str | None = None
@@ -157,6 +178,31 @@ def test_grounding_dino_adapter_forwards_fake_backend_detections() -> None:
     assert detections[0].mask.shape == (8, 8)
     assert detections[0].mask[2:6, 1:5].all()
     assert detections[0].mask.sum() == 16
+
+
+def test_grounding_dino_adapter_maps_objectnav_aliases_to_canonical_labels() -> None:
+    processor = _FakeTvProcessor()
+    detector = GroundingDinoDetector(
+        model_id="unused",
+        categories=["tv_monitor"],
+        conf=0.25,
+        text_threshold=0.2,
+        device="cpu",
+        processor=processor,
+        model=_FakeModel(),
+    )
+
+    detections = detector.detect(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert processor.text == "tv monitor. television. tv."
+    assert detections == [
+        Detection(
+            category="tv_monitor",
+            bbox=(1, 2, 5, 6),
+            confidence=0.88,
+            mask=detections[0].mask,
+        )
+    ]
 
 
 def test_grounding_dino_adapter_supports_new_transformers_threshold_name() -> None:

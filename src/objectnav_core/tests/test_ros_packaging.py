@@ -45,3 +45,98 @@ def test_objectnav_core_is_ament_python_package_without_ros_runtime_imports() ->
     )
     assert "objectnav_habitat_objectnav_rgb_noise_stress" in setup_text
     assert "objectnav_core.cli.run_habitat_objectnav_rgb_noise_stress:main" in setup_text
+    assert "objectnav_habitat_official_memory_discovery" in setup_text
+    assert (
+        "objectnav_core.cli.run_habitat_official_memory_discovery:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_memory_comparison" in setup_text
+    assert (
+        "objectnav_core.cli.run_habitat_official_memory_comparison:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_detector_viewpoint_memory_prior" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_detector_viewpoint_memory_prior:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_local_action_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_local_action_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_targetnav_local_policy_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_targetnav_local_policy_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_view_recall_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_view_recall_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_view_candidate_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_view_candidate_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_rollout_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_candidate_rollout_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_state_restore_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_candidate_state_restore_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_viewpoint_restore_dataset" in setup_text
+    assert (
+        "objectnav_core.cli.export_habitat_official_candidate_viewpoint_restore_dataset:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_rollout_action_matrix_report" in setup_text
+    assert (
+        "objectnav_core.cli.report_habitat_official_candidate_rollout_action_matrix:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_rollout_hard_states" in setup_text
+    assert (
+        "objectnav_core.cli.mine_habitat_official_candidate_rollout_hard_states:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_rollout_action_utility_model" in setup_text
+    assert (
+        "objectnav_core.cli.train_habitat_official_candidate_rollout_action_utility_model:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_local_action_model" in setup_text
+    assert (
+        "objectnav_core.cli.train_habitat_official_local_action_model:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_local_action_score" in setup_text
+    assert (
+        "objectnav_core.cli.score_habitat_official_local_action_model:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_view_recall_model" in setup_text
+    assert (
+        "objectnav_core.cli.train_habitat_official_view_recall_model:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_view_recall_score" in setup_text
+    assert (
+        "objectnav_core.cli.score_habitat_official_view_recall_model:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_candidate_viewpoint_ranker" in setup_text
+    assert (
+        "objectnav_core.cli.train_habitat_official_candidate_viewpoint_ranker:main"
+        in setup_text
+    )
+    assert "objectnav_habitat_official_memory_anchor_quality" in setup_text
+    assert (
+        "objectnav_core.cli.report_habitat_official_memory_anchor_quality:main"
+        in setup_text
+    )

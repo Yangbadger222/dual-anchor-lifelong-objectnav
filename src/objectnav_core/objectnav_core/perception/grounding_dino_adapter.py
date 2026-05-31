@@ -16,6 +16,9 @@ from objectnav_core.perception.yolo_world_adapter import (
 
 
 DEFAULT_GROUNDING_DINO_MODEL = "IDEA-Research/grounding-dino-tiny"
+_CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
+    "tv_monitor": ("tv monitor", "television", "tv"),
+}
 
 
 class GroundingDinoDetector:
@@ -148,7 +151,10 @@ class _NoopTorch:
 
 
 def _prompt_text(categories: list[str]) -> str:
-    return " ".join(f"{category.rstrip('.')}." for category in categories)
+    labels: list[str] = []
+    for category in categories:
+        labels.extend(_category_prompt_labels(category))
+    return " ".join(f"{label.rstrip('.')}." for label in labels)
 
 
 def _detections_from_grounding_result(
@@ -163,12 +169,12 @@ def _detections_from_grounding_result(
     boxes = _as_numpy(result.get("boxes", []))
     scores = _as_numpy(result.get("scores", []))
     labels = result.get("text_labels", result.get("labels", []))
-    accepted = {category.strip().lower() for category in categories}
+    canonical_by_label = _canonical_labels(categories)
     detections: list[Detection] = []
     for xyxy, score, label in zip(boxes, scores, labels):
         confidence = float(score)
-        category = str(label).strip().lower()
-        if confidence < conf or category not in accepted:
+        category = canonical_by_label.get(_normalize_label(str(label)))
+        if confidence < conf or category is None:
             continue
         scaled_xyxy = _scale_xyxy(xyxy, scale_x=scale_x, scale_y=scale_y)
         bbox = _clip_bbox(scaled_xyxy, image_shape)
@@ -183,6 +189,35 @@ def _detections_from_grounding_result(
             )
         )
     return detections
+
+
+def _category_prompt_labels(category: str) -> tuple[str, ...]:
+    canonical = str(category).strip().lower()
+    labels = [canonical.replace("_", " ")]
+    labels.extend(_CATEGORY_ALIASES.get(canonical, ()))
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for label in labels:
+        normalized = _normalize_label(label)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(label)
+    return tuple(deduped)
+
+
+def _canonical_labels(categories: list[str]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for category in categories:
+        canonical = str(category).strip().lower()
+        mapping[_normalize_label(canonical)] = canonical
+        for label in _category_prompt_labels(canonical):
+            mapping[_normalize_label(label)] = canonical
+    return mapping
+
+
+def _normalize_label(label: str) -> str:
+    return " ".join(str(label).strip().lower().replace("_", " ").split())
 
 
 def _resize_for_detector(

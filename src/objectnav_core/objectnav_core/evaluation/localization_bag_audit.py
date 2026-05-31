@@ -602,7 +602,17 @@ def _summarize_gps_lio_alignment(fix_samples: list[FixSample], lio_samples: list
         }
 
     residuals = []
-    for point, target in zip(src, dst, strict=True):
+    if len(src) != len(dst):
+        return {
+            "pair_count": len(pairs),
+            "status": "pair_count_mismatch",
+            "rms_residual_m": None,
+            "p95_residual_m": None,
+            "max_residual_m": None,
+            "source_path_length_m": source_path_length,
+            "max_time_delta_s": max(pair[4] for pair in pairs),
+        }
+    for point, target in zip(src, dst):
         mapped = _apply_similarity_2d(transform, point)
         residuals.append(math.hypot(mapped[0] - target[0], mapped[1] - target[1]))
 
@@ -644,12 +654,14 @@ def _pair_fix_to_lio(fix_samples: list[FixSample], lio_samples: list[LioSample],
 
 
 def _fit_similarity_2d(src: list[tuple[float, float]], dst: list[tuple[float, float]]) -> dict[str, float] | None:
+    if len(src) != len(dst):
+        return None
     src_mean = (sum(point[0] for point in src) / len(src), sum(point[1] for point in src) / len(src))
     dst_mean = (sum(point[0] for point in dst) / len(dst), sum(point[1] for point in dst) / len(dst))
     a = 0.0
     b = 0.0
     denom = 0.0
-    for source, target in zip(src, dst, strict=True):
+    for source, target in zip(src, dst):
         sx = source[0] - src_mean[0]
         sy = source[1] - src_mean[1]
         tx = target[0] - dst_mean[0]

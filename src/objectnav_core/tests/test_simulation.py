@@ -183,7 +183,7 @@ def _frontier_at_col(
     grid: OccupancyGrid,
 ) -> FrontierCluster:
     cells = tuple((col, row) for row in rows)
-    xs, ys = zip(*(grid.cell_center(cell_col, cell_row) for cell_col, cell_row in cells), strict=True)
+    xs, ys = zip(*(grid.cell_center(cell_col, cell_row) for cell_col, cell_row in cells))
     return FrontierCluster(
         cells=cells,
         centroid=Pose2D(x=sum(xs) / len(xs), y=sum(ys) / len(ys)),

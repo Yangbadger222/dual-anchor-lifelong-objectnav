@@ -2,7 +2,7 @@
 
 Date: 2026-05-30
 Owner: Codex
-Status: Draft
+Status: In Progress
 
 ## Goal
 
@@ -84,6 +84,122 @@ python -m objectnav_core.cli.run_habitat_official_objectnav_eval \
   --max-episodes 30
 ```
 
+Implemented first-slice CLI:
+
+```bash
+python -m objectnav_core.cli.run_habitat_official_objectnav_eval \
+  --output runs/habitat_official_objectnav/noop_valmini_1ep_20260530_v1 \
+  --config-path third_party/habitat-lab/habitat-lab/habitat/config/benchmark/nav/objectnav/objectnav_hm3d.yaml \
+  --dataset-data-path datasets/habitat/datasets/objectnav/hm3d/objectnav_hm3d_v1/val_mini/val_mini.json.gz \
+  --scene-root datasets/habitat/scene_datasets/hm3d \
+  --split val_mini \
+  --policy noop \
+  --max-episodes 1 \
+  --validate-habitat
+```
+
+The official adapter currently supports:
+
+- `--preflight-only` protocol manifest generation;
+- optional `--validate-habitat` inspection of the installed Habitat-Lab config;
+- trivial `noop` and deterministic `random` policy smokes;
+- per-episode `episodes.csv`;
+- `summary.json` with official metrics copied from `habitat.Env.get_metrics()`;
+- `protocol_manifest.json` with Habitat version, task type, measure UUIDs,
+  dataset split/path, scene directory override, and the explicit caveat that
+  trivial-policy runs are invalid as benchmark claims.
+- observation-reactive `frontier_only` and `occupancy_frontier` no-memory
+  baseline policies.
+- `memory_guided_frontier`, which consumes an external JSON memory prior and
+  emits official discrete actions while marking synthetic/unvalidated priors as
+  invalid for benchmark claims.
+
+It does not yet build the memory prior from a documented non-oracle discovery
+episode inside the official protocol.
+
+## Target-Agnostic Baseline Boundary
+
+The first official no-memory slice added `frontier_only` as a fair baseline
+inside the same Habitat-Lab step loop. This baseline is intentionally
+target-agnostic:
+
+- allowed inputs: current Habitat observation, especially depth;
+- allowed actions: official discrete Habitat actions;
+- disallowed inputs: target object pose, shortest-path route follower,
+  semantic oracle visibility, detector-positive target shortcuts, and
+  teleportation;
+- stopping: budgeted policy stop only, until a later detector-backed ObjectNav
+  stop policy is added.
+
+The first implementation is a depth-reactive exploration baseline rather than
+a benchmark claim: move forward through clear center depth, turn when blocked,
+and stop on budget. It exists so future `dual_anchor_memory` runs can be
+compared against a real official action loop before the paper-grade learned
+or memory-biased occupancy-frontier policy is built.
+
+Implemented status:
+
+- `frontier_only` is now accepted by the official adapter CLI.
+- The official loop is observation-reactive: policies choose one action after
+  each observation instead of receiving a precomputed action list.
+- The first `frontier_only` policy uses only depth. It handles both meter-scale
+  fake-test depth and normalized Habitat depth observations.
+- Initial Linux smokes exposed two useful baseline bugs: normalized depth was
+  treated as blocked, and alternating left/right turns caused in-place
+  oscillation. Both now have regression tests.
+- A three-episode `val_mini` official smoke with `200` max steps ran through
+  Habitat-Lab and produced `0/3` success and `0.0` SPL. This is a weak baseline
+  scaffold, not a publishable exploration policy.
+
+## Occupancy Frontier Baseline Boundary
+
+The adapter now includes `occupancy_frontier`: a target-agnostic policy that
+uses official GPS, compass, and depth observations to maintain a small 2D
+occupancy grid. This is still a no-memory baseline, but it is closer to a fair
+robot navigation comparator than the depth-reactive scaffold.
+
+Allowed inputs:
+
+- official `depth`;
+- official `gps`;
+- official `compass`;
+- official action history.
+
+Disallowed inputs:
+
+- target pose or category-specific geodesic route;
+- semantic oracle masks;
+- detector positives;
+- Habitat pathfinder shortcuts;
+- teleportation.
+
+Implemented first slice:
+
+1. convert normalized or meter-scale depth to metric ray endpoints;
+2. mark free cells along rays and obstacle cells at finite endpoints;
+3. identify unknown cells adjacent to free cells as frontiers;
+4. choose a turn direction toward the nearest reachable-looking frontier;
+5. move forward only when current depth still says the center corridor is clear;
+6. report map counts and selected frontier bearing in `policy_debug`.
+
+This baseline is not the final paper method. Its purpose is to create a
+credible official no-memory comparator and a map substrate that a future
+Dual-Anchor memory policy can bias toward remembered object neighborhoods.
+
+Initial Linux smoke status:
+
+- `occupancy_frontier` ran for three `val_mini` episodes with `200` max steps.
+- It produced `0/3` success and `0.0` SPL, so it is not yet a strong ObjectNav
+  baseline.
+- SoftSPL improved over `frontier_only`
+  (`0.04420002662118805` vs `0.0013203695130148407`), which suggests the
+  official loop and map telemetry are useful scaffolding.
+- The latest smoke uses a short blocked-turn burst rather than frame-by-frame
+  left/right replanning. A full blocked-turn latch removed oscillation but
+  regressed exploration by spinning too long.
+- The next policy-level gap is stopping on detected targets and connecting
+  Dual-Anchor memory as a bias over the same map/action interface.
+
 Required official measures:
 
 - `Success`
@@ -96,7 +212,8 @@ Policy comparison modes:
 
 - `official_baseline_oracle_stop`: sanity check only;
 - `frontier_only`: no memory;
-- `dual_anchor_memory`: memory-enabled policy;
+- `occupancy_frontier`: no-memory map-backed baseline;
+- `memory_guided_frontier`: memory-prior mechanism policy;
 - `dual_anchor_memory_language_ready`: same interface with a future language
   goal parser, GPT disabled until policy metrics are stable.
 
@@ -126,15 +243,23 @@ Policy comparison modes:
 ## Verification Plan
 
 1. Unit-test config parsing and measure-name extraction with a tiny fake env.
+   Completed locally and on Linux for the first slice.
 2. Add a preflight command that imports Habitat-Lab, lists registered measures,
    verifies dataset and scene availability, and writes a protocol manifest.
+   Completed on Linux in
+   `runs/habitat_official_objectnav/preflight_valmini_20260530_v1`.
 3. Run one official `val_mini` episode with a random/no-op policy and verify
-   `env.get_metrics()` contains official measures.
+   `env.get_metrics()` contains official measures. Completed on Linux in
+   `runs/habitat_official_objectnav/noop_valmini_1ep_20260530_v1` and
+   `runs/habitat_official_objectnav/random_valmini_1ep_5steps_20260530_v1`.
 4. Run a small deterministic policy smoke on `val_mini` and confirm SR/SPL are
-   read from Habitat-Lab, not recomputed by local code.
-5. Only after this path is stable, port `frontier_only` and `dual_anchor_memory`
-   policies into the official step loop.
-6. Compare `frontier_only` vs memory on `val_mini`, then `val`, while keeping
+   read from Habitat-Lab, not recomputed by local code. Completed for `noop`,
+   `random`, `frontier_only`, and `occupancy_frontier`.
+5. Port memory into the official step loop without route-follower, teleport,
+   target-pose, or semantic-oracle shortcuts. First slice completed as
+   `memory_guided_frontier` with external JSON priors; benchmark-facing priors
+   still need a documented non-oracle discovery source.
+6. Compare `occupancy_frontier` vs memory on `val_mini`, then `val`, while keeping
    lifecycle relocation results as a separate paper table.
 
 ## Research Relevance
